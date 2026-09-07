@@ -78,3 +78,106 @@ test("an API with no handler gets no route", async () => {
 
   assert.equal(response.statusCode, 404);
 });
+
+function buildSecuredApp() {
+  const app = createApplication({ name: "shop" });
+
+  app.module({
+    name: "api",
+    apis: [
+      {
+        name: "secureEcho",
+        method: "POST",
+        path: "/secure-echo",
+        auth: { required: true, scopes: ["write"] },
+        validate: (context) => {
+          const payload = context.payload;
+          if (!payload || typeof payload.value !== "string") {
+            return { valid: false, errors: ["payload.value must be a string"] };
+          }
+          return { valid: true };
+        },
+        handler: async (context) => ({ echoed: context.payload.value })
+      }
+    ]
+  });
+
+  return app;
+}
+
+test("createHapiServer rejects when an auth-required API has no authenticate option", async () => {
+  await assert.rejects(createHapiServer(buildSecuredApp()), /requires auth/);
+});
+
+test("an unauthenticated request gets a 401 and the handler does not run", async () => {
+  const server = await createHapiServer(buildSecuredApp(), {
+    authenticate: async () => ({ authenticated: false })
+  });
+
+  const response = await server.inject({
+    method: "POST",
+    url: "/secure-echo",
+    payload: { value: "hi" }
+  });
+
+  assert.equal(response.statusCode, 401);
+});
+
+test("an authenticated request missing a required scope gets a 403", async () => {
+  const server = await createHapiServer(buildSecuredApp(), {
+    authenticate: async () => ({ authenticated: true, scopes: ["read"] })
+  });
+
+  const response = await server.inject({
+    method: "POST",
+    url: "/secure-echo",
+    payload: { value: "hi" }
+  });
+
+  assert.equal(response.statusCode, 403);
+  assert.deepEqual(JSON.parse(response.payload).missingScopes, ["write"]);
+});
+
+test("an authenticated request with the required scope but an invalid payload gets a 400", async () => {
+  const server = await createHapiServer(buildSecuredApp(), {
+    authenticate: async () => ({ authenticated: true, scopes: ["write"] })
+  });
+
+  const response = await server.inject({
+    method: "POST",
+    url: "/secure-echo",
+    payload: { value: 123 }
+  });
+
+  assert.equal(response.statusCode, 400);
+  assert.deepEqual(JSON.parse(response.payload).errors, ["payload.value must be a string"]);
+});
+
+test("an authenticated request with the required scope and a valid payload runs the handler", async () => {
+  const server = await createHapiServer(buildSecuredApp(), {
+    authenticate: async () => ({ authenticated: true, scopes: ["write"] })
+  });
+
+  const response = await server.inject({
+    method: "POST",
+    url: "/secure-echo",
+    payload: { value: "hi" }
+  });
+
+  assert.equal(response.statusCode, 200);
+  assert.deepEqual(JSON.parse(response.payload), { echoed: "hi" });
+});
+
+test("auth runs before validation: an unauthenticated request with an invalid payload still gets a 401", async () => {
+  const server = await createHapiServer(buildSecuredApp(), {
+    authenticate: async () => ({ authenticated: false })
+  });
+
+  const response = await server.inject({
+    method: "POST",
+    url: "/secure-echo",
+    payload: { value: 123 }
+  });
+
+  assert.equal(response.statusCode, 401);
+});

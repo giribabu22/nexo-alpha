@@ -41,26 +41,65 @@ curl http://localhost:3000/hello
 # {"message":"Hello from Nexo"}
 ```
 
+### Auth and validation
+
+`NexoApi.auth` and `NexoApi.validate` are plain declarative/function hooks (no Joi, no JWT library — `@nexo-alpha/core` stays dependency-free); the actual verification logic is supplied by you:
+
+```ts
+app.module({
+  name: "widgets",
+  apis: [
+    {
+      name: "createWidget",
+      method: "POST",
+      path: "/widgets",
+      auth: { required: true, scopes: ["widgets:write"] },
+      validate: (context) => {
+        const payload = context.payload;
+        if (!payload || typeof payload.name !== "string") {
+          return { valid: false, errors: ["name is required"] };
+        }
+        return { valid: true };
+      },
+      handler: async (context) => ({ created: context.payload.name })
+    }
+  ]
+});
+
+const server = await startHapiServer(app, {
+  authenticate: async (context) => {
+    const token = context.headers.authorization;
+    // verify the token however you like (JWT, session lookup, API key, ...)
+    return token === "Bearer good-token"
+      ? { authenticated: true, scopes: ["widgets:write"] }
+      : { authenticated: false };
+  }
+});
+```
+
+Requests to `/widgets` now run through **Identity → Permission → Validation → Operation** before the handler: no/invalid auth → `401`; authenticated but missing a required scope → `403`; validation fails → `400` with `errors`; otherwise the handler runs, unchanged. If any API declares `auth.required` but no `authenticate` option is passed to `createHapiServer`/`startHapiServer`, server creation fails immediately rather than silently serving an unenforceable route.
+
 ## What's here
 
 - **`createHapiServer(app, options?)`** — builds a `Hapi.server(...)` and registers a route for every API that has a `handler`. Path params use Express-style `:id` in `NexoApi.path` (matching the rest of Nexo's examples) and are converted to Hapi's `{id}` syntax automatically.
 - **`startHapiServer(app, options?)`** — `createHapiServer` plus `server.start()`.
 - **`toHapiPath(path)`** — the `:id` → `{id}` path converter, exported directly if you need it.
 - A handler receives a plain `NexoRequestContext` (`params`, `query`, `payload`, `headers`) — no Hapi types leak into `@nexo-alpha/core`. Return a value to send it as the response (objects are serialized to JSON automatically); return `undefined` for a `204`.
+- `options.authenticate` — an optional `NexoAuthenticator` used for every API with `auth.required`, checked before validation and before the handler runs.
 
 ## Design notes
 
 - **APIs without a `handler` get no route.** They stay descriptive-only, exactly as they appear in `@nexo-alpha/context`'s manifest and `@nexo-alpha/cli`'s output.
 - **`HEAD` is not registered as an explicit route** — Hapi generates `HEAD` responses from `GET` routes automatically and rejects `HEAD` as an explicit method.
-- **No request validation or auth yet.** Every handler-backed API is wired with no input validation and no authentication layer — that's Phase 5 ("Safe Development Operations") territory, not this package.
+- **Auth runs before validation** — both the PRD's stated request pipeline (Identity → Permission → ... → Validation → Operation) and standard security practice: an unauthenticated caller shouldn't learn anything about payload shape from a `400`.
 
 ## Related packages
 
-- [`@nexo-alpha/core`](https://www.npmjs.com/package/@nexo-alpha/core) — the application/module model, including `NexoRequestContext` and `NexoApiHandler`
+- [`@nexo-alpha/core`](https://www.npmjs.com/package/@nexo-alpha/core) — the application/module model, including `NexoRequestContext`, `NexoApiHandler`, `NexoApiAuth`, `NexoRequestValidator`, and `NexoAuthenticator`
 
 ## Status
 
-**v0.1-alpha.** No request validation, no authentication, no lifecycle wiring to `NexoApplication.start()`/`stop()` yet — creating and starting the Hapi server is a separate step from the application's own lifecycle.
+**v0.1-alpha.** No lifecycle wiring to `NexoApplication.start()`/`stop()` yet — creating and starting the Hapi server is a separate step from the application's own lifecycle.
 
 ## License
 

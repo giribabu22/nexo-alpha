@@ -1,13 +1,25 @@
 import Hapi from "@hapi/hapi";
-import type { NexoApplication, NexoRequestContext } from "@nexo-alpha/core";
+import type {
+  NexoApi,
+  NexoApplication,
+  NexoAuthenticator,
+  NexoRequestContext
+} from "@nexo-alpha/core";
 
 export interface CreateHapiServerOptions {
   readonly port?: number;
   readonly host?: string;
+  readonly authenticate?: NexoAuthenticator;
 }
 
 export function toHapiPath(path: string): string {
   return path.replace(/:([A-Za-z0-9_]+)/g, "{$1}");
+}
+
+function missingScopes(api: NexoApi, granted: readonly string[] | undefined): string[] {
+  const required = api.auth?.scopes ?? [];
+  const grantedSet = new Set(granted ?? []);
+  return required.filter((scope) => !grantedSet.has(scope));
 }
 
 export async function createHapiServer(
@@ -19,7 +31,17 @@ export async function createHapiServer(
     host: options.host ?? "localhost"
   });
 
-  for (const api of app.getApis()) {
+  const apis = app.getApis();
+
+  for (const api of apis) {
+    if (api.auth?.required && options.authenticate === undefined) {
+      throw new Error(
+        `API "${api.name}" requires auth, but no "authenticate" option was provided to createHapiServer().`
+      );
+    }
+  }
+
+  for (const api of apis) {
     if (api.handler === undefined) {
       continue;
     }
@@ -42,6 +64,36 @@ export async function createHapiServer(
           payload: request.payload,
           headers: request.headers as Record<string, string>
         };
+
+        if (api.auth?.required) {
+          // Guaranteed defined: createHapiServer already rejected before
+          // registering any routes if an auth-required API had no
+          // "authenticate" option configured.
+          const authResult = await (options.authenticate as NexoAuthenticator)(
+            context
+          );
+
+          if (!authResult.authenticated) {
+            return h.response({ error: "Unauthorized" }).code(401);
+          }
+
+          const missing = missingScopes(api, authResult.scopes);
+          if (missing.length > 0) {
+            return h
+              .response({ error: "Forbidden", missingScopes: missing })
+              .code(403);
+          }
+        }
+
+        if (api.validate) {
+          const outcome = await api.validate(context);
+
+          if (!outcome.valid) {
+            return h
+              .response({ error: "Validation failed", errors: outcome.errors ?? [] })
+              .code(400);
+          }
+        }
 
         const result = await handler(context);
 

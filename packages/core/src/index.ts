@@ -20,7 +20,12 @@ export type {
   NexoApi,
   HttpMethod,
   NexoRequestContext,
-  NexoApiHandler
+  NexoApiHandler,
+  NexoValidationOutcome,
+  NexoRequestValidator,
+  NexoApiAuth,
+  NexoAuthResult,
+  NexoAuthenticator
 } from "./api.js";
 
 export type {
