@@ -12,6 +12,16 @@ app.module({
   name: "hello",
   description: "Hello World module",
 
+  apis: [
+    {
+      name: "sayHello",
+      method: "GET",
+      path: "/hello",
+      description: "Returns a greeting",
+      handler: async () => ({ message: "Hello from Nexo" })
+    }
+  ],
+
   initialize() {
     console.log("Hello module initialized");
   },

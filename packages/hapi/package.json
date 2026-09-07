@@ -1,14 +1,13 @@
 {
-  "name": "@nexo-alpha/core",
-  "version": "0.1.2",
-  "description": "Core runtime for the Nexo application framework",
+  "name": "@nexo-alpha/hapi",
+  "version": "0.1.0",
+  "description": "Hapi.js HTTP adapter for the Nexo framework",
   "keywords": [
     "nexo",
+    "hapi",
+    "http",
     "framework",
-    "application-framework",
-    "ai-development",
-    "typescript",
-    "nodejs"
+    "typescript"
   ],
   "author": "prem1999",
   "license": "MIT",
@@ -29,5 +28,9 @@
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "node --test",
     "clean": "rm -rf dist"
+  },
+  "dependencies": {
+    "@nexo-alpha/core": "workspace:*",
+    "@hapi/hapi": "^21.0.0"
   }
 }

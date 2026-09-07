@@ -18,7 +18,9 @@ export type {
 
 export type {
   NexoApi,
-  HttpMethod
+  HttpMethod,
+  NexoRequestContext,
+  NexoApiHandler
 } from "./api.js";
 
 export type {

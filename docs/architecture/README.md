@@ -1,4 +1,4 @@
-# Architecture Notes — v0.6
+# Architecture Notes — v0.7
 
 **npm scope note:** packages publish under `@nexo-alpha` (an npm Organization), not `@nexo` — the unscoped `@nexo` scope required an org that wasn't set up in time; `nexo-alpha` was used instead and is treated as the project's real published identity going forward. All package names below reflect this.
 
@@ -140,6 +140,37 @@ logs — same runtime behavior as before) so the CLI has a side-effect-free
 target to inspect; importing `app.js` for inspection no longer
 accidentally starts the application or prints its lifecycle logs.
 
+## Hapi adapter
+
+`@nexo-alpha/hapi` is the **first package with a real external runtime
+dependency** (`@hapi/hapi`) — everything before it (including
+`@nexo-alpha/core`) stayed dependency-free by design. This is the
+intended split: `@nexo-alpha/core` gained one small, Hapi-agnostic
+addition — `NexoRequestContext` (`params`/`query`/`payload`/`headers`)
+and an optional `NexoApi.handler: (context) => unknown | Promise<unknown>`
+— so an API can describe *how* to handle a request without core
+knowing anything about Hapi. `@nexo-alpha/hapi` is what actually turns
+that into a running server.
+
+`createHapiServer(app, options?)` builds a `Hapi.server(...)` and, for
+every API returned by `app.getApis()` **that has a `handler`**,
+registers a route: method, path (converted from `:param` to Hapi's
+`{param}` syntax via `toHapiPath()`), and a wrapper that builds a
+`NexoRequestContext` from the Hapi request and calls the handler,
+returning its result directly (Hapi serializes plain objects to JSON)
+or a `204` for `undefined`. APIs with no `handler` are skipped — they
+stay purely descriptive, same as in the context manifest and CLI.
+`HEAD` is also skipped: Hapi auto-generates HEAD responses from GET
+routes and rejects HEAD as an explicit route method.
+`startHapiServer(app, options?)` is `createHapiServer` + `server.start()`.
+
+This closes Nexo's biggest functional gap up to this point — before
+this milestone, nothing in the framework could actually serve an HTTP
+request despite Hapi being named as the framework's HTTP foundation in
+the PRD. Verified with a real listening server and a live `fetch()`
+against it (not just Hapi's `server.inject()` in tests), using
+`examples/hello-world`'s new `GET /hello` API.
+
 ## Dependency direction rule
 
 `@nexo-alpha/core` must depend only on the Node.js runtime. It must never depend on:
@@ -158,17 +189,19 @@ Later packages depend **on** core, never the reverse:
 @nexo-alpha/tools --> @nexo-alpha/core
 ```
 
-## v0.6 boundary
+## v0.7 boundary
 
-In scope: everything from v0.5, plus `@nexo-alpha/cli` (`inspect`/
-`status`/`context` commands over an explicit app-module path).
+In scope: everything from v0.6, plus `@nexo-alpha/hapi` — real HTTP
+routes wired from `NexoApi.handler`s.
 
-Not yet: a project-level config convention (so the CLI can find an
-app without an explicit path), Hapi adapter, dependency injection, job
+Not yet: a project-level config convention (so the CLI/Hapi adapter can
+find an app without an explicit path), dependency injection, job
 scheduler/executor, config validation/env loading, write/mutation AI
 operations (`createModule`/`modifyApi`/etc. — Phase 5, "Safe Development
 Operations," needs permissions/validation/audit that don't exist),
-`get_history()` (no History data model yet), database, cloud,
-autonomous agent operations, and the "Components" concept from the PRD
-(undefined in the docs for a backend-first framework, so deferred
-rather than guessed at).
+`get_history()` (no History data model yet), request validation/auth
+on Hapi routes (currently every handler-backed API is wired with no
+input validation or auth — that's Phase 5/PRD section 32 territory,
+not this milestone), database, cloud, autonomous agent operations, and
+the "Components" concept from the PRD (undefined in the docs for a
+backend-first framework, so deferred rather than guessed at).
