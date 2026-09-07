@@ -1,6 +1,6 @@
 {
   "name": "@nexo-alpha/hapi",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Hapi.js HTTP adapter for the Nexo framework",
   "keywords": [
     "nexo",
