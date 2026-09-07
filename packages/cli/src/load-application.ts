@@ -1,6 +1,12 @@
 import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import type { NexoApplication } from "@nexo-alpha/core";
+import type { ApplicationKnowledge } from "@nexo-alpha/context";
+
+export interface LoadedApplication {
+  readonly app: NexoApplication;
+  readonly knowledge?: ApplicationKnowledge | undefined;
+}
 
 function isNexoApplication(value: unknown): value is NexoApplication {
   return (
@@ -10,9 +16,17 @@ function isNexoApplication(value: unknown): value is NexoApplication {
   );
 }
 
+function isApplicationKnowledge(value: unknown): value is ApplicationKnowledge {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    typeof (value as { getDecisions?: unknown }).getDecisions === "function"
+  );
+}
+
 export async function loadApplication(
   modulePath: string
-): Promise<NexoApplication> {
+): Promise<LoadedApplication> {
   const absolutePath = resolve(process.cwd(), modulePath);
   const imported: Record<string, unknown> = await import(
     pathToFileURL(absolutePath).href
@@ -26,5 +40,9 @@ export async function loadApplication(
     );
   }
 
-  return app;
+  const knowledge = isApplicationKnowledge(imported.knowledge)
+    ? imported.knowledge
+    : undefined;
+
+  return { app, knowledge };
 }

@@ -46,6 +46,43 @@ test("nexo context prints valid JSON and exits 0", async () => {
   assert.equal(parsed.application.name, "shop");
 });
 
+test("nexo knowledge prints the journal as JSON and exits 0", async () => {
+  const { stdout } = await execFileAsync("node", [cliPath, "knowledge", fixtureAppPath]);
+  const parsed = JSON.parse(stdout);
+
+  assert.equal(parsed.decisions[0].title, "Use Redis for job coordination");
+  assert.ok(parsed.generatedAt, "generatedAt should be present");
+  assert.equal(typeof parsed.structureHash, "string");
+});
+
+test("nexo source scans a project root and prints a file/export inventory", async () => {
+  const { stdout } = await execFileAsync("node", [
+    cliPath,
+    "source",
+    join(__dirname, "fixtures")
+  ]);
+  const parsed = JSON.parse(stdout);
+
+  const appFile = parsed.files.find((file) => file.path === "app.js");
+  assert.ok(appFile, "fixtures/app.js should be included in the scan");
+  assert.ok(appFile.exports.includes("app"));
+  assert.ok(appFile.exports.includes("knowledge"));
+  assert.equal(typeof parsed.sourceTreeHash, "string");
+});
+
+test("nexo validate prints validation summary and exits 0", async () => {
+  const { stdout } = await execFileAsync("node", [cliPath, "validate", fixtureAppPath]);
+
+  assert.match(stdout, /Nexo Validation:/);
+});
+
+test("nexo health prints health metrics and exits 0", async () => {
+  const { stdout } = await execFileAsync("node", [cliPath, "health", fixtureAppPath]);
+
+  assert.match(stdout, /Nexo Application Health/);
+  assert.match(stdout, /State: created/);
+});
+
 test("a bad app path exits 1 with an error on stderr", async () => {
   await assert.rejects(
     execFileAsync("node", [cliPath, "inspect", "./does/not/exist.js"]),

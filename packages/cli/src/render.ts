@@ -1,5 +1,5 @@
-import type { DevelopmentState } from "@nexo-alpha/core";
-import type { ApplicationContext, ModuleContext } from "@nexo-alpha/context";
+import type { ApplicationContext, DevelopmentState, ModuleContext } from "@nexo-alpha/context";
+
 
 function renderList(items: readonly string[]): string {
   return items.length > 0
@@ -89,6 +89,47 @@ export function renderDevelopmentState(state: DevelopmentState): string {
     "Next step:",
     state.nextStep !== undefined ? `  ${state.nextStep}` : "  (none)"
   );
+
+  return lines.join("\n");
+}
+
+export function renderValidation(archIssues: readonly { severity: string; message: string; target?: string }[], configIssues: readonly { severity: string; message: string; target?: string }[]): string {
+  const all = [...archIssues, ...configIssues];
+  if (all.length === 0) {
+    return "Nexo Validation: PASSED (0 issues)";
+  }
+
+  const errors = all.filter((i) => i.severity === "error");
+  const warnings = all.filter((i) => i.severity === "warning");
+
+  const lines = [
+    `Nexo Validation: ${errors.length === 0 ? "PASSED WITH WARNINGS" : "FAILED"} (${errors.length} errors, ${warnings.length} warnings)`,
+    ""
+  ];
+
+  for (const issue of all) {
+    lines.push(`[${issue.severity.toUpperCase()}] ${issue.message}`);
+  }
+
+  return lines.join("\n");
+}
+
+export function renderHealth(health: {
+  state: string;
+  moduleCount: number;
+  apiCount: number;
+  serviceCount: number;
+  architecture: { valid: boolean; issues: readonly { severity: string; message: string }[] };
+}): string {
+  const lines = [
+    "Nexo Application Health",
+    "",
+    `State: ${health.state}`,
+    `Modules: ${health.moduleCount}`,
+    `APIs: ${health.apiCount}`,
+    `Services: ${health.serviceCount}`,
+    `Architecture Valid: ${health.architecture.valid ? "YES" : "NO"} (${health.architecture.issues.length} issues)`
+  ];
 
   return lines.join("\n");
 }

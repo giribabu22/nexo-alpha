@@ -1,4 +1,5 @@
 import { createApplication } from "@nexo-alpha/core";
+import { createKnowledge } from "@nexo-alpha/context";
 
 export const app = createApplication({
   name: "shop",
@@ -25,9 +26,11 @@ app.module({
   jobs: [{ name: "retryFailedPayments", schedule: "*/5 * * * *" }]
 });
 
-app.addDecision({ title: "Use Redis for job coordination", status: "accepted" });
-app.addConstraint({ description: "Payments must never be retried after a permanent decline." });
-app.setDevelopmentState({
+export const knowledge = createKnowledge();
+
+knowledge.addDecision({ title: "Use Redis for job coordination", status: "accepted" });
+knowledge.addConstraint({ description: "Payments must never be retried after a permanent decline." });
+knowledge.setDevelopmentState({
   currentObjective: "Implement payment recovery",
   completed: ["Retry API"],
   inProgress: ["Retry worker"],

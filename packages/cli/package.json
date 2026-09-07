@@ -1,6 +1,6 @@
 {
   "name": "@nexo-alpha/cli",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Command-line interface for the Nexo framework",
   "keywords": [
     "nexo",
@@ -23,6 +23,9 @@
       "import": "./dist/index.js"
     }
   },
+  "publishConfig": {
+    "access": "public"
+  },
   "files": [
     "dist"
   ],
@@ -34,6 +37,7 @@
   },
   "dependencies": {
     "@nexo-alpha/core": "workspace:*",
-    "@nexo-alpha/context": "workspace:*"
+    "@nexo-alpha/context": "workspace:*",
+    "@nexo-alpha/tools": "workspace:*"
   }
 }
