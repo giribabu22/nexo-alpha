@@ -3,12 +3,15 @@ import { startHapiServer } from "@nexo-alpha/hapi";
 
 await app.start();
 
-const server = await startHapiServer(app, { port: 3000 });
+const PORT = Number(process.env.PORT) || 4000;
+const server = await startHapiServer(app, {
+  port: PORT
+});
 
 console.log({
   name: app.name,
   version: app.version,
   state: app.state,
-  modules: app.getModules().map((module) => module.name),
+  modules: app.getModules().map((m: { name: string }) => m.name),
   uri: server.info.uri
 });

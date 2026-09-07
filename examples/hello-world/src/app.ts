@@ -1,11 +1,20 @@
 import {
   createApplication
 } from "@nexo-alpha/core";
+import { createKnowledge } from "@nexo-alpha/context";
 
 export const app = createApplication({
   name: "hello-world",
   version: "0.1.0",
   description: "My first Nexo application"
+});
+
+export const knowledge = createKnowledge();
+
+knowledge.addDecision({
+  title: "Use Hapi as the HTTP adapter",
+  reason: "Hapi is named as the HTTP foundation in the Nexo PRD.",
+  status: "accepted"
 });
 
 app.module({
