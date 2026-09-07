@@ -48,6 +48,25 @@ export interface ApplicationStructure {
   readonly dependencyEdges: readonly DependencyEdge[];
 }
 
+/**
+ * One scanned source file's path (relative to a project root, POSIX-style)
+ * and its best-effort exported symbol names. This shape is produced by
+ * `@nexo-alpha/tools`'s `createSourceInterface()` — defined here, not
+ * there, so `ApplicationContext` can reference it without `@nexo-alpha/context`
+ * depending on `@nexo-alpha/tools` (dependencies only ever point the other
+ * way in this framework).
+ */
+export interface SourceFile {
+  readonly path: string;
+  readonly exports: readonly string[];
+}
+
+/** A file/export inventory produced by scanning a project's actual source tree. */
+export interface SourceTree {
+  readonly fileCount: number;
+  readonly files: readonly SourceFile[];
+}
+
 export interface ApplicationContext {
   readonly application: {
     readonly name: string;
@@ -67,6 +86,16 @@ export interface ApplicationContext {
    * structure, without re-diffing the whole manifest by hand.
    */
   readonly structureHash: string;
+  /**
+   * A source-tree scan, present only when one was supplied to
+   * {@link buildContext}. Unlike `structure`, this isn't derived from the
+   * application's registry — it comes from reading actual files — so it's
+   * opt-in rather than always computed: scanning a source tree is real I/O,
+   * scanning the registry is free.
+   */
+  readonly sourceTree?: SourceTree;
+  /** A deterministic hash of `sourceTree` (see {@link hashSourceTree}); present iff `sourceTree` is. */
+  readonly sourceTreeHash?: string;
 }
 
 /**
@@ -109,6 +138,20 @@ export function hashStructure(structure: ApplicationStructure): string {
   return createHash("sha256").update(canonical).digest("hex");
 }
 
+/**
+ * Hashes a {@link SourceTree} deterministically (SHA-256 over each file's
+ * path and export list), so re-scanning an unchanged tree always produces
+ * the same hash. The single implementation lives here so
+ * `@nexo-alpha/tools`'s `createSourceInterface()` and `buildContext()`
+ * never risk computing this two different ways.
+ */
+export function hashSourceTree(tree: SourceTree): string {
+  const canonical = JSON.stringify(
+    tree.files.map((file) => `${file.path}:${file.exports.join(",")}`)
+  );
+  return createHash("sha256").update(canonical).digest("hex");
+}
+
 const EMPTY_DEVELOPMENT_STATE: DevelopmentState = {
   completed: [],
   inProgress: [],
@@ -118,16 +161,23 @@ const EMPTY_DEVELOPMENT_STATE: DevelopmentState = {
 
 /**
  * Builds an ApplicationContext from the structural model plus optional
- * human-authored knowledge.
+ * human-authored knowledge and an optional source-tree scan.
  *
- * @param app      The Nexo application (structure + lifecycle).
- * @param knowledge Optional knowledge object created with createKnowledge().
- *                  When omitted, decisions/constraints/developmentState are
- *                  empty/default in the resulting context.
+ * @param app        The Nexo application (structure + lifecycle).
+ * @param knowledge  Optional knowledge object created with createKnowledge().
+ *                   When omitted, decisions/constraints/developmentState are
+ *                   empty/default in the resulting context.
+ * @param sourceTree Optional result of scanning the project's actual source
+ *                   tree (e.g. via `@nexo-alpha/tools`'s
+ *                   `createSourceInterface().describeSourceTree()`). When
+ *                   omitted, `sourceTree`/`sourceTreeHash` are absent from
+ *                   the resulting context entirely — this function never
+ *                   does its own file I/O.
  */
 export function buildContext(
   app: NexoApplication,
-  knowledge?: ApplicationKnowledge
+  knowledge?: ApplicationKnowledge,
+  sourceTree?: SourceTree
 ): ApplicationContext {
   const modules = app.getModules().map((module): ModuleContext => ({
     name: module.name,
@@ -156,7 +206,11 @@ export function buildContext(
     constraints: knowledge?.getConstraints() ?? [],
     developmentState: knowledge?.getDevelopmentState() ?? EMPTY_DEVELOPMENT_STATE,
     structure,
-    structureHash: hashStructure(structure)
+    structureHash: hashStructure(structure),
+    ...(sourceTree !== undefined && {
+      sourceTree,
+      sourceTreeHash: hashSourceTree(sourceTree)
+    })
   };
 }
 

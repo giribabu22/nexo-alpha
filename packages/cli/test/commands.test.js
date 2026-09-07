@@ -1,9 +1,13 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { fileURLToPath } from "node:url";
+import { dirname, join } from "node:path";
 
 import { createApplication } from "@nexo-alpha/core";
 import { createKnowledge } from "@nexo-alpha/context";
 import { inspect, status, context, knowledge, validate, health } from "../dist/commands.js";
+
+const here = dirname(fileURLToPath(import.meta.url));
 
 function buildFixture() {
   const app = createApplication({ name: "shop", version: "0.1.0" });
@@ -54,13 +58,25 @@ test("status renders the development state", () => {
   assert.match(output, /Implement payment recovery/);
 });
 
-test("context returns valid JSON matching the manifest", () => {
+test("context returns valid JSON matching the manifest", async () => {
   const { app, knowledge } = buildFixture();
-  const output = context(app, knowledge);
+  const output = await context(app, knowledge);
   const parsed = JSON.parse(output);
 
   assert.equal(parsed.application.name, "shop");
   assert.equal(parsed.modules.length, 2);
+  assert.equal(parsed.sourceTree, undefined, "sourceTree should be omitted without a sourceRoot");
+});
+
+test("context folds in a source-tree scan when sourceRoot is given", async () => {
+  const { app, knowledge } = buildFixture();
+  const output = await context(app, knowledge, join(here, "fixtures"));
+  const parsed = JSON.parse(output);
+
+  const appFile = parsed.sourceTree.files.find((file) => file.path === "app.js");
+  assert.ok(appFile, "fixtures/app.js should be included in the scan");
+  assert.ok(appFile.exports.includes("app"));
+  assert.equal(typeof parsed.sourceTreeHash, "string");
 });
 
 test("knowledge returns the journal as a standalone JSON snapshot", () => {

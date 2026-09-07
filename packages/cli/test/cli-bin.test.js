@@ -46,6 +46,22 @@ test("nexo context prints valid JSON and exits 0", async () => {
   assert.equal(parsed.application.name, "shop");
 });
 
+test("nexo context --source-root folds a source-tree scan into the manifest", async () => {
+  const { stdout } = await execFileAsync("node", [
+    cliPath,
+    "context",
+    fixtureAppPath,
+    "--source-root",
+    join(__dirname, "fixtures")
+  ]);
+  const parsed = JSON.parse(stdout);
+
+  assert.equal(parsed.application.name, "shop");
+  const appFile = parsed.sourceTree.files.find((file) => file.path === "app.js");
+  assert.ok(appFile, "fixtures/app.js should be included in the scan");
+  assert.equal(typeof parsed.sourceTreeHash, "string");
+});
+
 test("nexo knowledge prints the journal as JSON and exits 0", async () => {
   const { stdout } = await execFileAsync("node", [cliPath, "knowledge", fixtureAppPath]);
   const parsed = JSON.parse(stdout);

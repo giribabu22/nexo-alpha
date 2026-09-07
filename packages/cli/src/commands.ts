@@ -52,11 +52,29 @@ export function status(
   return renderDevelopmentState(devState);
 }
 
-export function context(
+/**
+ * Renders the full ApplicationContext manifest as JSON: application
+ * identity, modules, the knowledge journal (if any), and the
+ * registry-derived structure/structureHash. When `sourceRoot` is given,
+ * also scans that directory's actual source tree and folds the result in
+ * as `sourceTree`/`sourceTreeHash` — so a single `nexo context
+ * --source-root .` answers both "what's registered with the application"
+ * and "what's actually in the files." Omit `sourceRoot` to skip the scan
+ * entirely: unlike `structure`, which is free (it only reads the
+ * in-memory registry), a source-tree scan does real file I/O, so it's
+ * opt-in rather than always-on.
+ */
+export async function context(
   app: NexoApplication,
-  knowledge: ApplicationKnowledge | undefined
-): string {
-  return contextToJson(buildContext(app, knowledge));
+  knowledge: ApplicationKnowledge | undefined,
+  sourceRoot?: string
+): Promise<string> {
+  const sourceTree =
+    sourceRoot !== undefined
+      ? await createSourceInterface(sourceRoot).describeSourceTree()
+      : undefined;
+
+  return contextToJson(buildContext(app, knowledge, sourceTree));
 }
 
 /**

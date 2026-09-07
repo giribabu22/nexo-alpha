@@ -17,7 +17,7 @@ const USAGE = `Usage:
   nexo inspect [app-module-path] [moduleName]
   nexo inspect [--module moduleName]
   nexo status [app-module-path]
-  nexo context [app-module-path]
+  nexo context [app-module-path] [--source-root <path>]
   nexo knowledge [app-module-path]
   nexo source [project-root]
   nexo validate [app-module-path]
@@ -29,7 +29,14 @@ current directory or a parent directory, with the shape:
 
 "nexo source" is the one command that doesn't load an application — it
 scans project-root's (default: cwd) actual source files, independent of
-whatever is registered with NexoApplication.`;
+whatever is registered with NexoApplication. "nexo context --source-root
+<path>" folds that same scan into the context manifest, so one call
+answers both "what's registered" and "what's actually in the files."`;
+
+function extractFlagValue(args: readonly string[], flag: string): string | undefined {
+  const index = args.indexOf(flag);
+  return index !== -1 ? args[index + 1] : undefined;
+}
 
 async function main(): Promise<void> {
   const [command, ...rest] = process.argv.slice(2);
@@ -62,13 +69,12 @@ async function main(): Promise<void> {
     appPath = first;
     moduleName = second;
   } else {
-    const moduleFlagIndex = rest.indexOf("--module");
-    if (moduleFlagIndex !== -1) {
-      moduleName = rest[moduleFlagIndex + 1];
-    }
-
+    moduleName = extractFlagValue(rest, "--module");
     appPath = await resolveConfiguredAppPath(process.cwd());
   }
+
+  const sourceRootFlag = extractFlagValue(rest, "--source-root");
+  const sourceRoot = sourceRootFlag !== undefined ? resolve(process.cwd(), sourceRootFlag) : undefined;
 
   if (appPath === undefined) {
     console.error(
@@ -88,7 +94,7 @@ async function main(): Promise<void> {
       console.log(status(app, knowledge));
       return;
     case "context":
-      console.log(context(app, knowledge));
+      console.log(await context(app, knowledge, sourceRoot));
       return;
     case "knowledge":
       console.log(renderKnowledge(app, knowledge));

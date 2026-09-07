@@ -1,25 +1,14 @@
 import { readdir, readFile } from "node:fs/promises";
-import { createHash } from "node:crypto";
 import { extname, join, relative, sep } from "node:path";
+import { hashSourceTree, type SourceFile, type SourceTree } from "@nexo-alpha/context";
 
-export interface SourceFile {
-  /** Path relative to the project root, always POSIX-style ("/" separators). */
-  readonly path: string;
-  /**
-   * Best-effort list of top-level exported symbol names, sorted. Extracted
-   * with a lightweight regex scan of `export` statements — this is not a
-   * real parser, so it can miss exports inside unusual formatting and
-   * can't resolve `export * from "./x"` re-exports to their real names.
-   * It exists to give a rough, cheap map of "what does this file expose,"
-   * not a precise symbol table.
-   */
-  readonly exports: readonly string[];
-}
-
-export interface SourceTree {
-  readonly fileCount: number;
-  readonly files: readonly SourceFile[];
-}
+// Re-exported so existing consumers of @nexo-alpha/tools don't need to
+// import these shapes from @nexo-alpha/context directly. They're defined
+// there — not here — so that ApplicationContext (in @nexo-alpha/context)
+// can reference them without @nexo-alpha/context depending on
+// @nexo-alpha/tools; dependencies only ever point the other way in this
+// framework.
+export type { SourceFile, SourceTree };
 
 export interface SourceInterfaceOptions {
   /** File extensions to include. Defaults to TypeScript/JavaScript source. */
@@ -170,10 +159,7 @@ export function createSourceInterface(
     },
 
     sourceTreeHash(tree) {
-      const canonical = JSON.stringify(
-        tree.files.map((file) => `${file.path}:${file.exports.join(",")}`)
-      );
-      return createHash("sha256").update(canonical).digest("hex");
+      return hashSourceTree(tree);
     }
   };
 }

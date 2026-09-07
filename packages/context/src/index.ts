@@ -2,14 +2,17 @@ export {
   buildContext,
   contextToJson,
   describeStructure,
-  hashStructure
+  hashStructure,
+  hashSourceTree
 } from "./context.js";
 
 export type {
   ApplicationContext,
   ApplicationStructure,
   DependencyEdge,
-  ModuleContext
+  ModuleContext,
+  SourceFile,
+  SourceTree
 } from "./context.js";
 
 export {
