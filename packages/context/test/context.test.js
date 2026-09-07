@@ -2,9 +2,15 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import { createApplication } from "@nexo-alpha/core";
-import { buildContext, contextToJson } from "../dist/index.js";
+import {
+  buildContext,
+  contextToJson,
+  createKnowledge,
+  describeStructure,
+  hashStructure
+} from "../dist/index.js";
 
-function buildFixtureApp() {
+function buildFixture() {
   const app = createApplication({
     name: "shop",
     version: "0.1.0",
@@ -28,28 +34,30 @@ function buildFixtureApp() {
     jobs: [{ name: "retryFailedPayments", schedule: "*/5 * * * *" }]
   });
 
-  app.addDecision({
+  const knowledge = createKnowledge();
+
+  knowledge.addDecision({
     title: "Use Redis for job coordination",
     reason: "Multiple application instances require shared job state.",
     status: "accepted"
   });
 
-  app.addConstraint({
+  knowledge.addConstraint({
     description: "Failed permanent payment declines must not be retried."
   });
 
-  app.setDevelopmentState({
+  knowledge.setDevelopmentState({
     currentObjective: "Implement payment recovery",
     completed: ["Retry API"],
     inProgress: ["Retry worker"]
   });
 
-  return app;
+  return { app, knowledge };
 }
 
 test("buildContext produces application identity and module metadata", () => {
-  const app = buildFixtureApp();
-  const context = buildContext(app);
+  const { app, knowledge } = buildFixture();
+  const context = buildContext(app, knowledge);
 
   assert.deepEqual(context.application, {
     name: "shop",
@@ -62,8 +70,8 @@ test("buildContext produces application identity and module metadata", () => {
 });
 
 test("buildContext computes dependents and defaults missing metadata to empty arrays", () => {
-  const app = buildFixtureApp();
-  const context = buildContext(app);
+  const { app, knowledge } = buildFixture();
+  const context = buildContext(app, knowledge);
 
   const orders = context.modules.find((module) => module.name === "orders");
   const payments = context.modules.find(
@@ -86,8 +94,8 @@ test("buildContext computes dependents and defaults missing metadata to empty ar
 });
 
 test("buildContext surfaces decisions, constraints, and development state", () => {
-  const app = buildFixtureApp();
-  const context = buildContext(app);
+  const { app, knowledge } = buildFixture();
+  const context = buildContext(app, knowledge);
 
   assert.equal(context.decisions.length, 1);
   assert.equal(context.decisions[0].title, "Use Redis for job coordination");
@@ -106,9 +114,48 @@ test("buildContext surfaces decisions, constraints, and development state", () =
   assert.deepEqual(context.developmentState.knownIssues, []);
 });
 
+test("buildContext includes a structure rollup derived from the app registry", () => {
+  const { app, knowledge } = buildFixture();
+  const context = buildContext(app, knowledge);
+
+  assert.deepEqual(context.structure, {
+    moduleCount: 2,
+    apiCount: 1,
+    serviceCount: 1,
+    jobCount: 1,
+    dependencyEdges: [
+      { from: "payments", to: "orders" },
+      { from: "payments", to: "stripe" }
+    ]
+  });
+  assert.equal(context.structureHash, hashStructure(context.structure));
+});
+
+test("describeStructure sorts dependency edges regardless of module registration order", () => {
+  const a = createApplication({ name: "a" });
+  a.module({ name: "orders" });
+  a.module({ name: "payments", dependencies: ["stripe", "orders"] });
+
+  const b = createApplication({ name: "b" });
+  b.module({ name: "payments", dependencies: ["stripe", "orders"] });
+  b.module({ name: "orders" });
+
+  assert.deepEqual(describeStructure(a).dependencyEdges, describeStructure(b).dependencyEdges);
+});
+
+test("hashStructure is stable for identical structure and changes when structure changes", () => {
+  const { app, knowledge } = buildFixture();
+  const structure = describeStructure(app);
+
+  assert.equal(hashStructure(structure), hashStructure(describeStructure(app)));
+
+  app.module({ name: "shipping" });
+  assert.notEqual(hashStructure(structure), hashStructure(describeStructure(app)));
+});
+
 test("contextToJson round-trips through JSON.parse", () => {
-  const app = buildFixtureApp();
-  const context = buildContext(app);
+  const { app, knowledge } = buildFixture();
+  const context = buildContext(app, knowledge);
 
   const json = contextToJson(context);
   const parsed = JSON.parse(json);
