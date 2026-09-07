@@ -25,6 +25,18 @@ export type {
   NexoJob
 } from "./job.js";
 
+export type {
+  NexoDecision
+} from "./decision.js";
+
+export type {
+  NexoConstraint
+} from "./constraint.js";
+
+export type {
+  DevelopmentState
+} from "./development-state.js";
+
 export {
   NexoEventBus
 } from "./events.js";

@@ -1,7 +1,10 @@
 import type {
   ApplicationState,
+  DevelopmentState,
   NexoApi,
   NexoApplication,
+  NexoConstraint,
+  NexoDecision,
   NexoJob,
   NexoService
 } from "@nexo/core";
@@ -27,6 +30,9 @@ export interface ApplicationContext {
     readonly state: ApplicationState;
   };
   readonly modules: readonly ModuleContext[];
+  readonly decisions: readonly NexoDecision[];
+  readonly constraints: readonly NexoConstraint[];
+  readonly developmentState: DevelopmentState;
 }
 
 export function buildContext(app: NexoApplication): ApplicationContext {
@@ -50,7 +56,10 @@ export function buildContext(app: NexoApplication): ApplicationContext {
       ...(app.description !== undefined && { description: app.description }),
       state: app.state
     },
-    modules
+    modules,
+    decisions: app.getDecisions(),
+    constraints: app.getConstraints(),
+    developmentState: app.getDevelopmentState()
   };
 }
 

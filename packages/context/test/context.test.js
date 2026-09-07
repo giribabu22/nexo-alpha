@@ -28,6 +28,22 @@ function buildFixtureApp() {
     jobs: [{ name: "retryFailedPayments", schedule: "*/5 * * * *" }]
   });
 
+  app.addDecision({
+    title: "Use Redis for job coordination",
+    reason: "Multiple application instances require shared job state.",
+    status: "accepted"
+  });
+
+  app.addConstraint({
+    description: "Failed permanent payment declines must not be retried."
+  });
+
+  app.setDevelopmentState({
+    currentObjective: "Implement payment recovery",
+    completed: ["Retry API"],
+    inProgress: ["Retry worker"]
+  });
+
   return app;
 }
 
@@ -67,6 +83,27 @@ test("buildContext computes dependents and defaults missing metadata to empty ar
   assert.equal(payments.services[0].name, "PaymentService");
   assert.deepEqual(payments.events, ["payment.created"]);
   assert.equal(payments.jobs[0].name, "retryFailedPayments");
+});
+
+test("buildContext surfaces decisions, constraints, and development state", () => {
+  const app = buildFixtureApp();
+  const context = buildContext(app);
+
+  assert.equal(context.decisions.length, 1);
+  assert.equal(context.decisions[0].title, "Use Redis for job coordination");
+  assert.equal(context.decisions[0].status, "accepted");
+
+  assert.equal(context.constraints.length, 1);
+  assert.equal(
+    context.constraints[0].description,
+    "Failed permanent payment declines must not be retried."
+  );
+
+  assert.equal(context.developmentState.currentObjective, "Implement payment recovery");
+  assert.deepEqual(context.developmentState.completed, ["Retry API"]);
+  assert.deepEqual(context.developmentState.inProgress, ["Retry worker"]);
+  assert.deepEqual(context.developmentState.blocked, []);
+  assert.deepEqual(context.developmentState.knownIssues, []);
 });
 
 test("contextToJson round-trips through JSON.parse", () => {

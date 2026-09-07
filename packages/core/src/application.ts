@@ -1,6 +1,9 @@
 import type { NexoModule } from "./module.js";
 import type { NexoApi } from "./api.js";
 import type { NexoService } from "./service.js";
+import type { NexoDecision } from "./decision.js";
+import type { NexoConstraint } from "./constraint.js";
+import type { DevelopmentState } from "./development-state.js";
 import { NexoConfigurationError, NexoLifecycleError } from "./errors.js";
 import { NexoEventBus } from "./events.js";
 
@@ -26,6 +29,14 @@ export class NexoApplication {
 
   private readonly modules = new Map<string, NexoModule>();
   private readonly config: Readonly<Record<string, unknown>>;
+  private readonly decisions: NexoDecision[] = [];
+  private readonly constraints: NexoConstraint[] = [];
+  private developmentState: DevelopmentState = {
+    completed: [],
+    inProgress: [],
+    blocked: [],
+    knownIssues: []
+  };
 
   private _state: ApplicationState = "created";
 
@@ -82,6 +93,33 @@ export class NexoApplication {
     return [...this.modules.values()].flatMap(
       (module) => module.services ?? []
     );
+  }
+
+  addDecision(decision: NexoDecision): this {
+    this.decisions.push(decision);
+    return this;
+  }
+
+  getDecisions(): readonly NexoDecision[] {
+    return [...this.decisions];
+  }
+
+  addConstraint(constraint: NexoConstraint): this {
+    this.constraints.push(constraint);
+    return this;
+  }
+
+  getConstraints(): readonly NexoConstraint[] {
+    return [...this.constraints];
+  }
+
+  setDevelopmentState(patch: Partial<DevelopmentState>): this {
+    this.developmentState = { ...this.developmentState, ...patch };
+    return this;
+  }
+
+  getDevelopmentState(): DevelopmentState {
+    return this.developmentState;
   }
 
   async start(): Promise<void> {

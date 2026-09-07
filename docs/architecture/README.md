@@ -1,4 +1,4 @@
-# Architecture Notes — v0.3
+# Architecture Notes — v0.4
 
 ## Current model
 
@@ -36,6 +36,24 @@ Jobs (`NexoJob`) are declaration-only in this milestone: `name`,
 `description`, `schedule`. There is no scheduler or executor yet —
 that belongs to a later Scalability phase.
 
+## Decisions, constraints, development state
+
+Alongside modules, `NexoApplication` now holds application-level (not
+per-module) knowledge records: `addDecision()`/`getDecisions()`
+(`NexoDecision`: `title`, `reason?`, `alternatives?`, `status?`),
+`addConstraint()`/`getConstraints()` (`NexoConstraint`: `description`,
+`reason?`), and `setDevelopmentState()`/`getDevelopmentState()`
+(`DevelopmentState`: `currentObjective?`, `completed`, `inProgress`,
+`blocked`, `knownIssues`, `nextStep?`). `setDevelopmentState` shallow-merges
+a partial patch into the current snapshot — array fields are replaced
+wholesale by the caller, not appended to, since this models "where
+development currently stands," not an append-only log.
+
+These complete Phase 3 (Context) as scoped in `plan.txt`: `@nexo/context`'s
+`buildContext()` now also surfaces `decisions`, `constraints`, and
+`developmentState` in the manifest, using the same
+omit-rather-than-`undefined` discipline as module metadata.
+
 ## Context manifest
 
 `@nexo/context` is the first package built *on* `@nexo/core` rather than
@@ -71,19 +89,18 @@ Later packages depend **on** core, never the reverse:
 @nexo/tools --> @nexo/core
 ```
 
-## v0.3 boundary
+## v0.4 boundary
 
-In scope: everything from v0.2, plus `@nexo/context`'s application
-context manifest (derived facts only: identity, architecture,
-dependency graph).
+In scope: everything from v0.3, plus application-level decisions,
+constraints, and development state, and their inclusion in the
+`@nexo/context` manifest. This completes Phase 3 (Context) as scoped
+in `plan.txt`.
 
 Not yet: Hapi adapter, CLI, dependency injection, job
 scheduler/executor, config validation/env loading, AI/MCP interface,
-database, cloud, autonomous agent operations, the "Components" concept
-from the PRD (undefined in the docs for a backend-first framework, so
-deferred rather than guessed at), and — deliberately split out of the
-Context milestone — **decisions, constraints, and development state**.
-Those are human-authored intent/state records (PRD section 42: FACT vs
-INTENT), not derivable from registered module objects; they need their
-own data model and a place to live on `NexoApplication` and are planned
-as v0.4. See `plan.txt` and `phase.txt` for the full phased roadmap.
+database, cloud, autonomous agent operations, and the "Components"
+concept from the PRD (undefined in the docs for a backend-first
+framework, so deferred rather than guessed at). Next up per
+`plan.txt`/`phase.txt` is Phase 4 — the AI/tooling read interface
+(`@nexo/tools`) and the CLI (`nexo inspect`/`nexo status`) that will
+consume this manifest.
