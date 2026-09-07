@@ -1,5 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 
 import { createApplication } from "@nexo-alpha/core";
 import {
@@ -7,7 +8,9 @@ import {
   contextToJson,
   createKnowledge,
   describeStructure,
+  hashSourceFile,
   hashSourceTree,
+  hashSourceTreeFiles,
   hashStructure
 } from "../dist/index.js";
 
@@ -167,6 +170,84 @@ test("hashSourceTree is sensitive to a call edge's confidence field", () => {
   };
 
   assert.notEqual(hashSourceTree(baseTree), hashSourceTree(heuristicTree));
+});
+
+test("hashSourceTree's own output is unchanged by the canonicalSourceFileString extraction", () => {
+  const tree = {
+    fileCount: 1,
+    files: [
+      {
+        path: "a.ts",
+        exports: ["run"],
+        imports: ["./b.js"],
+        symbols: [{ name: "run", kind: "function", exported: true, line: 1 }]
+      }
+    ],
+    importEdges: [{ from: "a.ts", to: "b.ts" }],
+    callEdges: [{ from: { file: "a.ts", symbol: "run" }, to: { file: "b.ts", symbol: "helper" } }]
+  };
+
+  // Replicates the pre-refactor inline formula exactly, so this pins
+  // hashSourceTree's output against independently-computed canonical JSON
+  // rather than against itself.
+  const preRefactorCanonical = JSON.stringify({
+    files: tree.files.map(
+      (file) =>
+        `${file.path}:${file.exports.join(",")}:${file.imports.join(",")}:` +
+        file.symbols.map((symbol) => `${symbol.name}/${symbol.kind}/${symbol.exported}`).join(",")
+    ),
+    importEdges: [...tree.importEdges].map((edge) => `${edge.from}->${edge.to}`).sort(),
+    callEdges: [...tree.callEdges]
+      .map(
+        (edge) =>
+          `${edge.from.file}#${edge.from.symbol}->${
+            edge.to !== undefined ? `${edge.to.file}#${edge.to.symbol}` : `external:${edge.toExternal}`
+          }${edge.confidence !== undefined ? `|${edge.confidence}` : ""}`
+      )
+      .sort()
+  });
+  const preRefactorHash = createHash("sha256").update(preRefactorCanonical).digest("hex");
+
+  assert.equal(hashSourceTree(tree), preRefactorHash);
+});
+
+test("hashSourceFile is deterministic and sensitive to exports/imports/symbols", () => {
+  const file = {
+    path: "a.ts",
+    exports: ["run"],
+    imports: ["./b.js"],
+    symbols: [{ name: "run", kind: "function", exported: true, line: 1 }]
+  };
+
+  assert.equal(hashSourceFile(file), hashSourceFile({ ...file }));
+
+  assert.notEqual(hashSourceFile(file), hashSourceFile({ ...file, exports: [...file.exports, "extra"] }));
+  assert.notEqual(hashSourceFile(file), hashSourceFile({ ...file, imports: [...file.imports, "./c.js"] }));
+  assert.notEqual(
+    hashSourceFile(file),
+    hashSourceFile({ ...file, symbols: [...file.symbols, { name: "helper", kind: "function", exported: false, line: 2 }] })
+  );
+
+  // path is part of the fingerprint too, since the same shape at a different location is a different file.
+  assert.notEqual(hashSourceFile(file), hashSourceFile({ ...file, path: "b.ts" }));
+});
+
+test("hashSourceTreeFiles hashes every file, keyed by its exact path", () => {
+  const tree = {
+    fileCount: 2,
+    files: [
+      { path: "a.ts", exports: ["run"], imports: [], symbols: [] },
+      { path: "nested/b.ts", exports: ["helper"], imports: [], symbols: [] }
+    ],
+    importEdges: [],
+    callEdges: []
+  };
+
+  const hashes = hashSourceTreeFiles(tree);
+
+  assert.deepEqual(Object.keys(hashes).sort(), ["a.ts", "nested/b.ts"]);
+  assert.equal(hashes["a.ts"], hashSourceFile(tree.files[0]));
+  assert.equal(hashes["nested/b.ts"], hashSourceFile(tree.files[1]));
 });
 
 test("contextToJson round-trips through JSON.parse", () => {

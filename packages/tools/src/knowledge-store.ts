@@ -1,5 +1,6 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
+import { hashSourceTreeFiles, type SourceTree } from "@nexo-alpha/context";
 import type { KnowledgeGraph } from "./knowledge-graph.js";
 
 /**
@@ -19,6 +20,14 @@ export interface KnowledgeGraphMeta {
   readonly structureHash: string;
   /** Absent when the graph was built without a source-tree scan. */
   readonly sourceTreeHash?: string;
+  /**
+   * Per-file structural hashes (see `hashSourceFile` in `@nexo-alpha/context`),
+   * keyed by `SourceFile.path` — present iff `sourceTreeHash` is, by the
+   * same "no source-tree scan means no source-tree data" convention. Lets
+   * {@link diffKnowledgeGraphFreshness} report which specific files changed,
+   * not just whether *something* did.
+   */
+  readonly fileHashes?: Readonly<Record<string, string>>;
   readonly generatedAt: string;
   readonly schemaVersion: number;
 }
@@ -37,12 +46,17 @@ export interface StoredKnowledgeGraph {
 export async function saveKnowledgeGraph(
   path: string,
   graph: KnowledgeGraph,
-  hashes: { readonly structureHash: string; readonly sourceTreeHash?: string }
+  hashes: {
+    readonly structureHash: string;
+    readonly sourceTreeHash?: string;
+    readonly fileHashes?: Readonly<Record<string, string>>;
+  }
 ): Promise<StoredKnowledgeGraph> {
   const stored: StoredKnowledgeGraph = {
     meta: {
       structureHash: hashes.structureHash,
       ...(hashes.sourceTreeHash !== undefined && { sourceTreeHash: hashes.sourceTreeHash }),
+      ...(hashes.fileHashes !== undefined && { fileHashes: hashes.fileHashes }),
       generatedAt: new Date().toISOString(),
       schemaVersion: KNOWLEDGE_GRAPH_SCHEMA_VERSION
     },
@@ -82,4 +96,40 @@ export function isGraphStale(
   sourceTreeHash?: string
 ): boolean {
   return meta.structureHash !== structureHash || meta.sourceTreeHash !== sourceTreeHash;
+}
+
+export interface KnowledgeGraphFreshnessDiff {
+  readonly added: readonly string[];
+  readonly changed: readonly string[];
+  readonly removed: readonly string[];
+}
+
+/**
+ * Which files in `sourceTree` are new, structurally changed, or gone since
+ * `meta` was saved — the per-file counterpart to {@link isGraphStale}'s
+ * whole-graph boolean. Compares `meta.fileHashes` (absent when the saved
+ * graph predates this feature, or was built without a source-tree scan —
+ * treated as empty, so every current file reports as `added`) against a
+ * fresh {@link hashSourceTreeFiles} of `sourceTree`. Same detection
+ * granularity as `hashSourceFile`: exports/imports/top-level symbol shape,
+ * not file content.
+ */
+export function diffKnowledgeGraphFreshness(
+  meta: KnowledgeGraphMeta,
+  sourceTree: SourceTree
+): KnowledgeGraphFreshnessDiff {
+  const previous = meta.fileHashes ?? {};
+  const current = hashSourceTreeFiles(sourceTree);
+
+  const added = Object.keys(current)
+    .filter((path) => !(path in previous))
+    .sort();
+  const removed = Object.keys(previous)
+    .filter((path) => !(path in current))
+    .sort();
+  const changed = Object.keys(current)
+    .filter((path) => path in previous && previous[path] !== current[path])
+    .sort();
+
+  return { added, changed, removed };
 }

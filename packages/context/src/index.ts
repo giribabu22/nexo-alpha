@@ -3,7 +3,9 @@ export {
   contextToJson,
   describeStructure,
   hashStructure,
-  hashSourceTree
+  hashSourceTree,
+  hashSourceFile,
+  hashSourceTreeFiles
 } from "./context.js";
 
 export type {

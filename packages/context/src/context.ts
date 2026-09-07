@@ -239,13 +239,17 @@ export function hashStructure(structure: ApplicationStructure): string {
  * `createSourceInterface()` and `buildContext()` never risk computing this
  * two different ways.
  */
+/** The canonical per-file string {@link hashSourceTree} and {@link hashSourceFile} both hash — kept in one place so the two can never drift apart. */
+function canonicalSourceFileString(file: SourceFile): string {
+  return (
+    `${file.path}:${file.exports.join(",")}:${file.imports.join(",")}:` +
+    file.symbols.map((symbol) => `${symbol.name}/${symbol.kind}/${symbol.exported}`).join(",")
+  );
+}
+
 export function hashSourceTree(tree: SourceTree): string {
   const canonical = JSON.stringify({
-    files: tree.files.map(
-      (file) =>
-        `${file.path}:${file.exports.join(",")}:${file.imports.join(",")}:` +
-        file.symbols.map((symbol) => `${symbol.name}/${symbol.kind}/${symbol.exported}`).join(",")
-    ),
+    files: tree.files.map(canonicalSourceFileString),
     importEdges: [...tree.importEdges]
       .map((edge) => `${edge.from}->${edge.to}`)
       .sort(),
@@ -259,6 +263,28 @@ export function hashSourceTree(tree: SourceTree): string {
       .sort()
   });
   return createHash("sha256").update(canonical).digest("hex");
+}
+
+/**
+ * Hashes a single {@link SourceFile} deterministically, over the same
+ * path/exports/imports/symbols fingerprint {@link hashSourceTree} uses
+ * internally per file. This is the same detection granularity as the
+ * whole-tree hash: a change to a function body, comment, or formatting
+ * that doesn't add/remove/rename an export, import, or top-level symbol
+ * is invisible here — this is a structural fingerprint, not a content
+ * hash. Used by `@nexo-alpha/tools`'s per-file freshness diffing.
+ */
+export function hashSourceFile(file: SourceFile): string {
+  return createHash("sha256").update(canonicalSourceFileString(file)).digest("hex");
+}
+
+/** {@link hashSourceFile} for every file in `tree`, keyed by {@link SourceFile.path}. */
+export function hashSourceTreeFiles(tree: SourceTree): Record<string, string> {
+  const result: Record<string, string> = {};
+  for (const file of tree.files) {
+    result[file.path] = hashSourceFile(file);
+  }
+  return result;
 }
 
 const EMPTY_DEVELOPMENT_STATE: DevelopmentState = {

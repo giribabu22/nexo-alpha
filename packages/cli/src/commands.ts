@@ -10,12 +10,14 @@ import {
   createReadInterface,
   createSourceInterface,
   createVerificationInterface,
+  diffKnowledgeGraphFreshness,
   isGraphStale,
   loadKnowledgeGraph,
   saveKnowledgeGraph,
   type KnowledgeEdgeKind,
   type TraversalDirection
 } from "@nexo-alpha/tools";
+import { hashSourceTreeFiles } from "@nexo-alpha/context";
 import {
   renderApplicationSummary,
   renderDevelopmentState,
@@ -162,10 +164,33 @@ export async function graph(
   const knowledgeGraph = await buildKnowledgeGraph(context);
   const stored = await saveKnowledgeGraph(outPath, knowledgeGraph, {
     structureHash: context.structureHash,
-    ...(context.sourceTreeHash !== undefined && { sourceTreeHash: context.sourceTreeHash })
+    ...(context.sourceTreeHash !== undefined && { sourceTreeHash: context.sourceTreeHash }),
+    ...(sourceTree !== undefined && { fileHashes: hashSourceTreeFiles(sourceTree) })
   });
 
   return JSON.stringify(stored, null, 2);
+}
+
+/**
+ * Which files changed, by structural fingerprint, since the graph at
+ * `outPath` was last built — `NexoReadInterface` has no notion of this,
+ * since it only ever computes a graph live from the current app/source
+ * state, never compares against a previously saved one. Unlike every other
+ * command here, this doesn't load a `NexoApplication` at all: the diff is
+ * purely "saved meta vs. a fresh scan of `sourceRoot`," so there's nothing
+ * for an application module to contribute. Throws if no graph has been
+ * saved at `outPath` yet — run `nexo graph` first.
+ */
+export async function freshness(outPath: string, sourceRoot: string): Promise<string> {
+  const existing = await loadKnowledgeGraph(outPath);
+  if (existing === undefined) {
+    throw new Error(`No knowledge graph found at ${outPath}. Run "nexo graph" first.`);
+  }
+
+  const sourceTree = await createSourceInterface(sourceRoot).describeSourceTree();
+  const diff = diffKnowledgeGraphFreshness(existing.meta, sourceTree);
+
+  return JSON.stringify({ outPath, generatedAt: existing.meta.generatedAt, ...diff }, null, 2);
 }
 
 /**

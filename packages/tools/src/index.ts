@@ -94,10 +94,12 @@ export {
   saveKnowledgeGraph,
   loadKnowledgeGraph,
   isGraphStale,
+  diffKnowledgeGraphFreshness,
   KNOWLEDGE_GRAPH_SCHEMA_VERSION
 } from "./knowledge-store.js";
 
 export type {
   StoredKnowledgeGraph,
-  KnowledgeGraphMeta
+  KnowledgeGraphMeta,
+  KnowledgeGraphFreshnessDiff
 } from "./knowledge-store.js";

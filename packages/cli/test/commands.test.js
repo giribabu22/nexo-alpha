@@ -1,13 +1,25 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 
 import { createApplication } from "@nexo-alpha/core";
 import { createKnowledge } from "@nexo-alpha/context";
-import { context, graph, health, impact, inspect, knowledge, search, status, trace, validate } from "../dist/commands.js";
+import {
+  context,
+  freshness,
+  graph,
+  health,
+  impact,
+  inspect,
+  knowledge,
+  search,
+  status,
+  trace,
+  validate
+} from "../dist/commands.js";
 
 const here = dirname(fileURLToPath(import.meta.url));
 
@@ -170,6 +182,50 @@ test("graph builds and persists a knowledge graph, then reports up to date on an
 
     const forced = JSON.parse(await graph(app, journal, outPath, undefined, true));
     assert.equal(forced.meta.structureHash, first.meta.structureHash);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("freshness reports added/changed/removed files since the graph was last built", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "nexo-cli-freshness-"));
+  try {
+    const srcDir = join(dir, "src");
+    await mkdir(srcDir, { recursive: true });
+
+    await writeFile(join(srcDir, "a.ts"), "export function run() {}\n", "utf8");
+    await writeFile(join(srcDir, "b.ts"), "export function helper() {}\n", "utf8");
+
+    const { app, knowledge: journal } = buildFixture();
+    const outPath = join(dir, "knowledge-graph.json");
+
+    await graph(app, journal, outPath, srcDir);
+
+    const unchanged = JSON.parse(await freshness(outPath, srcDir));
+    assert.deepEqual(unchanged.added, []);
+    assert.deepEqual(unchanged.changed, []);
+    assert.deepEqual(unchanged.removed, []);
+
+    await writeFile(join(srcDir, "a.ts"), "export function run() {}\nexport function extra() {}\n", "utf8");
+    await rm(join(srcDir, "b.ts"));
+    await writeFile(join(srcDir, "c.ts"), "export function newThing() {}\n", "utf8");
+
+    const diff = JSON.parse(await freshness(outPath, srcDir));
+    assert.deepEqual(diff.added, ["c.ts"]);
+    assert.deepEqual(diff.changed, ["a.ts"]);
+    assert.deepEqual(diff.removed, ["b.ts"]);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("freshness throws a clear error when no graph has been saved yet", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "nexo-cli-freshness-missing-"));
+  try {
+    await assert.rejects(
+      freshness(join(dir, "knowledge-graph.json"), dir),
+      /No knowledge graph found at .*\. Run "nexo graph" first\./
+    );
   } finally {
     await rm(dir, { recursive: true, force: true });
   }

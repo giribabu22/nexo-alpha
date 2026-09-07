@@ -5,6 +5,7 @@ import { resolveConfiguredAppPath } from "./config.js";
 import type { KnowledgeEdgeKind, TraversalDirection } from "@nexo-alpha/tools";
 import {
   context,
+  freshness,
   graph,
   health,
   impact,
@@ -26,6 +27,7 @@ const USAGE = `Usage:
   nexo knowledge [app-module-path]
   nexo source [project-root]
   nexo graph [app-module-path] [--source-root <path>] [--out <path>] [--force]
+  nexo freshness --source-root <path> [--out <path>]
   nexo search <query> [app-module-path] [--source-root <path>]
   nexo trace <nodeId> [app-module-path] [--source-root <path>] [--callers]
   nexo impact <nodeId> [app-module-path] [--source-root <path>] [--dependencies] [--max-depth <n>] [--edge-kinds <kind,...>]
@@ -47,6 +49,15 @@ jobs/dependencies, plus files/symbols/imports/calls when --source-root is
 given) and persists it to --out (default ".nexo/knowledge-graph.json").
 Rebuilding is hash-gated: an up-to-date graph on disk is left alone unless
 --force is passed.
+
+"nexo freshness" reports which files were added, structurally changed, or
+removed (by exports/imports/top-level-symbol fingerprint, not raw content)
+since the graph at --out was last built, without rebuilding it — the
+per-file counterpart to "nexo graph"'s whole-tree up-to-date check. Unlike
+every other command, it doesn't load an application at all, so there's no
+app-module-path argument; --source-root is required (there's nothing to
+diff against without it), and it errors if no graph has been saved at
+--out yet.
 
 "nexo search"/"nexo trace"/"nexo impact" query that same graph live (built
 fresh each call, not read from a saved --out file) — case-insensitive
@@ -93,6 +104,20 @@ async function main(): Promise<void> {
   if (command === "source") {
     const projectRoot = resolve(process.cwd(), rest[0] ?? ".");
     console.log(await sourceTree(projectRoot));
+    return;
+  }
+
+  if (command === "freshness") {
+    const sourceRootFlag = extractFlagValue(rest, "--source-root");
+    if (sourceRootFlag === undefined) {
+      console.error(`"nexo freshness" requires --source-root <path>.\n\n${USAGE}`);
+      process.exitCode = 1;
+      return;
+    }
+    const sourceRoot = resolve(process.cwd(), sourceRootFlag);
+    const outFlag = extractFlagValue(rest, "--out");
+    const outPath = resolve(process.cwd(), outFlag ?? ".nexo/knowledge-graph.json");
+    console.log(await freshness(outPath, sourceRoot));
     return;
   }
 
