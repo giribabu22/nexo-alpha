@@ -11,10 +11,13 @@ import {
   createSourceInterface,
   createVerificationInterface,
   diffKnowledgeGraphFreshness,
+  hashKnowledgeGraphNodeContent,
   isGraphStale,
   loadKnowledgeGraph,
   saveKnowledgeGraph,
   type KnowledgeEdgeKind,
+  type KnowledgeGraphNode,
+  type KnowledgeNodeSummarizer,
   type TraversalDirection
 } from "@nexo-alpha/tools";
 import { hashSourceTreeFiles } from "@nexo-alpha/context";
@@ -131,6 +134,26 @@ export async function sourceTree(projectRoot: string): Promise<string> {
 }
 
 /**
+ * Wraps a caller-supplied {@link KnowledgeNodeSummarizer} so a node whose
+ * content (per `hashKnowledgeGraphNodeContent`) hasn't changed since
+ * `previousNodes` was captured reuses its prior summary instead of
+ * re-invoking `summarize` — the point being that a real LLM-backed
+ * summarizer only pays for genuinely new or changed nodes.
+ */
+function withSummaryCache(
+  summarize: KnowledgeNodeSummarizer,
+  previousNodes: ReadonlyMap<string, KnowledgeGraphNode>
+): KnowledgeNodeSummarizer {
+  return (node) => {
+    const previous = previousNodes.get(node.id);
+    if (previous?.summary !== undefined && previous.summaryHash === hashKnowledgeGraphNodeContent(node)) {
+      return previous.summary;
+    }
+    return summarize(node);
+  };
+}
+
+/**
  * Builds (or reuses) the application's knowledge graph — the unified
  * relationship graph over registered structure and, when `sourceRoot` is
  * given, scanned source — and persists it to `outPath` as JSON.
@@ -141,27 +164,43 @@ export async function sourceTree(projectRoot: string): Promise<string> {
  * and this reports "up to date" instead of silently rewriting an
  * unchanged file on every invocation. Pass `force: true` to rebuild
  * regardless.
+ *
+ * When `summarize` is supplied (see `KnowledgeNodeSummarizer` in
+ * `@nexo-alpha/tools` — Nexo never calls an LLM itself, this is entirely
+ * caller-supplied), it's wrapped with {@link withSummaryCache} against the
+ * previously saved graph at `outPath`, so only nodes whose content actually
+ * changed get re-summarized. `--force` clears this cache too, the same as
+ * it clears the whole-graph staleness check — a forced rebuild summarizes
+ * every node fresh.
  */
 export async function graph(
   app: NexoApplication,
   knowledge: ApplicationKnowledge | undefined,
   outPath: string,
   sourceRoot?: string,
-  force = false
+  force = false,
+  summarize?: KnowledgeNodeSummarizer
 ): Promise<string> {
   const sourceTree =
     sourceRoot !== undefined ? await createSourceInterface(sourceRoot).describeSourceTree() : undefined;
 
   const context = buildContext(app, knowledge, sourceTree);
 
+  let effectiveSummarize = summarize;
+
   if (!force) {
     const existing = await loadKnowledgeGraph(outPath);
     if (existing !== undefined && !isGraphStale(existing.meta, context.structureHash, context.sourceTreeHash)) {
       return `Knowledge graph at ${outPath} is up to date (${existing.graph.nodes.length} nodes, ${existing.graph.edges.length} edges). Pass --force to rebuild anyway.`;
     }
+    if (summarize !== undefined && existing !== undefined) {
+      effectiveSummarize = withSummaryCache(summarize, new Map(existing.graph.nodes.map((node) => [node.id, node])));
+    }
   }
 
-  const knowledgeGraph = await buildKnowledgeGraph(context);
+  const knowledgeGraph = await buildKnowledgeGraph(context, {
+    ...(effectiveSummarize !== undefined && { summarize: effectiveSummarize })
+  });
   const stored = await saveKnowledgeGraph(outPath, knowledgeGraph, {
     structureHash: context.structureHash,
     ...(context.sourceTreeHash !== undefined && { sourceTreeHash: context.sourceTreeHash }),

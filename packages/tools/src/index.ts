@@ -72,7 +72,8 @@ export {
   searchKnowledgeGraph,
   traceCallers,
   traceDependents,
-  traceImpact
+  traceImpact,
+  hashKnowledgeGraphNodeContent
 } from "./knowledge-graph.js";
 
 export type {

@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import { resolve } from "node:path";
 import { loadApplication } from "./load-application.js";
+import { loadSummarizer } from "./load-summarizer.js";
 import { resolveConfiguredAppPath } from "./config.js";
 import type { KnowledgeEdgeKind, TraversalDirection } from "@nexo-alpha/tools";
 import {
@@ -26,7 +27,7 @@ const USAGE = `Usage:
   nexo context [app-module-path] [--source-root <path>]
   nexo knowledge [app-module-path]
   nexo source [project-root]
-  nexo graph [app-module-path] [--source-root <path>] [--out <path>] [--force]
+  nexo graph [app-module-path] [--source-root <path>] [--out <path>] [--force] [--summarize <path>]
   nexo freshness --source-root <path> [--out <path>]
   nexo search <query> [app-module-path] [--source-root <path>]
   nexo trace <nodeId> [app-module-path] [--source-root <path>] [--callers]
@@ -49,6 +50,16 @@ jobs/dependencies, plus files/symbols/imports/calls when --source-root is
 given) and persists it to --out (default ".nexo/knowledge-graph.json").
 Rebuilding is hash-gated: an up-to-date graph on disk is left alone unless
 --force is passed.
+
+--summarize <path> loads a KnowledgeNodeSummarizer (a named "summarize"
+export or default export, a (node) => string | undefined | Promise<...>
+function — see @nexo-alpha/tools) and applies it to every node. Nexo never
+calls an LLM itself; the summarizer is entirely caller-supplied, so this
+is how you'd plug one in. A node whose content hasn't changed since the
+last saved graph reuses its cached summary instead of re-invoking the
+summarizer, so a real LLM-backed summarizer only pays for genuinely new
+or changed nodes — --force clears this cache too and re-summarizes
+everything.
 
 "nexo freshness" reports which files were added, structurally changed, or
 removed (by exports/imports/top-level-symbol fingerprint, not raw content)
@@ -178,6 +189,7 @@ async function main(): Promise<void> {
   const outFlag = extractFlagValue(rest, "--out");
   const outPath = resolve(process.cwd(), outFlag ?? ".nexo/knowledge-graph.json");
   const force = rest.includes("--force");
+  const summarizeFlag = extractFlagValue(rest, "--summarize");
 
   if (appPath === undefined) {
     console.error(
@@ -202,9 +214,11 @@ async function main(): Promise<void> {
     case "knowledge":
       console.log(renderKnowledge(app, knowledge));
       return;
-    case "graph":
-      console.log(await graph(app, knowledge, outPath, sourceRoot, force));
+    case "graph": {
+      const summarize = summarizeFlag !== undefined ? await loadSummarizer(summarizeFlag) : undefined;
+      console.log(await graph(app, knowledge, outPath, sourceRoot, force, summarize));
       return;
+    }
     case "validate":
       console.log(validate(app));
       return;

@@ -8,6 +8,7 @@ import { buildContext } from "@nexo-alpha/context";
 import {
   buildKnowledgeGraph,
   createSourceInterface,
+  hashKnowledgeGraphNodeContent,
   searchKnowledgeGraph,
   traceCallers,
   traceDependents,
@@ -244,4 +245,33 @@ test("buildKnowledgeGraph calls an optional summarize hook and leaves other node
 test("buildKnowledgeGraph never calls summarize when the option is omitted", async () => {
   const graph = await buildKnowledgeGraph(await buildFixtureContext());
   assert.ok(graph.nodes.every((node) => !("summary" in node)));
+});
+
+test("buildKnowledgeGraph stamps summaryHash alongside summary, and omits it when unsummarized", async () => {
+  const graph = await buildKnowledgeGraph(await buildFixtureContext(), {
+    summarize: (node) => (node.kind === "module" ? `summary of ${node.name}` : undefined)
+  });
+
+  const module = graph.nodes.find((n) => n.id === "module:billing");
+  assert.equal(typeof module.summaryHash, "string");
+  assert.equal(module.summaryHash, hashKnowledgeGraphNodeContent({ ...module, summary: undefined, summaryHash: undefined }));
+
+  const api = graph.nodes.find((n) => n.id === "api:billing.createInvoice");
+  assert.ok(!("summaryHash" in api), "unsummarized node should omit summaryHash entirely");
+});
+
+test("hashKnowledgeGraphNodeContent ignores id/summary/summaryHash but is sensitive to description and evidence", () => {
+  const base = { id: "symbol:a.ts#run", kind: "symbol", name: "run", description: undefined, evidence: { file: "a.ts", line: 1 } };
+
+  assert.equal(hashKnowledgeGraphNodeContent(base), hashKnowledgeGraphNodeContent({ ...base, id: "different-id" }));
+  assert.equal(
+    hashKnowledgeGraphNodeContent(base),
+    hashKnowledgeGraphNodeContent({ ...base, summary: "some summary", summaryHash: "irrelevant" })
+  );
+
+  assert.notEqual(hashKnowledgeGraphNodeContent(base), hashKnowledgeGraphNodeContent({ ...base, description: "changed" }));
+  assert.notEqual(
+    hashKnowledgeGraphNodeContent(base),
+    hashKnowledgeGraphNodeContent({ ...base, evidence: { file: "a.ts", line: 2 } })
+  );
 });

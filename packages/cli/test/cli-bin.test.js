@@ -2,6 +2,8 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 
@@ -87,6 +89,31 @@ test("nexo trace reports dependents by default and narrows to callers with --cal
     "--callers"
   ]);
   assert.deepEqual(JSON.parse(callers), []);
+});
+
+test("nexo graph --summarize applies a caller-supplied summarizer to module nodes", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "nexo-cli-bin-graph-summarize-"));
+  try {
+    const outPath = join(dir, "knowledge-graph.json");
+    const summarizerPath = join(fixturesDir, "summarizer.js");
+
+    const { stdout } = await execFileAsync("node", [
+      cliPath,
+      "graph",
+      fixtureAppPath,
+      "--out",
+      outPath,
+      "--summarize",
+      summarizerPath
+    ]);
+    const stored = JSON.parse(stdout);
+
+    const module = stored.graph.nodes.find((node) => node.id === "module:orders");
+    assert.equal(module.summary, "Summary: orders");
+    assert.equal(typeof module.summaryHash, "string");
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
 });
 
 test("nexo impact reports the transitive blast radius and narrows with --dependencies/--edge-kinds", async () => {

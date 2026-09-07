@@ -187,6 +187,45 @@ test("graph builds and persists a knowledge graph, then reports up to date on an
   }
 });
 
+test("graph caches summaries for unchanged nodes, re-summarizes changed ones, and clears the cache under --force", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "nexo-cli-graph-summarize-"));
+  try {
+    const { app, knowledge: journal } = buildFixture();
+    const outPath = join(dir, "knowledge-graph.json");
+
+    let calls = 0;
+    const summarize = (node) => {
+      calls += 1;
+      return `summary of ${node.name}`;
+    };
+
+    const first = JSON.parse(await graph(app, journal, outPath, undefined, false, summarize));
+    const nodeCount = first.graph.nodes.length;
+    assert.equal(calls, nodeCount, "every node should be summarized on the first build");
+    assert.ok(first.graph.nodes.every((node) => typeof node.summary === "string" && typeof node.summaryHash === "string"));
+
+    // A non-force rebuild with nothing changed at all hits the whole-graph
+    // "up to date" short-circuit before buildKnowledgeGraph even runs, so
+    // register a second app to make the structure genuinely stale first.
+    const { app: appB, knowledge: journalB } = buildFixture();
+    appB.module({ name: "shipping" });
+
+    calls = 0;
+    const second = JSON.parse(await graph(appB, journalB, outPath, undefined, false, summarize));
+    assert.equal(calls, 1, "only the newly added module's node should be summarized");
+    const orders = second.graph.nodes.find((node) => node.id === "module:orders");
+    assert.equal(orders.summary, "summary of orders", "unchanged node should keep its cached summary");
+    const shipping = second.graph.nodes.find((node) => node.id === "module:shipping");
+    assert.equal(shipping.summary, "summary of shipping");
+
+    calls = 0;
+    const forced = JSON.parse(await graph(appB, journalB, outPath, undefined, true, summarize));
+    assert.equal(calls, forced.graph.nodes.length, "--force should clear the summary cache and re-summarize every node");
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
 test("freshness reports added/changed/removed files since the graph was last built", async () => {
   const dir = await mkdtemp(join(tmpdir(), "nexo-cli-freshness-"));
   try {

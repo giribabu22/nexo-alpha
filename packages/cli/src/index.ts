@@ -3,6 +3,10 @@ export {
 } from "./load-application.js";
 
 export {
+  loadSummarizer
+} from "./load-summarizer.js";
+
+export {
   findNexoConfig,
   resolveConfiguredAppPath
 } from "./config.js";

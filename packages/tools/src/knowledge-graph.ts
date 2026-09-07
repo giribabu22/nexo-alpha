@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import type { ApplicationContext } from "@nexo-alpha/context";
 
 export type KnowledgeNodeKind = "module" | "api" | "service" | "job" | "file" | "symbol" | "external";
@@ -17,6 +18,14 @@ export interface KnowledgeGraphNode {
   readonly evidence?: KnowledgeEvidence;
   /** Present only when a `summarize` hook was supplied to {@link buildKnowledgeGraph}. */
   readonly summary?: string;
+  /**
+   * Content fingerprint (see {@link hashKnowledgeGraphNodeContent}) of this
+   * node at the moment `summary` was produced — present iff `summary` is.
+   * Lets a caller cache summaries and detect, on a later rebuild, whether a
+   * given node's summarizable content has actually changed since then,
+   * without needing to re-invoke `summarize` to find out.
+   */
+  readonly summaryHash?: string;
 }
 
 export interface KnowledgeGraphEdge {
@@ -73,6 +82,26 @@ function externalId(name: string): string {
 /** `exactOptionalPropertyTypes`-safe way to conditionally include `description`. */
 function descriptionField(description: string | undefined): { readonly description: string } | Record<string, never> {
   return description !== undefined ? { description } : {};
+}
+
+/**
+ * Deterministic fingerprint of a node's summarizable content — `kind`,
+ * `name`, `description`, and `evidence`, deliberately excluding `id`,
+ * `summary`, and `summaryHash` itself, so the same content hashes
+ * identically whether or not it's already been summarized. A caller
+ * wrapping {@link KnowledgeNodeSummarizer} in a cache compares this against
+ * a previously stored {@link KnowledgeGraphNode.summaryHash} to decide
+ * whether a cached summary is still valid, without needing to re-invoke
+ * the summarizer to find out.
+ */
+export function hashKnowledgeGraphNodeContent(node: KnowledgeGraphNode): string {
+  const canonical = JSON.stringify({
+    kind: node.kind,
+    name: node.name,
+    description: node.description,
+    evidence: node.evidence
+  });
+  return createHash("sha256").update(canonical).digest("hex");
 }
 
 /**
@@ -225,7 +254,9 @@ export async function buildKnowledgeGraph(
       : await Promise.all(
           collectedNodes.map(async (node) => {
             const summary = await summarize(node);
-            return summary === undefined ? node : { ...node, summary };
+            return summary === undefined
+              ? node
+              : { ...node, summary, summaryHash: hashKnowledgeGraphNodeContent(node) };
           })
         );
 
