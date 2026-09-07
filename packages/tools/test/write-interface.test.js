@@ -107,6 +107,29 @@ test("createService and modifyService require modify-source and delegate to the 
   assert.equal(modified.data.description, "Handles shipping");
 });
 
+test("createJob and modifyJob require modify-source and delegate to the core mutators", () => {
+  const app = buildFixtureApp();
+
+  const denied = createWriteInterface(app, noGrants()).createJob("orders", {
+    name: "expireStaleOrders",
+    schedule: "0 * * * *"
+  });
+  assert.equal(denied.success, false);
+
+  const writes = createWriteInterface(app, sourceGrant());
+
+  const created = writes.createJob("orders", { name: "expireStaleOrders", schedule: "0 * * * *" });
+  assert.equal(created.success, true);
+
+  const modified = writes.modifyJob("orders", "expireStaleOrders", { schedule: "0 */2 * * *" });
+  assert.equal(modified.success, true);
+  assert.equal(modified.data.schedule, "0 */2 * * *");
+
+  const missing = writes.modifyJob("orders", "missing", {});
+  assert.equal(missing.success, false);
+  assert.match(missing.error, /not registered/);
+});
+
 test("updateConfiguration requires modify-configuration, not modify-source", () => {
   const app = buildFixtureApp();
 

@@ -90,6 +90,45 @@ test("updateService rejects a missing module or service", () => {
   assert.throws(() => app.updateService("orders", "missing", {}), /not registered/);
 });
 
+test("addJobToModule appends a new job", () => {
+  const app = buildFixtureApp();
+
+  app.addJobToModule("orders", { name: "expireStaleOrders", schedule: "0 * * * *" });
+
+  assert.deepEqual(
+    app.getModule("orders").jobs.map((job) => job.name),
+    ["expireStaleOrders"]
+  );
+});
+
+test("addJobToModule rejects a missing module or a duplicate job name", () => {
+  const app = buildFixtureApp();
+
+  assert.throws(() => app.addJobToModule("missing", { name: "x" }), /not registered/);
+
+  app.addJobToModule("orders", { name: "expireStaleOrders", schedule: "0 * * * *" });
+  assert.throws(
+    () => app.addJobToModule("orders", { name: "expireStaleOrders", schedule: "0 * * * *" }),
+    /already registered/
+  );
+});
+
+test("updateJob merges a patch into an existing job", () => {
+  const app = buildFixtureApp();
+  app.addJobToModule("orders", { name: "expireStaleOrders", schedule: "0 * * * *" });
+
+  const updated = app.updateJob("orders", "expireStaleOrders", { schedule: "0 */2 * * *" });
+
+  assert.equal(updated.schedule, "0 */2 * * *");
+});
+
+test("updateJob rejects a missing module or job", () => {
+  const app = buildFixtureApp();
+
+  assert.throws(() => app.updateJob("missing", "expireStaleOrders", {}), /not registered/);
+  assert.throws(() => app.updateJob("orders", "missing", {}), /not registered/);
+});
+
 test("updateConfig shallow-merges into the application config", () => {
   const app = createApplication({ name: "shop", config: { region: "us-east-1" } });
 

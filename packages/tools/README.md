@@ -75,7 +75,7 @@ Name lookups (`getModule`, `getApi`, `getService`) return `undefined` when nothi
 
 `createWriteInterface(app, grants)` returns a `NexoWriteInterface` with:
 
-`createModule`, `createApi`, `modifyApi`, `createService`, `modifyService`, `updateConfiguration`, `addDependency`.
+`createModule`, `createApi`, `modifyApi`, `createService`, `modifyService`, `createJob`, `modifyJob`, `updateConfiguration`, `addDependency`.
 
 Each call is a `{ success, data?, error? }` result — never a throw — and runs through **Permission Check → Validation → Operation → Audit** (PRD section 18/20). `grants` is a `PermissionGrants` (`{ scopes: Set<"modify-source" | "modify-configuration"> }`) the caller constructs explicitly; there is no ambient or default-allow permission. Every call, whether denied, failed validation, or successful, is recorded via `app.addHistoryEntry()` and readable back through `getHistory()`.
 

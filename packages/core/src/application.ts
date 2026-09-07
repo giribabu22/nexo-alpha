@@ -208,6 +208,43 @@ export class NexoApplication {
     return updated;
   }
 
+  addJobToModule(moduleName: string, job: NexoJob): this {
+    const module = this.requireModule(moduleName);
+
+    if (module.jobs?.some((existing) => existing.name === job.name)) {
+      throw new NexoConfigurationError(
+        `Job "${job.name}" is already registered on module "${moduleName}".`
+      );
+    }
+
+    this.modules.set(moduleName, {
+      ...module,
+      jobs: [...(module.jobs ?? []), job]
+    });
+
+    return this;
+  }
+
+  updateJob(moduleName: string, jobName: string, patch: Partial<NexoJob>): NexoJob {
+    const module = this.requireModule(moduleName);
+    const existing = module.jobs?.find((job) => job.name === jobName);
+
+    if (!existing) {
+      throw new NexoConfigurationError(
+        `Job "${jobName}" is not registered on module "${moduleName}".`
+      );
+    }
+
+    const updated: NexoJob = { ...existing, ...patch };
+
+    this.modules.set(moduleName, {
+      ...module,
+      jobs: (module.jobs ?? []).map((job) => (job.name === jobName ? updated : job))
+    });
+
+    return updated;
+  }
+
   updateConfig(patch: Record<string, unknown>): Readonly<Record<string, unknown>> {
     this.config = { ...this.config, ...patch };
     return this.config;

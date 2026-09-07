@@ -2,6 +2,7 @@ import {
   NexoError,
   type NexoApi,
   type NexoApplication,
+  type NexoJob,
   type NexoModule,
   type NexoService
 } from "@nexo-alpha/core";
@@ -38,6 +39,13 @@ export interface NexoWriteInterface {
     patch: Partial<NexoService>,
     actor?: string
   ): WriteOperationResult<NexoService>;
+  createJob(moduleName: string, job: NexoJob, actor?: string): WriteOperationResult<NexoJob>;
+  modifyJob(
+    moduleName: string,
+    jobName: string,
+    patch: Partial<NexoJob>,
+    actor?: string
+  ): WriteOperationResult<NexoJob>;
   updateConfiguration(
     patch: Record<string, unknown>,
     actor?: string
@@ -213,6 +221,44 @@ export function createWriteInterface(
 
       try {
         const updated = app.updateService(moduleName, serviceName, patch);
+        return succeeded(operation, target, actor, updated);
+      } catch (error) {
+        if (error instanceof NexoError) {
+          return failed(operation, target, actor, error.message);
+        }
+        throw error;
+      }
+    },
+
+    createJob(moduleName, job, actor) {
+      const operation = "create_job";
+      const target = `${moduleName}.${job.name}`;
+
+      if (!hasPermission(grants, "modify-source")) {
+        return denied(operation, target, "modify-source", actor);
+      }
+
+      try {
+        app.addJobToModule(moduleName, job);
+        return succeeded(operation, target, actor, job);
+      } catch (error) {
+        if (error instanceof NexoError) {
+          return failed(operation, target, actor, error.message);
+        }
+        throw error;
+      }
+    },
+
+    modifyJob(moduleName, jobName, patch, actor) {
+      const operation = "modify_job";
+      const target = `${moduleName}.${jobName}`;
+
+      if (!hasPermission(grants, "modify-source")) {
+        return denied(operation, target, "modify-source", actor);
+      }
+
+      try {
+        const updated = app.updateJob(moduleName, jobName, patch);
         return succeeded(operation, target, actor, updated);
       } catch (error) {
         if (error instanceof NexoError) {
