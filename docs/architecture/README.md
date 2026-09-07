@@ -1,4 +1,4 @@
-# Architecture Notes — v0.13
+# Architecture Notes — v0.14
 
 **npm scope note:** packages publish under `@nexo-alpha` (an npm Organization), not `@nexo` — the unscoped `@nexo` scope required an org that wasn't set up in time; `nexo-alpha` was used instead and is treated as the project's real published identity going forward. All package names below reflect this.
 
@@ -355,12 +355,26 @@ minute boundaries — not a production feature. As with the Hapi server,
 there's no wiring into `NexoApplication.start()`/`stop()`; creating and
 starting the scheduler is a separate, explicit step.
 
-**Deliberately not doing:** no job mutators (`createJob`/`modifyJob` on
-`@nexo-alpha/tools`'s write interface) — a separate follow-on, not
-required for jobs to actually run; no persistence, retry-on-crash, or
+**Deliberately not doing:** no persistence, retry-on-crash, or
 distributed/multi-process coordination — a fresh process starts every
 schedule clean, consistent with how the rest of Nexo keeps declared
-state in code rather than a database.
+state in code rather than a database. (`createJob`/`modifyJob` job
+mutators followed in a later pass — see "Job mutators" below.)
+
+## Job mutators
+
+Closes the one asymmetry left after job execution shipped: `@nexo-alpha/
+core` had `addApiToModule`/`updateApi` and `addServiceToModule`/
+`updateService`, but no job equivalent. `NexoApplication` gained
+`addJobToModule`/`updateJob`, mirroring those two pairs exactly (same
+duplicate-name/missing-module errors, same "replace the module's array"
+approach to updates), and `@nexo-alpha/tools`'s write interface gained
+`createJob`/`modifyJob` (operations `create_job`/`modify_job`), mirroring
+`createService`/`modifyService` exactly — same `modify-source` permission
+requirement, same Permission Check → Validation → Operation → Audit
+pipeline, same `{ success, data?, error? }` result shape. No new design
+decisions were needed; this was purely applying an already-established
+pattern to the one place it hadn't reached yet.
 
 ## Observability
 
@@ -425,17 +439,18 @@ Later packages depend **on** core, never the reverse:
 @nexo-alpha/scheduler --> @nexo-alpha/core
 ```
 
-## v0.13 boundary
+## v0.14 boundary
 
-In scope: everything from v0.12, plus observability (`api.called`/
+In scope: everything from v0.13, plus observability (`api.called`/
 `api.error`/`job.ran`/`job.failed` events through `NexoEventBus`,
-`@nexo-alpha/tools`'s `createMetricsCollector`).
+`@nexo-alpha/tools`'s `createMetricsCollector`) and job mutators
+(`addJobToModule`/`updateJob` in core, `createJob`/`modifyJob` on
+`@nexo-alpha/tools`'s write interface).
 
 Not yet: tracing/spans/correlation IDs, the same config convention for
 the Hapi adapter (it still takes explicit `createHapiServer(app,
 options?)` options — could reuse `resolveConfiguredAppPath` later),
-dependency injection, job mutators on `@nexo-alpha/tools`'s write
-interface, job persistence/distributed coordination, config
+dependency injection, job persistence/distributed coordination, config
 validation/env loading, `create_test()` and the process-shelling
 verification ops (`run_tests`/`run_typecheck`/`run_lint`/`run_build` —
 need a project-root argument and, for lint, tooling this repo doesn't
