@@ -1,4 +1,4 @@
-# Architecture Notes — v0.11
+# Architecture Notes — v0.12
 
 **npm scope note:** packages publish under `@nexo-alpha` (an npm Organization), not `@nexo` — the unscoped `@nexo` scope required an org that wasn't set up in time; `nexo-alpha` was used instead and is treated as the project's real published identity going forward. All package names below reflect this.
 
@@ -34,9 +34,11 @@ query methods over this metadata:
   `node:events.EventEmitter`) for `on`/`off`/`emit`. No automatic
   wiring — modules must call it explicitly.
 
-Jobs (`NexoJob`) are declaration-only in this milestone: `name`,
-`description`, `schedule`. There is no scheduler or executor yet —
-that belongs to a later Scalability phase.
+Jobs (`NexoJob`): `name`, `description`, `schedule`, and an optional
+`run` behavior hook — mirroring `NexoApi.handler`. `NexoApplication`
+also gained `getJobs()`, flattening jobs across modules the same way
+`getApis()`/`getServices()` already do. Actually executing jobs is
+`@nexo-alpha/scheduler`'s job (below), not core's — core only declares.
 
 ## Decisions, constraints, development state
 
@@ -313,6 +315,53 @@ of these HTTP requests into `NexoApplication.addHistoryEntry()` — Phase
 would blur that meaning. A separate request-audit feature could reuse
 the same `History` type later without conflating the two.
 
+## Job execution (Phase 7)
+
+Closes another long-flagged gap: `NexoJob` was declaration-only, with
+no scheduler or executor anywhere. `packages/core/src/job.ts` gained
+one optional behavior hook, `run?: NexoJobRunner`, mirroring
+`NexoApi.handler`'s "declarative metadata + optional function" pattern
+exactly; `NexoApplication.getJobs()` flattens jobs across modules the
+same way `getApis()`/`getServices()` already do.
+
+Actual execution is a new package, `@nexo-alpha/scheduler` — the same
+reason `@nexo-alpha/hapi` exists as a separate package from core: core
+must never import timer/scheduling logic. Unlike Hapi, this package
+needed zero *new* dependencies to justify a split; the split exists
+purely to keep the dependency direction rule intact (below). `schedule`
+is standard 5-field cron syntax — already a de facto assumption in one
+existing test fixture (`*/5 * * * *`) — parsed by a small hand-rolled
+engine in `packages/scheduler/src/cron.ts` (`parseCronExpression`,
+`getNextRunTime`) rather than a dependency, consistent with how the CLI
+already hand-rolls argv parsing and config discovery instead of pulling
+in libraries. It supports the practical subset of cron (`*`, exact
+values, `*/step`, comma lists, `a-b` ranges with an optional `/step`)
+with standard day-of-month/day-of-week OR semantics, not the full POSIX
+spec.
+
+`createJobScheduler(app, options?).start()` parses every job with both
+`schedule` and `run` up front — if any is malformed, `start()` throws
+immediately, before scheduling *any* job, same "explicit, bounded"
+fail-fast principle as Phase 5's permission checks and the Hapi
+adapter's auth-configuration check. Each job then gets a single
+`setTimeout` computed from `getNextRunTime`; on fire, `run()` is called
+and immediately rescheduled for its next occurrence regardless of
+outcome — a thrown/rejected `run()` is routed to an optional
+`onError(job, error)` rather than ever crashing the scheduler. `stop()`
+clears every pending timer. The one non-default seam is an injectable
+`clock` (`now`/`setTimeout`/`clearTimeout`), used only so the package's
+own tests can drive time deterministically instead of waiting on real
+minute boundaries — not a production feature. As with the Hapi server,
+there's no wiring into `NexoApplication.start()`/`stop()`; creating and
+starting the scheduler is a separate, explicit step.
+
+**Deliberately not doing:** no job mutators (`createJob`/`modifyJob` on
+`@nexo-alpha/tools`'s write interface) — a separate follow-on, not
+required for jobs to actually run; no persistence, retry-on-crash, or
+distributed/multi-process coordination — a fresh process starts every
+schedule clean, consistent with how the rest of Nexo keeps declared
+state in code rather than a database.
+
 ## Dependency direction rule
 
 `@nexo-alpha/core` must depend only on the Node.js runtime. It must never depend on:
@@ -326,22 +375,23 @@ the same `History` type later without conflating the two.
 Later packages depend **on** core, never the reverse:
 
 ```text
-@nexo-alpha/hapi  --> @nexo-alpha/core
-@nexo-alpha/cli   --> @nexo-alpha/core
-@nexo-alpha/tools --> @nexo-alpha/core
+@nexo-alpha/hapi      --> @nexo-alpha/core
+@nexo-alpha/cli       --> @nexo-alpha/core
+@nexo-alpha/tools     --> @nexo-alpha/core
+@nexo-alpha/scheduler --> @nexo-alpha/core
 ```
 
-## v0.11 boundary
+## v0.12 boundary
 
-In scope: everything from v0.10, plus request validation and auth on
-Hapi routes (`NexoApi.auth`/`NexoApi.validate`, `createHapiServer`'s
-`options.authenticate`).
+In scope: everything from v0.11, plus job execution
+(`@nexo-alpha/scheduler`, `NexoJob.run`, `NexoApplication.getJobs()`).
 
 Not yet: the same config convention for the Hapi adapter (it still
 takes explicit `createHapiServer(app, options?)` options — could reuse
-`resolveConfiguredAppPath` later), dependency injection, job
-scheduler/executor, config validation/env loading, `create_test()` and
-the process-shelling verification ops (`run_tests`/`run_typecheck`/
+`resolveConfiguredAppPath` later), dependency injection, job mutators on
+`@nexo-alpha/tools`'s write interface, job persistence/distributed
+coordination, config validation/env loading, `create_test()` and the
+process-shelling verification ops (`run_tests`/`run_typecheck`/
 `run_lint`/`run_build` — need a project-root argument and, for lint,
 tooling this repo doesn't have configured yet), an HTTP-request audit
 trail (Phase 5's `History` model covers development mutations, not live
