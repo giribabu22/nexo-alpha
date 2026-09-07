@@ -1,4 +1,4 @@
-# Architecture Notes — v0.10
+# Architecture Notes — v0.11
 
 **npm scope note:** packages publish under `@nexo-alpha` (an npm Organization), not `@nexo` — the unscoped `@nexo` scope required an org that wasn't set up in time; `nexo-alpha` was used instead and is treated as the project's real published identity going forward. All package names below reflect this.
 
@@ -272,6 +272,47 @@ the PRD. Verified with a real listening server and a live `fetch()`
 against it (not just Hapi's `server.inject()` in tests), using
 `examples/hello-world`'s new `GET /hello` API.
 
+## Request validation and auth
+
+Closes the gap flagged since the Hapi adapter shipped: every
+handler-backed route ran with zero input validation and no
+authentication. PRD section 32 ("Security Requirements") specifies a
+request pipeline of `Identity → Permission → Context Boundary →
+Validation → Operation → Audit`; this implements the Identity,
+Permission, and Validation steps.
+
+`@nexo-alpha/core` stays dependency-free (no Joi, no JWT library), so
+both concerns are modeled as plain function hooks on `NexoApi`
+(`packages/core/src/api.ts`) — the same pattern already used for
+`handler`, not a framework-specific schema: `auth?: NexoApiAuth`
+(`{ required, scopes? }`, declarative) and `validate?:
+NexoRequestValidator` (a function, since arbitrary validation logic —
+not just a static shape check — needs to run, returning
+`NexoValidationOutcome`). The actual verification (decode a JWT, check
+an API key, run a Joi schema, whatever) is supplied by the caller, not
+by Nexo — `createHapiServer`'s new `options.authenticate:
+NexoAuthenticator` is where that plugs in, once per server.
+
+If any API declares `auth.required` but no `authenticate` option was
+passed, `createHapiServer` rejects immediately, before registering any
+routes — the same "explicit, bounded" principle as Phase 5's permission
+checks: a route that silently ships with no way to enforce its declared
+auth requirement is worse than a loud failure at startup. Per request,
+the route wrapper in `packages/hapi/src/create-server.ts` runs
+Identity/Permission (`authenticate` → `401` if unauthenticated, `403`
+if any of `auth.scopes` is missing — all required, not any) **before**
+Validation (`validate` → `400` with `errors` if invalid) before the
+existing handler call. Auth before validation matches both the PRD's
+ordering and standard security practice: an unauthenticated caller
+shouldn't learn anything about payload shape from a `400`.
+
+**Deliberately not doing:** no Joi/JWT dependency was added; no wiring
+of these HTTP requests into `NexoApplication.addHistoryEntry()` — Phase
+5's History model tracks AI *development* mutations
+(`create_module`/`modify_api`/etc.), and mixing in live HTTP traffic
+would blur that meaning. A separate request-audit feature could reuse
+the same `History` type later without conflating the two.
+
 ## Dependency direction rule
 
 `@nexo-alpha/core` must depend only on the Node.js runtime. It must never depend on:
@@ -290,11 +331,11 @@ Later packages depend **on** core, never the reverse:
 @nexo-alpha/tools --> @nexo-alpha/core
 ```
 
-## v0.10 boundary
+## v0.11 boundary
 
-In scope: everything from v0.9, plus the `nexo.config.json` project
-config convention for `@nexo-alpha/cli` (app-path discovery without an
-explicit argument).
+In scope: everything from v0.10, plus request validation and auth on
+Hapi routes (`NexoApi.auth`/`NexoApi.validate`, `createHapiServer`'s
+`options.authenticate`).
 
 Not yet: the same config convention for the Hapi adapter (it still
 takes explicit `createHapiServer(app, options?)` options — could reuse
@@ -302,8 +343,8 @@ takes explicit `createHapiServer(app, options?)` options — could reuse
 scheduler/executor, config validation/env loading, `create_test()` and
 the process-shelling verification ops (`run_tests`/`run_typecheck`/
 `run_lint`/`run_build` — need a project-root argument and, for lint,
-tooling this repo doesn't have configured yet), request validation/auth
-on Hapi routes (currently every handler-backed API is wired with no
-input validation or auth), database, cloud, autonomous agent operations,
-and the "Components" concept from the PRD (undefined in the docs for a
+tooling this repo doesn't have configured yet), an HTTP-request audit
+trail (Phase 5's `History` model covers development mutations, not live
+traffic), database, cloud, autonomous agent operations, and the
+"Components" concept from the PRD (undefined in the docs for a
 backend-first framework, so deferred rather than guessed at).
