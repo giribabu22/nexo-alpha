@@ -42,3 +42,23 @@ export type {
   ApiMetrics,
   JobMetrics
 } from "./metrics-interface.js";
+
+export {
+  createRunInterface
+} from "./run-interface.js";
+
+export type {
+  NexoRunInterface,
+  RunResult
+} from "./run-interface.js";
+
+export {
+  createSourceInterface
+} from "./source-interface.js";
+
+export type {
+  NexoSourceInterface,
+  SourceFile,
+  SourceTree,
+  SourceInterfaceOptions
+} from "./source-interface.js";

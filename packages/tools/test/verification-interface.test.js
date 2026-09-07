@@ -91,7 +91,7 @@ test("checkApplicationHealth reports counts and embeds the architecture result",
   const app = createApplication({ name: "shop" });
   app.module({
     name: "orders",
-    apis: [{ name: "createOrder", method: "POST", path: "/orders" }],
+    apis: [{ name: "createOrder", method: "POST", path: "/orders", service: "OrderService" }],
     services: [{ name: "OrderService" }]
   });
 
@@ -102,4 +102,19 @@ test("checkApplicationHealth reports counts and embeds the architecture result",
   assert.equal(health.apiCount, 1);
   assert.equal(health.serviceCount, 1);
   assert.deepEqual(health.architecture, { valid: true, issues: [] });
+});
+
+test("validateArchitecture flags an unregistered api service as a warning", () => {
+  const app = createApplication({ name: "shop" });
+  app.module({
+    name: "orders",
+    apis: [{ name: "createOrder", method: "POST", path: "/orders", service: "MissingService" }]
+  });
+
+  const result = createVerificationInterface(app).validateArchitecture();
+
+  assert.equal(result.valid, true);
+  assert.equal(result.issues.length, 1);
+  assert.equal(result.issues[0].severity, "warning");
+  assert.match(result.issues[0].message, /references service "MissingService", which is not registered/);
 });

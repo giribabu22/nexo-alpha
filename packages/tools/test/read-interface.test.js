@@ -2,9 +2,10 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import { createApplication } from "@nexo-alpha/core";
+import { createKnowledge } from "@nexo-alpha/context";
 import { createReadInterface } from "../dist/index.js";
 
-function buildFixtureApp() {
+function buildFixture() {
   const app = createApplication({
     name: "shop",
     version: "0.1.0",
@@ -29,18 +30,21 @@ function buildFixtureApp() {
     services: [{ name: "PaymentService" }]
   });
 
-  app.addDecision({ title: "Use Redis for job coordination", status: "accepted" });
-  app.addConstraint({ description: "Payments must never be retried after a permanent decline." });
-  app.setDevelopmentState({
+  const knowledge = createKnowledge();
+
+  knowledge.addDecision({ title: "Use Redis for job coordination", status: "accepted" });
+  knowledge.addConstraint({ description: "Payments must never be retried after a permanent decline." });
+  knowledge.setDevelopmentState({
     currentObjective: "Implement payment recovery",
     completed: ["Retry API"]
   });
 
-  return app;
+  return { app, knowledge };
 }
 
 test("getApplication returns identity and state", () => {
-  const tools = createReadInterface(buildFixtureApp());
+  const { app, knowledge } = buildFixture();
+  const tools = createReadInterface(app, knowledge);
 
   assert.deepEqual(tools.getApplication(), {
     name: "shop",
@@ -51,7 +55,8 @@ test("getApplication returns identity and state", () => {
 });
 
 test("getModule finds a registered module and returns undefined otherwise", () => {
-  const tools = createReadInterface(buildFixtureApp());
+  const { app, knowledge } = buildFixture();
+  const tools = createReadInterface(app, knowledge);
 
   const payments = tools.getModule("payments");
   assert.equal(payments.name, "payments");
@@ -61,7 +66,8 @@ test("getModule finds a registered module and returns undefined otherwise", () =
 });
 
 test("getApi and getService find across modules and return undefined otherwise", () => {
-  const tools = createReadInterface(buildFixtureApp());
+  const { app, knowledge } = buildFixture();
+  const tools = createReadInterface(app, knowledge);
 
   assert.equal(tools.getApi("createPayment").path, "/payments");
   assert.equal(tools.getApi("missing"), undefined);
@@ -71,20 +77,23 @@ test("getApi and getService find across modules and return undefined otherwise",
 });
 
 test("getDependencies and getDependents delegate to the application graph", () => {
-  const tools = createReadInterface(buildFixtureApp());
+  const { app, knowledge } = buildFixture();
+  const tools = createReadInterface(app, knowledge);
 
   assert.deepEqual(tools.getDependencies("payments"), ["stripe", "orders"]);
   assert.deepEqual(tools.getDependents("orders"), ["payments"]);
 });
 
 test("getConfiguration returns the full config object", () => {
-  const tools = createReadInterface(buildFixtureApp());
+  const { app, knowledge } = buildFixture();
+  const tools = createReadInterface(app, knowledge);
 
   assert.deepEqual(tools.getConfiguration(), { region: "us-east-1" });
 });
 
 test("getArchitecture aggregates modules, apis, and services", () => {
-  const tools = createReadInterface(buildFixtureApp());
+  const { app, knowledge } = buildFixture();
+  const tools = createReadInterface(app, knowledge);
 
   const architecture = tools.getArchitecture();
 
@@ -99,8 +108,26 @@ test("getArchitecture aggregates modules, apis, and services", () => {
   );
 });
 
+test("getStructure returns a registry-derived rollup with a matching hash", () => {
+  const { app, knowledge } = buildFixture();
+  const tools = createReadInterface(app, knowledge);
+
+  const { structure, structureHash } = tools.getStructure();
+
+  assert.equal(structure.moduleCount, 2);
+  assert.equal(structure.apiCount, 2);
+  assert.equal(structure.serviceCount, 2);
+  assert.deepEqual(structure.dependencyEdges, [
+    { from: "payments", to: "orders" },
+    { from: "payments", to: "stripe" }
+  ]);
+  assert.equal(typeof structureHash, "string");
+  assert.equal(tools.getStructure().structureHash, structureHash);
+});
+
 test("getDecisions, getConstraints, getCurrentWork, and getStatus expose knowledge records", () => {
-  const tools = createReadInterface(buildFixtureApp());
+  const { app, knowledge } = buildFixture();
+  const tools = createReadInterface(app, knowledge);
 
   assert.equal(tools.getDecisions().length, 1);
   assert.equal(tools.getConstraints().length, 1);
@@ -114,14 +141,15 @@ test("getDecisions, getConstraints, getCurrentWork, and getStatus expose knowled
   assert.equal(status.developmentState.currentObjective, "Implement payment recovery");
 });
 
-test("getHistory returns audit entries recorded on the application", () => {
-  const app = buildFixtureApp();
-  app.addHistoryEntry({ operation: "create_module", target: "shipping", result: "success" });
+test("getHistory returns audit entries recorded on knowledge", () => {
+  const { app, knowledge } = buildFixture();
+  knowledge.addHistoryEntry({ operation: "create_module", target: "shipping", result: "success" });
 
-  const tools = createReadInterface(app);
+  const tools = createReadInterface(app, knowledge);
 
   const history = tools.getHistory();
   assert.equal(history.length, 1);
   assert.equal(history[0].operation, "create_module");
   assert.equal(history[0].result, "success");
 });
+

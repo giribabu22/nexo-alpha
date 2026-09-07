@@ -1,0 +1,7 @@
+{
+  "name": "run-failing-fixture",
+  "private": true,
+  "scripts": {
+    "test": "node -e \"console.error('tests failed'); process.exit(1)\""
+  }
+}

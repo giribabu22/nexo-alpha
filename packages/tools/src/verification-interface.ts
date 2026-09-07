@@ -130,6 +130,19 @@ export function createVerificationInterface(
             });
           }
         }
+
+        for (const api of module.apis ?? []) {
+          if (api.service) {
+            const serviceExists = app.getServices().some((s) => s.name === api.service);
+            if (!serviceExists) {
+              issues.push({
+                severity: "warning",
+                message: `API "${api.name}" on module "${module.name}" references service "${api.service}", which is not registered.`,
+                target: `${module.name}.${api.name}`
+              });
+            }
+          }
+        }
       }
 
       const cycleState = new Map<string, "visiting" | "done">();

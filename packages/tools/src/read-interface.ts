@@ -1,17 +1,19 @@
 import type {
   ApplicationState,
-  DevelopmentState,
   NexoApi,
   NexoApplication,
-  NexoConstraint,
-  NexoDecision,
-  NexoHistoryEntry,
   NexoService
 } from "@nexo-alpha/core";
 import {
   buildContext,
   type ApplicationContext,
-  type ModuleContext
+  type ApplicationKnowledge,
+  type ApplicationStructure,
+  type DevelopmentState,
+  type ModuleContext,
+  type NexoConstraint,
+  type NexoDecision,
+  type NexoHistoryEntry
 } from "@nexo-alpha/context";
 
 export interface ApplicationArchitecture {
@@ -25,6 +27,13 @@ export interface ApplicationStatus {
   readonly developmentState: DevelopmentState;
 }
 
+const EMPTY_DEVELOPMENT_STATE: DevelopmentState = {
+  completed: [],
+  inProgress: [],
+  blocked: [],
+  knownIssues: []
+};
+
 export interface NexoReadInterface {
   getApplication(): ApplicationContext["application"];
   getModules(): readonly ModuleContext[];
@@ -35,6 +44,14 @@ export interface NexoReadInterface {
   getDependents(moduleName: string): readonly string[];
   getConfiguration(): Readonly<Record<string, unknown>>;
   getArchitecture(): ApplicationArchitecture;
+  /**
+   * A rollup of the application's registered structure (module/API/service/
+   * job counts, declared dependency edges) plus a deterministic hash of
+   * it — derived from the live registry, not from parsing source. Use the
+   * hash to detect whether a previously captured snapshot is stale
+   * relative to the application's current structure.
+   */
+  getStructure(): { readonly structure: ApplicationStructure; readonly structureHash: string };
   getDecisions(): readonly NexoDecision[];
   getConstraints(): readonly NexoConstraint[];
   getCurrentWork(): DevelopmentState;
@@ -43,19 +60,20 @@ export interface NexoReadInterface {
 }
 
 export function createReadInterface(
-  app: NexoApplication
+  app: NexoApplication,
+  knowledge?: ApplicationKnowledge
 ): NexoReadInterface {
   return {
     getApplication() {
-      return buildContext(app).application;
+      return buildContext(app, knowledge).application;
     },
 
     getModules() {
-      return buildContext(app).modules;
+      return buildContext(app, knowledge).modules;
     },
 
     getModule(name) {
-      return buildContext(app).modules.find((module) => module.name === name);
+      return buildContext(app, knowledge).modules.find((module) => module.name === name);
     },
 
     getApi(name) {
@@ -80,33 +98,38 @@ export function createReadInterface(
 
     getArchitecture() {
       return {
-        modules: buildContext(app).modules,
+        modules: buildContext(app, knowledge).modules,
         apis: app.getApis(),
         services: app.getServices()
       };
     },
 
+    getStructure() {
+      const context = buildContext(app, knowledge);
+      return { structure: context.structure, structureHash: context.structureHash };
+    },
+
     getDecisions() {
-      return app.getDecisions();
+      return knowledge?.getDecisions() ?? [];
     },
 
     getConstraints() {
-      return app.getConstraints();
+      return knowledge?.getConstraints() ?? [];
     },
 
     getCurrentWork() {
-      return app.getDevelopmentState();
+      return knowledge?.getDevelopmentState() ?? EMPTY_DEVELOPMENT_STATE;
     },
 
     getStatus() {
       return {
         state: app.state,
-        developmentState: app.getDevelopmentState()
+        developmentState: knowledge?.getDevelopmentState() ?? EMPTY_DEVELOPMENT_STATE
       };
     },
 
     getHistory() {
-      return app.getHistory();
+      return knowledge?.getHistory() ?? [];
     }
   };
 }

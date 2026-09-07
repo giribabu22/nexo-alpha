@@ -6,8 +6,17 @@ import {
   type NexoModule,
   type NexoService
 } from "@nexo-alpha/core";
+import {
+  type ApplicationKnowledge,
+  type DevelopmentState,
+  type NexoConstraint,
+  type NexoDecision
+} from "@nexo-alpha/context";
 
-export type PermissionScope = "modify-source" | "modify-configuration";
+export type PermissionScope =
+  | "modify-source"
+  | "modify-configuration"
+  | "modify-knowledge";
 
 export interface PermissionGrants {
   readonly scopes: ReadonlySet<PermissionScope>;
@@ -55,6 +64,32 @@ export interface NexoWriteInterface {
     dependencyName: string,
     actor?: string
   ): WriteOperationResult<readonly string[]>;
+  recordDecision(
+    decision: NexoDecision,
+    actor?: string
+  ): WriteOperationResult<NexoDecision>;
+  recordConstraint(
+    constraint: NexoConstraint,
+    actor?: string
+  ): WriteOperationResult<NexoConstraint>;
+  updateDevelopmentState(
+    patch: Partial<DevelopmentState>,
+    actor?: string
+  ): WriteOperationResult<DevelopmentState>;
+  /**
+   * Records the *intent* to add a test — it does not generate a test file
+   * or run anything. This only writes a `create_test` entry to the
+   * knowledge history (permission-checked like every other write op) so
+   * an agent's plan is auditable; use `@nexo-alpha/tools`'s
+   * `createRunInterface().runTests()` to actually execute a project's
+   * test suite once a test exists.
+   */
+  createTest(
+    moduleName: string,
+    testName: string,
+    testSpec?: string,
+    actor?: string
+  ): WriteOperationResult<{ module: string; test: string; spec?: string }>;
 }
 
 function hasPermission(grants: PermissionGrants, scope: PermissionScope): boolean {
@@ -85,6 +120,7 @@ function historyEntry(
 
 export function createWriteInterface(
   app: NexoApplication,
+  knowledge: ApplicationKnowledge,
   grants: PermissionGrants
 ): NexoWriteInterface {
   function denied<T>(
@@ -95,7 +131,7 @@ export function createWriteInterface(
   ): WriteOperationResult<T> {
     const error = `Permission required: "${scope}" is not granted for operation "${operation}".`;
 
-    app.addHistoryEntry(historyEntry(operation, target, actor, "denied", error));
+    knowledge.addHistoryEntry(historyEntry(operation, target, actor, "denied", error));
 
     return { success: false, error };
   }
@@ -106,7 +142,7 @@ export function createWriteInterface(
     actor: string | undefined,
     error: string
   ): WriteOperationResult<T> {
-    app.addHistoryEntry(historyEntry(operation, target, actor, "failed", error));
+    knowledge.addHistoryEntry(historyEntry(operation, target, actor, "failed", error));
 
     return { success: false, error };
   }
@@ -117,7 +153,7 @@ export function createWriteInterface(
     actor: string | undefined,
     data: T
   ): WriteOperationResult<T> {
-    app.addHistoryEntry(historyEntry(operation, target, actor, "success"));
+    knowledge.addHistoryEntry(historyEntry(operation, target, actor, "success"));
 
     return { success: true, data };
   }
@@ -296,6 +332,57 @@ export function createWriteInterface(
         }
         throw error;
       }
+    },
+
+    recordDecision(decision, actor) {
+      const operation = "record_decision";
+      const target = decision.title;
+
+      if (!hasPermission(grants, "modify-knowledge")) {
+        return denied(operation, target, "modify-knowledge", actor);
+      }
+
+      knowledge.addDecision(decision);
+      return succeeded(operation, target, actor, decision);
+    },
+
+    recordConstraint(constraint, actor) {
+      const operation = "record_constraint";
+      const target = constraint.description;
+
+      if (!hasPermission(grants, "modify-knowledge")) {
+        return denied(operation, target, "modify-knowledge", actor);
+      }
+
+      knowledge.addConstraint(constraint);
+      return succeeded(operation, target, actor, constraint);
+    },
+
+    updateDevelopmentState(patch, actor) {
+      const operation = "update_development_state";
+
+      if (!hasPermission(grants, "modify-knowledge")) {
+        return denied(operation, undefined, "modify-knowledge", actor);
+      }
+
+      knowledge.setDevelopmentState(patch);
+      return succeeded(operation, undefined, actor, knowledge.getDevelopmentState());
+    },
+
+    createTest(moduleName, testName, testSpec, actor) {
+      const operation = "create_test";
+      const target = `${moduleName}.${testName}`;
+
+      if (!hasPermission(grants, "modify-source")) {
+        return denied(operation, target, "modify-source", actor);
+      }
+
+      if (!app.getModule(moduleName)) {
+        return failed(operation, target, actor, `Nexo module "${moduleName}" is not registered.`);
+      }
+
+      const data = { module: moduleName, test: testName, ...(testSpec !== undefined ? { spec: testSpec } : {}) };
+      return succeeded(operation, target, actor, data);
     }
   };
 }
