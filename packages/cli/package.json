@@ -39,5 +39,9 @@
     "@nexo-alpha/core": "workspace:*",
     "@nexo-alpha/context": "workspace:*",
     "@nexo-alpha/tools": "workspace:*"
+  },
+  "devDependencies": {
+    "typescript": "^5.0.0",
+    "@types/node": "^20.0.0"
   }
 }

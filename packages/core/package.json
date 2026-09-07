@@ -32,5 +32,9 @@
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "node --test",
     "clean": "rm -rf dist"
+  },
+  "devDependencies": {
+    "typescript": "^5.0.0",
+    "@types/node": "^20.0.0"
   }
 }
