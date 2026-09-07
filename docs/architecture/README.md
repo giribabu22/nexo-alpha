@@ -1,4 +1,4 @@
-# Architecture Notes — v0.12
+# Architecture Notes — v0.13
 
 **npm scope note:** packages publish under `@nexo-alpha` (an npm Organization), not `@nexo` — the unscoped `@nexo` scope required an org that wasn't set up in time; `nexo-alpha` was used instead and is treated as the project's real published identity going forward. All package names below reflect this.
 
@@ -362,6 +362,50 @@ distributed/multi-process coordination — a fresh process starts every
 schedule clean, consistent with how the rest of Nexo keeps declared
 state in code rather than a database.
 
+## Observability
+
+Scopes "Phase 8 — Observability" down to what's concretely useful now:
+event emission plus in-process counters, reusing `NexoEventBus`
+(`app.events`, `packages/core/src/events.ts`) — which existed since
+early on but nothing ever emitted or listened on it until this pass.
+Tracing/spans/correlation IDs are out of scope; no tracing library
+exists anywhere in the workspace and it's a materially bigger feature.
+
+The event contract itself is pure data declared in core — `NexoEvent`
+name constants plus `ApiCalledEvent`/`ApiErrorEvent`/`JobRanEvent`/
+`JobFailedEvent` payload types (`packages/core/src/events.ts`) — the
+same "declare the shape in core, behave in the adapter" split as
+`NexoApiHandler`/`NexoJobRunner`. `NexoEventBus` itself didn't need to
+change; it's still a plain string-keyed emitter.
+
+`@nexo-alpha/hapi`'s route handler now measures elapsed time and routes
+every outcome (401/403/400, and the final handler result) through one
+`respond()` helper that emits `api.called` with the real status code —
+so even auth/validation denials are visible traffic, not silent. The
+handler call itself is now wrapped in try/catch: on throw, it emits
+`api.error` with the message and **rethrows**, so Hapi's own default
+`500` handling is unchanged from before this pass (nothing previously
+wrapped the handler call at all). `@nexo-alpha/scheduler`'s `runJob`
+emits `job.ran`/`job.failed` around each execution, additively — the
+existing `onError` callback still fires exactly as before.
+
+`@nexo-alpha/tools` gained a fourth interface, `createMetricsCollector
+(app)`, alongside read/write/verification. Unlike those three (stateless,
+computed fresh from `app` on every call), this one is necessarily
+**stateful**: it subscribes to `app.events` at creation time and
+accumulates per-API/per-job call counts, error/failure counts, and
+average durations in a closure, computed on `getMetrics()`. `stop()`
+unsubscribes every listener it registered — the event bus has no other
+consumer that ever unsubscribes today, so a leaked collector (e.g. in a
+test) would otherwise accumulate listeners forever.
+
+**Deliberately not doing:** tracing/spans; wiring `checkApplicationHealth()`
+together with metrics (kept as two independent concerns — static
+structural health vs. live runtime counters — rather than overloading
+one method's return shape); metrics persistence across restarts
+(in-memory only, same stance as the scheduler's own no-persistence
+design); a CLI command to display metrics.
+
 ## Dependency direction rule
 
 `@nexo-alpha/core` must depend only on the Node.js runtime. It must never depend on:
@@ -381,20 +425,23 @@ Later packages depend **on** core, never the reverse:
 @nexo-alpha/scheduler --> @nexo-alpha/core
 ```
 
-## v0.12 boundary
+## v0.13 boundary
 
-In scope: everything from v0.11, plus job execution
-(`@nexo-alpha/scheduler`, `NexoJob.run`, `NexoApplication.getJobs()`).
+In scope: everything from v0.12, plus observability (`api.called`/
+`api.error`/`job.ran`/`job.failed` events through `NexoEventBus`,
+`@nexo-alpha/tools`'s `createMetricsCollector`).
 
-Not yet: the same config convention for the Hapi adapter (it still
-takes explicit `createHapiServer(app, options?)` options — could reuse
-`resolveConfiguredAppPath` later), dependency injection, job mutators on
-`@nexo-alpha/tools`'s write interface, job persistence/distributed
-coordination, config validation/env loading, `create_test()` and the
-process-shelling verification ops (`run_tests`/`run_typecheck`/
-`run_lint`/`run_build` — need a project-root argument and, for lint,
-tooling this repo doesn't have configured yet), an HTTP-request audit
-trail (Phase 5's `History` model covers development mutations, not live
-traffic), database, cloud, autonomous agent operations, and the
-"Components" concept from the PRD (undefined in the docs for a
+Not yet: tracing/spans/correlation IDs, the same config convention for
+the Hapi adapter (it still takes explicit `createHapiServer(app,
+options?)` options — could reuse `resolveConfiguredAppPath` later),
+dependency injection, job mutators on `@nexo-alpha/tools`'s write
+interface, job persistence/distributed coordination, config
+validation/env loading, `create_test()` and the process-shelling
+verification ops (`run_tests`/`run_typecheck`/`run_lint`/`run_build` —
+need a project-root argument and, for lint, tooling this repo doesn't
+have configured yet), an HTTP-request audit trail (Phase 5's `History`
+model covers development mutations, not live traffic — separate from
+the new observability events, which are ephemeral, not persisted),
+database, cloud, autonomous agent operations, and the "Components"
+concept from the PRD (undefined in the docs for a
 backend-first framework, so deferred rather than guessed at).
