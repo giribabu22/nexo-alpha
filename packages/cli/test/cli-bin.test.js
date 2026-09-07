@@ -64,3 +64,35 @@ test("missing arguments prints usage and exits 1", async () => {
     return true;
   });
 });
+
+const withConfigDir = join(__dirname, "fixtures", "with-config");
+const noConfigDir = join(__dirname, "fixtures", "no-config");
+
+test("nexo inspect with no app path uses nexo.config.json in the cwd", async () => {
+  const { stdout } = await execFileAsync("node", [cliPath, "inspect"], { cwd: withConfigDir });
+
+  assert.match(stdout, /Nexo Application/);
+  assert.match(stdout, /Name: shop/);
+});
+
+test("nexo inspect --module uses nexo.config.json and renders module detail", async () => {
+  const { stdout } = await execFileAsync(
+    "node",
+    [cliPath, "inspect", "--module", "payments"],
+    { cwd: withConfigDir }
+  );
+
+  assert.match(stdout, /^payments/);
+  assert.match(stdout, /Purpose: Handle customer payments/);
+});
+
+test("no app path and no config exits 1 with a config-aware error", async () => {
+  await assert.rejects(
+    execFileAsync("node", [cliPath, "inspect"], { cwd: noConfigDir }),
+    (error) => {
+      assert.equal(error.code, 1);
+      assert.match(error.stderr, /nexo\.config\.json/);
+      return true;
+    }
+  );
+});

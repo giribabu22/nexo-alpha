@@ -3,6 +3,15 @@ export {
 } from "./load-application.js";
 
 export {
+  findNexoConfig,
+  resolveConfiguredAppPath
+} from "./config.js";
+
+export type {
+  NexoConfig
+} from "./config.js";
+
+export {
   inspect,
   status,
   context

@@ -16,7 +16,9 @@ Or use it without a global install via `npx @nexo-alpha/cli`.
 
 ## How it finds an application
 
-Nexo has no project scaffold or config-file convention yet, so the CLI takes an explicit path to a **compiled JS module** that exports a `NexoApplication` as `app` (or `default`):
+The CLI resolves a target app one of two ways:
+
+**Explicit path** — a path to a **compiled JS module** that exports a `NexoApplication` as `app` (or `default`):
 
 ```ts
 // dist/app.js
@@ -28,14 +30,24 @@ app.module({ name: "payments", purpose: "Handle customer payments" });
 nexo inspect ./dist/app.js
 ```
 
+**Project config** — omit the path and the CLI looks for a `nexo.config.json` in the current directory, or a parent directory, with the shape:
+
+```json
+{ "app": "./dist/app.js" }
+```
+
+`app` is resolved relative to the config file's own directory, so it works the same no matter which subdirectory you run `nexo` from. Run `nexo inspect` from anywhere under a project with this config and it just works — no path needed.
+
 ## Commands
 
 ```bash
-nexo inspect <app-path>              # application summary + module list
-nexo inspect <app-path> <moduleName> # one module's full detail
-nexo status <app-path>               # development state
-nexo context <app-path>              # raw JSON manifest (buildContext output)
+nexo inspect [app-path] [moduleName]  # application summary, or one module's full detail
+nexo inspect [--module moduleName]    # same, using nexo.config.json for the app path
+nexo status [app-path]                # development state
+nexo context [app-path]               # raw JSON manifest (buildContext output)
 ```
+
+`app-path` is optional in every form above — when omitted, the CLI falls back to `nexo.config.json`. `--module` is only meaningful for `inspect`, and only when `app-path` is omitted (when a path is given, the module name is just the next positional argument, as before).
 
 Example:
 
@@ -73,7 +85,7 @@ APIs:
 
 ## Status
 
-**v0.1-alpha.** No config-file convention yet (so `nexo inspect` alone doesn't work from a project root — an explicit path is required), no write commands.
+**v0.1-alpha.** No write commands.
 
 ## License
 
