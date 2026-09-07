@@ -100,6 +100,16 @@ docker run -p 4000:4000 ${projectName}
 
 - \`backend/\`: Nexo application model with modules, APIs, services, and lifecycle.
 - \`frontend/\`: React 18 + Vite client interacting with Nexo backend APIs.
+
+## Nexo CLI
+
+Run these from \`backend/\` (or via \`npm --workspace=backend run <script>\` from the root):
+\`\`\`bash
+npx nexo inspect
+npm run graph
+npx nexo impact <nodeId>
+npx nexo freshness --source-root src
+\`\`\`
 `
       },
       {
@@ -122,7 +132,7 @@ docker run -p 4000:4000 ${projectName}
               inspect: "nexo inspect"
             },
             devDependencies: {
-              "@nexo-alpha/cli": "^0.2.0",
+              "@nexo-alpha/cli": "^0.3.0",
               concurrently: "^9.1.0"
             }
           },
@@ -152,15 +162,16 @@ docker run -p 4000:4000 ${projectName}
               dev: "tsx watch src/index.ts",
               build: "tsc",
               start: "node dist/index.js",
-              typecheck: "tsc --noEmit"
+              typecheck: "tsc --noEmit",
+              graph: "nexo graph --source-root src --out .nexo/knowledge-graph.json"
             },
             dependencies: {
               "@nexo-alpha/core": "^0.2.0",
-              "@nexo-alpha/context": "^0.2.0",
+              "@nexo-alpha/context": "^0.3.0",
               "@nexo-alpha/hapi": "^0.2.0",
               "@nexo-alpha/scheduler": "^0.2.0",
-              "@nexo-alpha/tools": "^0.2.0",
-              "@nexo-alpha/cli": "^0.2.0"
+              "@nexo-alpha/tools": "^0.3.0",
+              "@nexo-alpha/cli": "^0.3.0"
             },
             devDependencies: {
               "@types/node": "^20.11.0",
@@ -207,8 +218,10 @@ docker run -p 4000:4000 ${projectName}
       },
       {
         path: "backend/src/app.ts",
-        content: `import { createApplication, type NexoService } from "@nexo-alpha/core";
+        content: `import { createApplication } from "@nexo-alpha/core";
 import { createKnowledge } from "@nexo-alpha/context";
+import { registerTodosModule } from "./modules/todos/index.js";
+import { registerSystemModule } from "./modules/system/index.js";
 
 export const app = createApplication({
   name: "${projectName}-backend",
@@ -223,6 +236,16 @@ knowledge.addDecision({
   reason: "Separation of pure Nexo backend business logic and React frontend layer.",
   status: "accepted"
 });
+
+// Each module lives in its own folder under src/modules — see that folder
+// for the actual app.module({...}) registration and any services it needs.
+registerTodosModule(app);
+registerSystemModule(app);
+`
+      },
+      {
+        path: "backend/src/modules/todos/service.ts",
+        content: `import type { NexoService } from "@nexo-alpha/core";
 
 export interface TodoItem {
   id: number;
@@ -264,68 +287,83 @@ export class TodoService implements NexoService {
     return item;
   }
 }
+`
+      },
+      {
+        path: "backend/src/modules/todos/index.ts",
+        content: `import type { NexoApplication } from "@nexo-alpha/core";
+import { TodoService } from "./service.js";
 
-const todoService = new TodoService();
+export function registerTodosModule(app: NexoApplication): void {
+  const todoService = new TodoService();
 
-app.module({
-  name: "todos",
-  description: "Todo and Task management module",
-  services: [todoService],
+  app.module({
+    name: "todos",
+    description: "Todo and Task management module",
+    services: [todoService],
 
-  apis: [
-    {
-      name: "getTodos",
-      method: "GET",
-      path: "/api/todos",
-      description: "List all todos",
-      handler: async () => todoService.getAll()
-    },
-    {
-      name: "addTodo",
-      method: "POST",
-      path: "/api/todos",
-      description: "Create a new todo",
-      handler: async (request: any) => {
-        const payload = (request.payload || {}) as { text?: string };
-        const text = payload.text?.trim() || "New Task";
-        return todoService.add(text);
+    apis: [
+      {
+        name: "getTodos",
+        method: "GET",
+        path: "/api/todos",
+        description: "List all todos",
+        handler: async () => todoService.getAll()
+      },
+      {
+        name: "addTodo",
+        method: "POST",
+        path: "/api/todos",
+        description: "Create a new todo",
+        handler: async (request: any) => {
+          const payload = (request.payload || {}) as { text?: string };
+          const text = payload.text?.trim() || "New Task";
+          return todoService.add(text);
+        }
+      },
+      {
+        name: "toggleTodo",
+        method: "POST",
+        path: "/api/todos/{id}/toggle",
+        description: "Toggle todo completion status",
+        handler: async (request: any) => {
+          const id = Number(request.params.id);
+          const item = await todoService.toggle(id);
+          if (item) return item;
+          return { error: "Todo not found" };
+        }
       }
-    },
-    {
-      name: "toggleTodo",
-      method: "POST",
-      path: "/api/todos/{id}/toggle",
-      description: "Toggle todo completion status",
-      handler: async (request: any) => {
-        const id = Number(request.params.id);
-        const item = await todoService.toggle(id);
-        if (item) return item;
-        return { error: "Todo not found" };
+    ]
+  });
+}
+`
+      },
+      {
+        path: "backend/src/modules/system/index.ts",
+        content: `import type { NexoApplication } from "@nexo-alpha/core";
+
+export function registerSystemModule(app: NexoApplication): void {
+  app.module({
+    name: "system",
+    description: "System health and runtime info",
+
+    apis: [
+      {
+        name: "getHealth",
+        method: "GET",
+        path: "/api/health",
+        description: "Return system and Nexo health status",
+        handler: async () => ({
+          status: "ok",
+          framework: "Nexo",
+          uptimeSeconds: Math.floor(process.uptime()),
+          timestamp: new Date().toISOString(),
+          modules: app.getModules().map((m) => m.name)
+        })
       }
-    }
-  ]
-});
-
-app.module({
-  name: "system",
-  description: "System health and runtime info",
-
-  apis: [
-    {
-      name: "getHealth",
-      method: "GET",
-      path: "/api/health",
-      description: "Return system and Nexo health status",
-      handler: async () => ({
-        status: "ok",
-        framework: "Nexo",
-        uptimeSeconds: Math.floor(process.uptime()),
-        timestamp: new Date().toISOString(),
-        modules: app.getModules().map((m) => m.name)
-      })
-    }
-  ]
-});
+    ]
+  });
+}
 `
       },
       {

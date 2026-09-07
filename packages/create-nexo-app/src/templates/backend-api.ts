@@ -90,6 +90,14 @@ npx nexo inspect
 npx nexo status
 npx nexo context
 \`\`\`
+
+Build a knowledge graph over your modules/APIs/services and the actual
+source tree, then query it:
+\`\`\`bash
+npm run graph
+npx nexo impact <nodeId>
+npx nexo freshness --source-root src
+\`\`\`
 `
       },
       {
@@ -104,15 +112,16 @@ npx nexo context
               build: "tsc",
               start: "node dist/index.js",
               typecheck: "tsc --noEmit",
-              inspect: "nexo inspect"
+              inspect: "nexo inspect",
+              graph: "nexo graph --source-root src --out .nexo/knowledge-graph.json"
             },
             dependencies: {
               "@nexo-alpha/core": "^0.2.0",
-              "@nexo-alpha/context": "^0.2.0",
+              "@nexo-alpha/context": "^0.3.0",
               "@nexo-alpha/hapi": "^0.2.0",
               "@nexo-alpha/scheduler": "^0.2.0",
-              "@nexo-alpha/tools": "^0.2.0",
-              "@nexo-alpha/cli": "^0.2.0"
+              "@nexo-alpha/tools": "^0.3.0",
+              "@nexo-alpha/cli": "^0.3.0"
             },
             devDependencies: {
               "@types/node": "^20.11.0",
@@ -159,8 +168,10 @@ npx nexo context
       },
       {
         path: "src/app.ts",
-        content: `import { createApplication, type NexoService } from "@nexo-alpha/core";
+        content: `import { createApplication } from "@nexo-alpha/core";
 import { createKnowledge } from "@nexo-alpha/context";
+import { registerGreetingModule } from "./modules/greeting/index.js";
+import { registerHealthModule } from "./modules/health/index.js";
 
 export const app = createApplication({
   name: "${projectName}",
@@ -176,6 +187,16 @@ knowledge.addDecision({
   status: "accepted"
 });
 
+// Each module lives in its own folder under src/modules — see that folder
+// for the actual app.module({...}) registration and any services it needs.
+registerGreetingModule(app);
+registerHealthModule(app);
+`
+      },
+      {
+        path: "src/modules/greeting/service.ts",
+        content: `import type { NexoService } from "@nexo-alpha/core";
+
 // Example Data Service (Substitute with Prisma, Drizzle, etc.)
 export class StorageService implements NexoService {
   readonly name = "storage-service";
@@ -190,60 +211,73 @@ export class StorageService implements NexoService {
     return this.store.get(key);
   }
 }
+`
+      },
+      {
+        path: "src/modules/greeting/index.ts",
+        content: `import type { NexoApplication } from "@nexo-alpha/core";
+import { StorageService } from "./service.js";
 
-const storageService = new StorageService();
+export function registerGreetingModule(app: NexoApplication): void {
+  const storageService = new StorageService();
 
-// Example Domain Module
-app.module({
-  name: "greeting",
-  description: "Greeting and welcome module",
-  services: [storageService],
+  app.module({
+    name: "greeting",
+    description: "Greeting and welcome module",
+    services: [storageService],
 
-  apis: [
-    {
-      name: "sayHello",
-      method: "GET",
-      path: "/hello",
-      description: "Returns greeting message",
-      handler: async () => ({
-        message: "Hello from ${projectName}!",
-        framework: "Nexo",
-        timestamp: new Date().toISOString()
-      })
-    },
-    {
-      name: "sayPersonalHello",
-      method: "GET",
-      path: "/hello/{name}",
-      description: "Returns personalized greeting",
-      handler: async (request: any) => ({
-        message: \`Hello, \${request.params.name}! Welcome to ${projectName}.\`,
-        timestamp: new Date().toISOString()
-      })
-    }
-  ]
-});
+    apis: [
+      {
+        name: "sayHello",
+        method: "GET",
+        path: "/hello",
+        description: "Returns greeting message",
+        handler: async () => ({
+          message: "Hello from ${projectName}!",
+          framework: "Nexo",
+          timestamp: new Date().toISOString()
+        })
+      },
+      {
+        name: "sayPersonalHello",
+        method: "GET",
+        path: "/hello/{name}",
+        description: "Returns personalized greeting",
+        handler: async (request: any) => ({
+          message: \`Hello, \${request.params.name}! Welcome to ${projectName}.\`,
+          timestamp: new Date().toISOString()
+        })
+      }
+    ]
+  });
+}
+`
+      },
+      {
+        path: "src/modules/health/index.ts",
+        content: `import type { NexoApplication } from "@nexo-alpha/core";
 
-// Health & Inspection Module
-app.module({
-  name: "health",
-  description: "System health checks",
+export function registerHealthModule(app: NexoApplication): void {
+  app.module({
+    name: "health",
+    description: "System health checks",
 
-  apis: [
-    {
-      name: "checkHealth",
-      method: "GET",
-      path: "/health",
-      description: "Service health probe",
-      handler: async () => ({
-        status: "ok",
-        app: app.name,
-        version: app.version,
-        uptime: process.uptime()
-      })
-    }
-  ]
-});
+    apis: [
+      {
+        name: "checkHealth",
+        method: "GET",
+        path: "/health",
+        description: "Service health probe",
+        handler: async () => ({
+          status: "ok",
+          app: app.name,
+          version: app.version,
+          uptime: process.uptime()
+        })
+      }
+    ]
+  });
+}
 `
       },
       {

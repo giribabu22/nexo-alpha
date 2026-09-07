@@ -39,10 +39,18 @@ test("creates fullstack-react project files with customized project name and pro
     assert.equal(backendPkg.name, "super-app-backend");
     assert.ok(backendPkg.dependencies["@nexo-alpha/core"]);
     assert.ok(backendPkg.dependencies["@nexo-alpha/hapi"]);
+    assert.equal(backendPkg.dependencies["@nexo-alpha/tools"], "^0.3.0");
+    assert.equal(backendPkg.scripts.graph, "nexo graph --source-root src --out .nexo/knowledge-graph.json");
 
     const appTs = await fs.readFile(path.join(appDir, "backend", "src", "app.ts"), "utf8");
     assert.match(appTs, /name: "super-app-backend"/);
-    assert.match(appTs, /class TodoService implements NexoService/);
+    assert.match(appTs, /registerTodosModule\(app\)/);
+
+    const todoServiceTs = await fs.readFile(
+      path.join(appDir, "backend", "src", "modules", "todos", "service.ts"),
+      "utf8"
+    );
+    assert.match(todoServiceTs, /class TodoService implements NexoService/);
 
     // Check frontend files
     const frontendPkg = JSON.parse(await fs.readFile(path.join(appDir, "frontend", "package.json"), "utf8"));
@@ -72,13 +80,21 @@ test("creates backend-api project files with customized project name", async () 
     assert.equal(pkg.name, "order-service");
     assert.ok(pkg.dependencies["@nexo-alpha/core"]);
     assert.ok(pkg.dependencies["@nexo-alpha/hapi"]);
+    assert.equal(pkg.dependencies["@nexo-alpha/tools"], "^0.3.0");
+    assert.equal(pkg.scripts.graph, "nexo graph --source-root src --out .nexo/knowledge-graph.json");
 
     const dockerfile = await fs.readFile(path.join(appDir, "Dockerfile"), "utf8");
     assert.match(dockerfile, /FROM node:20-alpine/);
 
     const appTs = await fs.readFile(path.join(appDir, "src", "app.ts"), "utf8");
     assert.match(appTs, /name: "order-service"/);
-    assert.match(appTs, /class StorageService implements NexoService/);
+    assert.match(appTs, /registerGreetingModule\(app\)/);
+
+    const greetingServiceTs = await fs.readFile(
+      path.join(appDir, "src", "modules", "greeting", "service.ts"),
+      "utf8"
+    );
+    assert.match(greetingServiceTs, /class StorageService implements NexoService/);
   } finally {
     await fs.rm(tempDir, { recursive: true, force: true });
   }
