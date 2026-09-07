@@ -29,7 +29,8 @@ export type {
 } from "./api.js";
 
 export type {
-  NexoJob
+  NexoJob,
+  NexoJobRunner
 } from "./job.js";
 
 export type {

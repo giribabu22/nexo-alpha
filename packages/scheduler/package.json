@@ -1,0 +1,36 @@
+{
+  "name": "@nexo-alpha/scheduler",
+  "version": "0.1.0",
+  "description": "Job scheduler/executor for the Nexo framework",
+  "keywords": [
+    "nexo",
+    "scheduler",
+    "cron",
+    "jobs",
+    "framework",
+    "typescript"
+  ],
+  "author": "prem1999",
+  "license": "MIT",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "node --test",
+    "clean": "rm -rf dist"
+  },
+  "dependencies": {
+    "@nexo-alpha/core": "workspace:*"
+  }
+}

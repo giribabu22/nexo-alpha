@@ -21,13 +21,14 @@ test("getDependencies and getDependents traverse the module graph", () => {
   assert.deepEqual(app.getDependents("payments"), []);
 });
 
-test("getApis and getServices flatten across modules", () => {
+test("getApis, getServices, and getJobs flatten across modules", () => {
   const app = createApplication({ name: "shop" });
 
   app.module({
     name: "orders",
     apis: [{ name: "createOrder", method: "POST", path: "/orders" }],
-    services: [{ name: "OrderService" }]
+    services: [{ name: "OrderService" }],
+    jobs: [{ name: "expireStaleOrders", schedule: "0 * * * *" }]
   });
   app.module({ name: "notifications" });
   app.module({
@@ -36,7 +37,8 @@ test("getApis and getServices flatten across modules", () => {
       { name: "createPayment", method: "POST", path: "/payments" },
       { name: "getPayment", method: "GET", path: "/payments/:id" }
     ],
-    services: [{ name: "PaymentService" }]
+    services: [{ name: "PaymentService" }],
+    jobs: [{ name: "retryFailedPayments", schedule: "*/5 * * * *" }]
   });
 
   assert.deepEqual(
@@ -46,6 +48,10 @@ test("getApis and getServices flatten across modules", () => {
   assert.deepEqual(
     app.getServices().map((service) => service.name),
     ["OrderService", "PaymentService"]
+  );
+  assert.deepEqual(
+    app.getJobs().map((job) => job.name),
+    ["expireStaleOrders", "retryFailedPayments"]
   );
 });
 

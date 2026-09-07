@@ -47,6 +47,12 @@ importers:
         specifier: workspace:*
         version: link:../core
 
+  packages/scheduler:
+    dependencies:
+      '@nexo-alpha/core':
+        specifier: workspace:*
+        version: link:../core
+
   packages/tools:
     dependencies:
       '@nexo-alpha/context':

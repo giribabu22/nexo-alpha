@@ -1,6 +1,7 @@
 import type { NexoModule } from "./module.js";
 import type { NexoApi } from "./api.js";
 import type { NexoService } from "./service.js";
+import type { NexoJob } from "./job.js";
 import type { NexoDecision } from "./decision.js";
 import type { NexoConstraint } from "./constraint.js";
 import type { DevelopmentState } from "./development-state.js";
@@ -99,6 +100,10 @@ export class NexoApplication {
     return [...this.modules.values()].flatMap(
       (module) => module.services ?? []
     );
+  }
+
+  getJobs(): readonly NexoJob[] {
+    return [...this.modules.values()].flatMap((module) => module.jobs ?? []);
   }
 
   private requireModule(moduleName: string): NexoModule {
