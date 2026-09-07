@@ -75,6 +75,10 @@ export class NexoApplication {
     return this.config[key] as T | undefined;
   }
 
+  getAllConfig(): Readonly<Record<string, unknown>> {
+    return this.config;
+  }
+
   getDependencies(moduleName: string): readonly string[] {
     return this.modules.get(moduleName)?.dependencies ?? [];
   }

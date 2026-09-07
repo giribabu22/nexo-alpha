@@ -29,6 +29,15 @@ importers:
 
   packages/core: {}
 
+  packages/tools:
+    dependencies:
+      '@nexo/context':
+        specifier: workspace:*
+        version: link:../context
+      '@nexo/core':
+        specifier: workspace:*
+        version: link:../core
+
 packages:
 
   '@types/node@20.19.43':

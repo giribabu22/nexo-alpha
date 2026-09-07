@@ -71,3 +71,12 @@ test("getConfig reads configured values and returns undefined for missing keys",
   assert.equal(app.getConfig("region"), "us-east-1");
   assert.equal(app.getConfig("missing"), undefined);
 });
+
+test("getAllConfig returns the full configured object", () => {
+  const app = createApplication({
+    name: "shop",
+    config: { region: "us-east-1", tier: "standard" }
+  });
+
+  assert.deepEqual(app.getAllConfig(), { region: "us-east-1", tier: "standard" });
+});
