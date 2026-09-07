@@ -48,6 +48,7 @@ export interface NexoApi {
   readonly path: string;
   readonly description?: string;
   readonly purpose?: string;
+  readonly service?: string;
   readonly dependencies?: readonly string[];
   readonly auth?: NexoApiAuth;
   readonly validate?: NexoRequestValidator;

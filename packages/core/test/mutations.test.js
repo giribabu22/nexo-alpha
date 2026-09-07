@@ -148,3 +148,22 @@ test("addModuleDependency appends a new dependency and rejects invalid ones", ()
   assert.throws(() => app.addModuleDependency("payments", "missing"), /not registered/);
   assert.throws(() => app.addModuleDependency("payments", "orders"), /already depends/);
 });
+
+test("mutations are rejected when application is running and allowed when stopped", async () => {
+  const app = buildFixtureApp();
+  await app.start();
+
+  assert.throws(() => app.module({ name: "inventory" }), /Cannot modify application/);
+  assert.throws(() => app.addApiToModule("orders", { name: "x", method: "GET", path: "/x" }), /Cannot modify application/);
+  assert.throws(() => app.updateApi("orders", "createOrder", {}), /Cannot modify application/);
+  assert.throws(() => app.addServiceToModule("orders", { name: "X" }), /Cannot modify application/);
+  assert.throws(() => app.updateService("orders", "OrderService", {}), /Cannot modify application/);
+  assert.throws(() => app.addJobToModule("orders", { name: "j", schedule: "* * * * *" }), /Cannot modify application/);
+  assert.throws(() => app.updateConfig({ a: 1 }), /Cannot modify application/);
+  assert.throws(() => app.addModuleDependency("payments", "orders"), /Cannot modify application/);
+
+  await app.stop();
+
+  assert.doesNotThrow(() => app.module({ name: "inventory" }));
+  assert.doesNotThrow(() => app.updateConfig({ a: 1 }));
+});

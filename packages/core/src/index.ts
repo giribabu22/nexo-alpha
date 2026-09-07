@@ -33,22 +33,6 @@ export type {
   NexoJobRunner
 } from "./job.js";
 
-export type {
-  NexoDecision
-} from "./decision.js";
-
-export type {
-  NexoConstraint
-} from "./constraint.js";
-
-export type {
-  DevelopmentState
-} from "./development-state.js";
-
-export type {
-  NexoHistoryEntry
-} from "./history.js";
-
 export {
   NexoEventBus,
   NexoEvent
@@ -66,3 +50,12 @@ export {
   NexoConfigurationError,
   NexoLifecycleError
 } from "./errors.js";
+
+export {
+  loadEnvConfig,
+  defineConfig
+} from "./config.js";
+
+export type {
+  EnvConfigOptions
+} from "./config.js";

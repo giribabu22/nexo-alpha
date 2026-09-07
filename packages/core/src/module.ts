@@ -8,6 +8,7 @@ export interface NexoModule {
   readonly purpose?: string;
   readonly status?: string;
   readonly dependencies?: readonly string[];
+  readonly externalDependencies?: readonly string[];
   readonly apis?: readonly NexoApi[];
   readonly services?: readonly NexoService[];
   readonly events?: readonly string[];

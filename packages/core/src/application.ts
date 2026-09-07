@@ -2,12 +2,8 @@ import type { NexoModule } from "./module.js";
 import type { NexoApi } from "./api.js";
 import type { NexoService } from "./service.js";
 import type { NexoJob } from "./job.js";
-import type { NexoDecision } from "./decision.js";
-import type { NexoConstraint } from "./constraint.js";
-import type { DevelopmentState } from "./development-state.js";
-import type { NexoHistoryEntry } from "./history.js";
 import { NexoConfigurationError, NexoLifecycleError } from "./errors.js";
-import { NexoEventBus } from "./events.js";
+import { NexoEvent, NexoEventBus } from "./events.js";
 
 export interface ApplicationOptions {
   readonly name: string;
@@ -21,7 +17,8 @@ export type ApplicationState =
   | "initializing"
   | "running"
   | "stopping"
-  | "stopped";
+  | "stopped"
+  | "failed";
 
 export class NexoApplication {
   readonly name: string;
@@ -31,15 +28,6 @@ export class NexoApplication {
 
   private readonly modules = new Map<string, NexoModule>();
   private config: Readonly<Record<string, unknown>>;
-  private readonly decisions: NexoDecision[] = [];
-  private readonly constraints: NexoConstraint[] = [];
-  private readonly history: NexoHistoryEntry[] = [];
-  private developmentState: DevelopmentState = {
-    completed: [],
-    inProgress: [],
-    blocked: [],
-    knownIssues: []
-  };
 
   private _state: ApplicationState = "created";
 
@@ -54,7 +42,17 @@ export class NexoApplication {
     return this._state;
   }
 
+  private assertModifiable(): void {
+    if (this._state !== "created" && this._state !== "stopped") {
+      throw new NexoLifecycleError(
+        `Cannot modify application structure or configuration while in state "${this._state}".`
+      );
+    }
+  }
+
   module(module: NexoModule): this {
+    this.assertModifiable();
+
     if (this.modules.has(module.name)) {
       throw new NexoConfigurationError(
         `Nexo module "${module.name}" is already registered.`
@@ -119,6 +117,7 @@ export class NexoApplication {
   }
 
   addApiToModule(moduleName: string, api: NexoApi): this {
+    this.assertModifiable();
     const module = this.requireModule(moduleName);
 
     if (module.apis?.some((existing) => existing.name === api.name)) {
@@ -140,6 +139,7 @@ export class NexoApplication {
     apiName: string,
     patch: Partial<NexoApi>
   ): NexoApi {
+    this.assertModifiable();
     const module = this.requireModule(moduleName);
     const existing = module.apis?.find((api) => api.name === apiName);
 
@@ -162,6 +162,7 @@ export class NexoApplication {
   }
 
   addServiceToModule(moduleName: string, service: NexoService): this {
+    this.assertModifiable();
     const module = this.requireModule(moduleName);
 
     if (
@@ -185,6 +186,7 @@ export class NexoApplication {
     serviceName: string,
     patch: Partial<NexoService>
   ): NexoService {
+    this.assertModifiable();
     const module = this.requireModule(moduleName);
     const existing = module.services?.find(
       (service) => service.name === serviceName
@@ -209,6 +211,7 @@ export class NexoApplication {
   }
 
   addJobToModule(moduleName: string, job: NexoJob): this {
+    this.assertModifiable();
     const module = this.requireModule(moduleName);
 
     if (module.jobs?.some((existing) => existing.name === job.name)) {
@@ -226,6 +229,7 @@ export class NexoApplication {
   }
 
   updateJob(moduleName: string, jobName: string, patch: Partial<NexoJob>): NexoJob {
+    this.assertModifiable();
     const module = this.requireModule(moduleName);
     const existing = module.jobs?.find((job) => job.name === jobName);
 
@@ -246,11 +250,13 @@ export class NexoApplication {
   }
 
   updateConfig(patch: Record<string, unknown>): Readonly<Record<string, unknown>> {
+    this.assertModifiable();
     this.config = { ...this.config, ...patch };
     return this.config;
   }
 
   addModuleDependency(moduleName: string, dependencyName: string): readonly string[] {
+    this.assertModifiable();
     const module = this.requireModule(moduleName);
 
     if (dependencyName === moduleName) {
@@ -278,41 +284,6 @@ export class NexoApplication {
     return dependencies;
   }
 
-  addHistoryEntry(entry: Omit<NexoHistoryEntry, "timestamp">): this {
-    this.history.push({ ...entry, timestamp: new Date().toISOString() });
-    return this;
-  }
-
-  getHistory(): readonly NexoHistoryEntry[] {
-    return [...this.history];
-  }
-
-  addDecision(decision: NexoDecision): this {
-    this.decisions.push(decision);
-    return this;
-  }
-
-  getDecisions(): readonly NexoDecision[] {
-    return [...this.decisions];
-  }
-
-  addConstraint(constraint: NexoConstraint): this {
-    this.constraints.push(constraint);
-    return this;
-  }
-
-  getConstraints(): readonly NexoConstraint[] {
-    return [...this.constraints];
-  }
-
-  setDevelopmentState(patch: Partial<DevelopmentState>): this {
-    this.developmentState = { ...this.developmentState, ...patch };
-    return this;
-  }
-
-  getDevelopmentState(): DevelopmentState {
-    return this.developmentState;
-  }
 
   async start(): Promise<void> {
     if (this._state === "running") {
@@ -326,16 +297,27 @@ export class NexoApplication {
     }
 
     this._state = "initializing";
+    this.events.emit(NexoEvent.APPLICATION_INITIALIZING, { state: this._state });
 
-    for (const module of this.modules.values()) {
-      await module.initialize?.();
-    }
+    try {
+      for (const module of this.modules.values()) {
+        await module.initialize?.();
+      }
 
-    for (const module of this.modules.values()) {
-      await module.start?.();
+      for (const module of this.modules.values()) {
+        await module.start?.();
+      }
+    } catch (error) {
+      this._state = "failed";
+      this.events.emit(NexoEvent.APPLICATION_FAILED, {
+        state: this._state,
+        error: error instanceof Error ? error.message : String(error)
+      });
+      throw error;
     }
 
     this._state = "running";
+    this.events.emit(NexoEvent.APPLICATION_STARTED, { state: this._state });
   }
 
   async stop(): Promise<void> {
@@ -350,14 +332,62 @@ export class NexoApplication {
     }
 
     this._state = "stopping";
+    this.events.emit(NexoEvent.APPLICATION_STOPPING, { state: this._state });
 
     const modules = [...this.modules.values()].reverse();
 
-    for (const module of modules) {
-      await module.stop?.();
+    try {
+      for (const module of modules) {
+        await module.stop?.();
+      }
+    } catch (error) {
+      this._state = "failed";
+      this.events.emit(NexoEvent.APPLICATION_FAILED, {
+        state: this._state,
+        error: error instanceof Error ? error.message : String(error)
+      });
+      throw error;
     }
 
     this._state = "stopped";
+    this.events.emit(NexoEvent.APPLICATION_STOPPED, { state: this._state });
+  }
+
+  /**
+   * Recovers a "failed" application back to "stopped" so it can be
+   * started again. Only valid from the "failed" state.
+   *
+   * This is a best-effort cleanup, not a rollback: reset() does not know
+   * which modules successfully completed initialize()/start() before the
+   * failure, so it calls stop() on every registered module (in reverse
+   * registration order, same as a normal stop()) and tolerates each one
+   * failing or being a no-op for a module that never started. Errors are
+   * collected and returned rather than thrown, since a caller recovering
+   * from a failure needs to see every cleanup problem, not just the
+   * first one.
+   */
+  async reset(): Promise<readonly Error[]> {
+    if (this._state !== "failed") {
+      throw new NexoLifecycleError(
+        `Cannot reset application while in "${this._state}" state.`
+      );
+    }
+
+    const modules = [...this.modules.values()].reverse();
+    const errors: Error[] = [];
+
+    for (const module of modules) {
+      try {
+        await module.stop?.();
+      } catch (error) {
+        errors.push(error instanceof Error ? error : new Error(String(error)));
+      }
+    }
+
+    this._state = "stopped";
+    this.events.emit(NexoEvent.APPLICATION_RESET, { state: this._state, errors });
+
+    return errors;
   }
 }
 

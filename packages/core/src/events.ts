@@ -22,7 +22,13 @@ export const NexoEvent = {
   API_CALLED: "api.called",
   API_ERROR: "api.error",
   JOB_RAN: "job.ran",
-  JOB_FAILED: "job.failed"
+  JOB_FAILED: "job.failed",
+  APPLICATION_INITIALIZING: "application.initializing",
+  APPLICATION_STARTED: "application.started",
+  APPLICATION_STOPPING: "application.stopping",
+  APPLICATION_STOPPED: "application.stopped",
+  APPLICATION_FAILED: "application.failed",
+  APPLICATION_RESET: "application.reset"
 } as const;
 
 export interface ApiCalledEvent {

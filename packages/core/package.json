@@ -1,6 +1,6 @@
 {
   "name": "@nexo-alpha/core",
-  "version": "0.1.2",
+  "version": "0.2.0",
   "description": "Core runtime for the Nexo application framework",
   "keywords": [
     "nexo",
@@ -20,6 +20,9 @@
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
     }
+  },
+  "publishConfig": {
+    "access": "public"
   },
   "files": [
     "dist"
