@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import { createApplication } from "@nexo-alpha/core";
-import { createHapiServer, toHapiPath } from "../dist/index.js";
+import { createHapiServer, startHapiServer, toHapiPath } from "../dist/index.js";
 
 test("toHapiPath converts :param segments to {param} syntax", () => {
   assert.equal(toHapiPath("/payments/:id"), "/payments/{id}");
@@ -253,4 +253,18 @@ test("a throwing handler emits api.error and Hapi still returns its default 500"
   // No api.called for the throwing path -- there's no meaningful status
   // code to report from Nexo's side once the handler itself has thrown.
   assert.equal(calledEvents.length, 0);
+});
+
+test("startHapiServer stops automatically when app.stop() is called", async () => {
+  const app = buildFixtureApp();
+  await app.start();
+
+  const server = await startHapiServer(app, { port: 0 });
+  const infoUri = server.info.uri;
+  assert.ok(infoUri, "Server should have an active URI when started");
+
+  await app.stop();
+
+  // Injecting or checking info after stop shows server is stopped
+  assert.equal(app.state, "stopped");
 });

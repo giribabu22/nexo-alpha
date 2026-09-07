@@ -1,3 +1,12 @@
+import { NexoError } from "@nexo-alpha/core";
+
+export class NexoCronError extends NexoError {
+  constructor(message: string) {
+    super("NEXO_CRON_ERROR", message);
+    this.name = "NexoCronError";
+  }
+}
+
 export interface CronFieldSchedule {
   readonly allowed: ReadonlySet<number>;
   readonly restricted: boolean;
@@ -28,7 +37,7 @@ function resolveSegment(segment: string, min: number, max: number): number[] {
   if (stepOnly) {
     const step = Number(stepOnly[1]);
     if (step <= 0) {
-      throw new Error(`Invalid cron step "${segment}": step must be positive.`);
+      throw new NexoCronError(`Invalid cron step "${segment}": step must be positive.`);
     }
     const values: number[] = [];
     for (let n = min; n <= max; n += step) {
@@ -44,10 +53,10 @@ function resolveSegment(segment: string, min: number, max: number): number[] {
     const step = range[3] !== undefined ? Number(range[3]) : 1;
 
     if (start > end) {
-      throw new Error(`Invalid cron range "${segment}": start is greater than end.`);
+      throw new NexoCronError(`Invalid cron range "${segment}": start is greater than end.`);
     }
     if (step <= 0) {
-      throw new Error(`Invalid cron range "${segment}": step must be positive.`);
+      throw new NexoCronError(`Invalid cron range "${segment}": step must be positive.`);
     }
 
     const values: number[] = [];
@@ -62,7 +71,7 @@ function resolveSegment(segment: string, min: number, max: number): number[] {
     return [Number(segment)];
   }
 
-  throw new Error(`Invalid cron field segment "${segment}".`);
+  throw new NexoCronError(`Invalid cron field segment "${segment}".`);
 }
 
 function parseField(
@@ -82,7 +91,7 @@ function parseField(
       const normalized = normalize ? normalize(value) : value;
 
       if (normalized < min || normalized > max) {
-        throw new Error(
+        throw new NexoCronError(
           `Invalid cron field "${raw}": value ${value} is out of range [${min}, ${max}].`
         );
       }
@@ -98,7 +107,7 @@ export function parseCronExpression(expression: string): CronSchedule {
   const parts = expression.trim().split(/\s+/);
 
   if (parts.length !== 5) {
-    throw new Error(
+    throw new NexoCronError(
       `Invalid cron expression "${expression}": expected 5 fields (minute hour day-of-month month day-of-week), got ${parts.length}.`
     );
   }
@@ -151,7 +160,7 @@ export function getNextRunTime(schedule: CronSchedule, from: Date): Date {
     candidate.setMinutes(candidate.getMinutes() + 1);
   }
 
-  throw new Error(
+  throw new NexoCronError(
     "No matching cron run time found within the 4-year search horizon."
   );
 }

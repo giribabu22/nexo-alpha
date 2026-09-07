@@ -1,4 +1,5 @@
 export {
+  NexoCronError,
   parseCronExpression,
   getNextRunTime
 } from "./cron.js";

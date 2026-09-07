@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import { createApplication } from "@nexo-alpha/core";
-import { createJobScheduler } from "../dist/index.js";
+import { createJobScheduler, startJobScheduler } from "../dist/index.js";
 
 function createFakeClock(initial) {
   let current = initial.getTime();
@@ -219,4 +219,27 @@ test("start() throws immediately if a scheduled job has an invalid schedule", ()
   const scheduler = createJobScheduler(app, { clock });
 
   assert.throws(() => scheduler.start(), /Invalid cron expression/);
+});
+
+test("startJobScheduler stops automatically when app.stop() is called", async () => {
+  const { clock, advanceTo } = createFakeClock(new Date(2026, 0, 1, 10, 0, 0));
+  let count = 0;
+
+  const app = buildApp({
+    name: "counter",
+    schedule: "*/5 * * * *",
+    run: () => { count++; }
+  });
+
+  await app.start();
+  startJobScheduler(app, { clock });
+
+  await advanceTo(new Date(2026, 0, 1, 10, 5, 0).getTime());
+  assert.equal(count, 1);
+
+  await app.stop();
+
+  // Advance time further -- no more runs should occur
+  await advanceTo(new Date(2026, 0, 1, 10, 15, 0).getTime());
+  assert.equal(count, 1);
 });

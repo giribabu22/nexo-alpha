@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { parseCronExpression, getNextRunTime } from "../dist/index.js";
+import { parseCronExpression, getNextRunTime, NexoCronError } from "../dist/index.js";
 
 test("parses '* * * * *' as unrestricted on every field", () => {
   const schedule = parseCronExpression("* * * * *");
@@ -46,17 +46,32 @@ test("normalizes day-of-week 7 to 0 (Sunday)", () => {
 });
 
 test("rejects an expression without exactly 5 fields", () => {
-  assert.throws(() => parseCronExpression("* * * *"), /expected 5 fields/);
-  assert.throws(() => parseCronExpression("* * * * * *"), /expected 5 fields/);
+  assert.throws(
+    () => parseCronExpression("* * * *"),
+    (err) => err instanceof NexoCronError && err.code === "NEXO_CRON_ERROR" && /expected 5 fields/.test(err.message)
+  );
+  assert.throws(
+    () => parseCronExpression("* * * * * *"),
+    (err) => err instanceof NexoCronError && err.code === "NEXO_CRON_ERROR"
+  );
 });
 
 test("rejects an out-of-range value", () => {
-  assert.throws(() => parseCronExpression("60 * * * *"), /out of range/);
-  assert.throws(() => parseCronExpression("* 24 * * *"), /out of range/);
+  assert.throws(
+    () => parseCronExpression("60 * * * *"),
+    (err) => err instanceof NexoCronError && err.code === "NEXO_CRON_ERROR" && /out of range/.test(err.message)
+  );
+  assert.throws(
+    () => parseCronExpression("* 24 * * *"),
+    (err) => err instanceof NexoCronError && err.code === "NEXO_CRON_ERROR"
+  );
 });
 
 test("rejects garbage syntax", () => {
-  assert.throws(() => parseCronExpression("abc * * * *"), /Invalid cron field segment/);
+  assert.throws(
+    () => parseCronExpression("abc * * * *"),
+    (err) => err instanceof NexoCronError && err.code === "NEXO_CRON_ERROR" && /Invalid cron field segment/.test(err.message)
+  );
 });
 
 test("getNextRunTime finds the next matching minute for '*/5 * * * *'", () => {

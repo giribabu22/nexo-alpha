@@ -10,6 +10,7 @@ export interface JobSchedulerClock {
 export interface JobSchedulerOptions {
   readonly onError?: (job: NexoJob, error: unknown) => void;
   readonly clock?: JobSchedulerClock;
+  readonly bindLifecycle?: boolean;
 }
 
 export interface NexoJobScheduler {
@@ -116,5 +117,12 @@ export function startJobScheduler(
 ): NexoJobScheduler {
   const scheduler = createJobScheduler(app, options);
   scheduler.start();
+
+  if (options.bindLifecycle !== false) {
+    app.events.on(NexoEvent.APPLICATION_STOPPING, () => {
+      scheduler.stop();
+    });
+  }
+
   return scheduler;
 }

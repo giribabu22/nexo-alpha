@@ -11,6 +11,7 @@ export interface CreateHapiServerOptions {
   readonly port?: number;
   readonly host?: string;
   readonly authenticate?: NexoAuthenticator;
+  readonly bindLifecycle?: boolean;
 }
 
 export function toHapiPath(path: string): string {
@@ -139,5 +140,17 @@ export async function startHapiServer(
 ): Promise<Hapi.Server> {
   const server = await createHapiServer(app, options);
   await server.start();
+
+  if (options.bindLifecycle !== false) {
+    const onStopping = async () => {
+      try {
+        await server.stop();
+      } catch {
+        // Best effort if already stopped
+      }
+    };
+    app.events.on(NexoEvent.APPLICATION_STOPPING, onStopping);
+  }
+
   return server;
 }
