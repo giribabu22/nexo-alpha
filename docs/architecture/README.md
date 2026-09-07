@@ -1,4 +1,4 @@
-# Architecture Notes — v0.17
+# Architecture Notes — v0.18
 
 **npm scope note:** packages publish under `@nexo-alpha` (an npm Organization), not `@nexo` — the unscoped `@nexo` scope required an org that wasn't set up in time; `nexo-alpha` was used instead and is treated as the project's real published identity going forward. All package names below reflect this.
 
@@ -600,7 +600,108 @@ Later packages depend **on** core, never the reverse:
 @nexo-alpha/cli       --> @nexo-alpha/core, @nexo-alpha/context, @nexo-alpha/tools
 ```
 
-## v0.17 boundary
+## v0.18 boundary
+
+In scope — the "real AST-based, fully module-resolved code graph, possibly
+with embeddings for semantic search" the previous boundary flagged as
+"future, larger-scoped work":
+
+- **AST-Based Source Parsing**: `createSourceInterface()`
+  (`packages/tools/src/source-interface.ts`) no longer regex-scans source
+  text — it parses each file with the real TypeScript compiler
+  (`ts.createSourceFile`, syntactic only, no `Program`/type-checker, so no
+  cross-project module resolution or type information). This fixes the
+  regex scanner's documented false-positive/negative modes (comments,
+  string literals, multi-statement lines) for exactly the same
+  `exports`/`imports`/`importEdges` output shape — every existing test
+  continued to pass unchanged against the new parser. `typescript` moved
+  from a `devDependency` to a `dependency` of `@nexo-alpha/tools`
+  accordingly.
+- **Symbols**: `SourceFile` gained `symbols` (`SymbolInfo[]`:
+  `name`/`kind`/`exported`/`line`) — every top-level function, class,
+  interface, type alias, enum, and variable declaration in a file, not
+  just its exports.
+- **First-Slice Call Graph**: `SourceTree` gained `callEdges`
+  (`CallEdge[]`), the same "first slice, not a full static-analysis
+  engine" scoping already applied to the import graph: only direct calls
+  (`foo()`) from inside a top-level function/const-arrow body to an
+  identifier resolving to another top-level symbol in the same file or an
+  imported binding (resolved via the same `resolveInternalImport` the
+  import graph already uses). Method calls (`obj.method()`), constructor
+  calls (`new X()`), calls inside class methods, and anything needing type
+  information are out of scope and simply not recorded. `hashSourceTree()`
+  now covers `symbols`/`callEdges` too.
+- **Knowledge Graph**: a new `@nexo-alpha/tools` module,
+  `knowledge-graph.ts`, joins the two halves of Knowledge —
+  `ApplicationStructure` (modules/APIs/services/jobs/declared dependency
+  edges) and `SourceTree` (files/symbols/imports/calls) — into one
+  `KnowledgeGraph` of typed nodes (`module`/`api`/`service`/`job`/`file`/
+  `symbol`/`external`) and typed edges (`contains`/`exposes`/
+  `depends_on`/`imports`/`calls`). File and symbol nodes carry `evidence`
+  (`{file, line?}`) pointing back to their source; module/API/service/job
+  nodes don't, since no association exists yet between a declared
+  `NexoModule` and the file(s) implementing it. `buildKnowledgeGraph()`
+  accepts an optional `summarize?(node)` hook — mirroring
+  `NexoAuthenticator`/`NexoJobRunner`'s declare-the-shape-caller-supplies-
+  the-behavior split — but never calls an AI provider itself; the
+  dependency-direction rule below still holds. `searchKnowledgeGraph()` is
+  plain case-insensitive keyword matching over node names/descriptions/
+  summaries, explicitly not a vector/semantic index — no embedding
+  provider is wired into this framework.
+- **Knowledge Graph Persistence**: `knowledge-store.ts` adds
+  `saveKnowledgeGraph`/`loadKnowledgeGraph`/`isGraphStale`, writing a
+  plain JSON file (creating parent directories as needed) with the graph
+  plus the `structureHash`/`sourceTreeHash` it was built from — consistent
+  with the project's stance elsewhere against a database (see the
+  scheduler's "no persistence... state in code, not a database"). `nexo
+  graph [app-module-path] [--source-root <path>] [--out <path>]
+  [--force]` is the CLI surface: hash-gated like the rest of Knowledge's
+  staleness story — an up-to-date file at `--out` (default
+  `.nexo/knowledge-graph.json`) is left alone and reported as such rather
+  than silently rewritten every run, unless `--force` is passed.
+- **Graph Queries on the Read Interface**: `createReadInterface(app,
+  knowledge?, sourceTree?)` gained an optional third parameter (mirroring
+  `buildContext`'s own signature) and four new methods —
+  `getKnowledgeGraph()`, `traceCallers(nodeId)` ("what calls this"),
+  `traceDependents(nodeId)` ("what would be affected if this changed"),
+  and `search(query)`. Unlike `ApplicationContext.sourceTree` itself,
+  `getKnowledgeGraph()` is **not** opt-in on `sourceTree` — the
+  module/API/service/job/dependency portion of the graph is derived
+  entirely from the registry (free, no source parsing, same stance as
+  `getStructure()`), so it's always built; only the file/symbol/import/
+  call portion is absent when no `sourceTree` was supplied. (An earlier
+  draft of this feature made the whole graph — and therefore `search`/
+  `traceCallers`/`traceDependents` — return nothing without a source-tree
+  scan; that was a bug, not a design choice, caught during manual CLI
+  verification and fixed before this boundary closed.)
+- **Module-to-File Association**: `NexoModule` gained an optional
+  `sourceFiles?: readonly string[]` (`packages/core/src/module.ts`) —
+  declared implementing file paths, purely informational like
+  `dependencies`; Nexo never infers this from naming or content. When a
+  module declares it and a source tree was scanned, `buildKnowledgeGraph()`
+  adds an `"implements"` edge from the module node to each matching `file`
+  node; a declared path the scan didn't actually find is left unlinked, not
+  guessed at or errored on.
+- **Interactive Graph Queries on the CLI**: `nexo search <query>
+  [app-module-path] [--source-root <path>]` and `nexo trace <nodeId>
+  [app-module-path] [--source-root <path>] [--callers]` are the CLI
+  surface for `NexoReadInterface`'s `search`/`traceDependents`/
+  `traceCallers` — case-insensitive keyword search, and edge tracing from
+  a node ID as printed by `nexo graph`/`nexo search` (e.g.
+  `"module:payments"`, `"symbol:src/orders.ts#createOrder"`). `nexo trace`
+  defaults to `traceDependents` ("what would be affected"); `--callers`
+  narrows to `traceCallers` ("what calls this"). Both build the graph
+  fresh on every call — there's no persisted index either command reads
+  from instead, same as `nexo context`/`nexo graph`.
+
+**Deliberately not doing:** no embedding provider or vector index (see
+`searchKnowledgeGraph` above); no type-aware call resolution, method
+calls, or constructor calls in the call graph; no LLM wired into
+`buildKnowledgeGraph`'s optional `summarize` hook — it stays a hook a
+caller can supply, not something this framework calls itself, consistent
+with the dependency-direction rule below.
+
+### v0.17 boundary (superseded)
 
 In scope:
 - **Core Decoupling**: Extracted `NexoDecision`, `NexoConstraint`, `DevelopmentState`, and `NexoHistoryEntry` out of `@nexo-alpha/core` and into `@nexo-alpha/context` under the `createKnowledge()` container.

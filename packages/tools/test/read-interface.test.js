@@ -153,3 +153,20 @@ test("getHistory returns audit entries recorded on knowledge", () => {
   assert.equal(history[0].result, "success");
 });
 
+test("getKnowledgeGraph, search, and trace work over the registry alone, with no sourceTree supplied", async () => {
+  const { app, knowledge } = buildFixture();
+  const tools = createReadInterface(app, knowledge);
+
+  const graph = await tools.getKnowledgeGraph();
+  assert.ok(graph.nodes.some((n) => n.id === "module:payments"));
+  assert.ok(!graph.nodes.some((n) => n.kind === "file"), "no sourceTree was supplied, so no file nodes");
+
+  const found = await tools.search("payments");
+  assert.ok(found.some((n) => n.id === "module:payments"));
+
+  const dependents = await tools.traceDependents("module:orders");
+  assert.ok(dependents.some((e) => e.from === "module:payments" && e.kind === "depends_on"));
+
+  assert.deepEqual(await tools.traceCallers("module:orders"), []);
+});
+

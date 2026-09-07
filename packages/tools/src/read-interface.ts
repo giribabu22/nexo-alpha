@@ -13,8 +13,18 @@ import {
   type ModuleContext,
   type NexoConstraint,
   type NexoDecision,
-  type NexoHistoryEntry
+  type NexoHistoryEntry,
+  type SourceTree
 } from "@nexo-alpha/context";
+import {
+  buildKnowledgeGraph,
+  searchKnowledgeGraph,
+  traceCallers,
+  traceDependents,
+  type KnowledgeGraph,
+  type KnowledgeGraphEdge,
+  type KnowledgeGraphNode
+} from "./knowledge-graph.js";
 
 export interface ApplicationArchitecture {
   readonly modules: readonly ModuleContext[];
@@ -57,12 +67,33 @@ export interface NexoReadInterface {
   getCurrentWork(): DevelopmentState;
   getStatus(): ApplicationStatus;
   getHistory(): readonly NexoHistoryEntry[];
+  /**
+   * The unified knowledge graph over registered structure (always present,
+   * free — the same "no source parsing involved" stance as `getStructure()`)
+   * plus, when a `sourceTree` was supplied to `createReadInterface`, scanned
+   * source (files/symbols/imports/calls) — see `buildKnowledgeGraph` in
+   * `@nexo-alpha/tools`'s `knowledge-graph.ts`. Never `undefined`; when no
+   * `sourceTree` was supplied, the graph simply has no file/symbol nodes —
+   * `search()`/`traceCallers()`/`traceDependents()` still work over the
+   * module/API/service/job/dependency portion.
+   */
+  getKnowledgeGraph(): Promise<KnowledgeGraph>;
+  /** Edges of kind "calls" pointing at `nodeId` — "what calls this." */
+  traceCallers(nodeId: string): Promise<readonly KnowledgeGraphEdge[]>;
+  /** Every edge pointing at `nodeId` — "what would be affected if this changed." */
+  traceDependents(nodeId: string): Promise<readonly KnowledgeGraphEdge[]>;
+  /** Case-insensitive keyword search over node names/descriptions/summaries — not semantic search. */
+  search(query: string): Promise<readonly KnowledgeGraphNode[]>;
 }
 
 export function createReadInterface(
   app: NexoApplication,
-  knowledge?: ApplicationKnowledge
+  knowledge?: ApplicationKnowledge,
+  sourceTree?: SourceTree
 ): NexoReadInterface {
+  const getGraph = async (): Promise<KnowledgeGraph> =>
+    buildKnowledgeGraph(buildContext(app, knowledge, sourceTree));
+
   return {
     getApplication() {
       return buildContext(app, knowledge).application;
@@ -130,6 +161,22 @@ export function createReadInterface(
 
     getHistory() {
       return knowledge?.getHistory() ?? [];
+    },
+
+    getKnowledgeGraph() {
+      return getGraph();
+    },
+
+    async traceCallers(nodeId) {
+      return traceCallers(await getGraph(), nodeId);
+    },
+
+    async traceDependents(nodeId) {
+      return traceDependents(await getGraph(), nodeId);
+    },
+
+    async search(query) {
+      return searchKnowledgeGraph(await getGraph(), query);
     }
   };
 }

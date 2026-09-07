@@ -9,11 +9,14 @@ export {
 export type {
   ApplicationContext,
   ApplicationStructure,
+  CallEdge,
+  CallSite,
   DependencyEdge,
   ImportEdge,
   ModuleContext,
   SourceFile,
-  SourceTree
+  SourceTree,
+  SymbolInfo
 } from "./context.js";
 
 export {

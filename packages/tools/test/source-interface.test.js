@@ -99,3 +99,63 @@ test("describeSourceTree respects a custom extension filter", async () => {
 
   assert.deepEqual(tree.files.map((file) => file.path), ["nested/gadget.js"]);
 });
+
+const graphFixture = join(here, "..", "fixtures", "graph-sample");
+
+test("describeSourceTree extracts top-level symbols with kind/exported/line", async () => {
+  const source = createSourceInterface(graphFixture);
+  const tree = await source.describeSourceTree();
+
+  const service = tree.files.find((file) => file.path === "service.ts");
+  assert.deepEqual(
+    service.symbols.map((symbol) => ({ name: symbol.name, kind: symbol.kind, exported: symbol.exported })),
+    [
+      { name: "formatName", kind: "function", exported: true },
+      { name: "greet", kind: "function", exported: true }
+    ]
+  );
+  assert.equal(service.symbols[0].line, 1);
+  assert.equal(service.symbols[1].line, 5);
+});
+
+test("describeSourceTree resolves a same-file call to a top-level symbol", async () => {
+  const source = createSourceInterface(graphFixture);
+  const tree = await source.describeSourceTree();
+
+  assert.ok(
+    tree.callEdges.some(
+      (edge) =>
+        edge.from.file === "service.ts" &&
+        edge.from.symbol === "greet" &&
+        edge.to?.file === "service.ts" &&
+        edge.to?.symbol === "formatName"
+    ),
+    "expected a service.ts#greet -> service.ts#formatName call edge"
+  );
+});
+
+test("describeSourceTree resolves a call through an imported binding to the exporting file", async () => {
+  const source = createSourceInterface(graphFixture);
+  const tree = await source.describeSourceTree();
+
+  assert.ok(
+    tree.callEdges.some(
+      (edge) =>
+        edge.from.file === "index.ts" &&
+        edge.from.symbol === "run" &&
+        edge.to?.file === "service.ts" &&
+        edge.to?.symbol === "greet"
+    ),
+    "expected an index.ts#run -> service.ts#greet call edge"
+  );
+});
+
+test("describeSourceTree records a call to a bare-package import as external, not a graph edge to nowhere", async () => {
+  const source = createSourceInterface(graphFixture);
+  const tree = await source.describeSourceTree();
+
+  const edge = tree.callEdges.find((edge) => edge.from.file === "index.ts" && edge.from.symbol === "run" && edge.toExternal !== undefined);
+  assert.ok(edge, "expected an external call edge from index.ts#run");
+  assert.equal(edge.toExternal, "node:crypto");
+  assert.equal(edge.to, undefined);
+});

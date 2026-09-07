@@ -1,11 +1,13 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 
 import { createApplication } from "@nexo-alpha/core";
 import { createKnowledge } from "@nexo-alpha/context";
-import { inspect, status, context, knowledge, validate, health } from "../dist/commands.js";
+import { context, graph, health, inspect, knowledge, search, status, trace, validate } from "../dist/commands.js";
 
 const here = dirname(fileURLToPath(import.meta.url));
 
@@ -117,5 +119,42 @@ test("health renders application health metrics", () => {
   assert.match(output, /Nexo Application Health/);
   assert.match(output, /Modules: 2/);
   assert.match(output, /Architecture Valid: YES/);
+});
+
+test("search finds nodes by keyword over the registry alone", async () => {
+  const { app, knowledge: journal } = buildFixture();
+  const results = JSON.parse(await search(app, journal, "payments"));
+
+  assert.ok(results.some((node) => node.id === "module:payments"));
+});
+
+test("trace defaults to dependents and narrows to callers with the direction argument", async () => {
+  const { app, knowledge: journal } = buildFixture();
+
+  const dependents = JSON.parse(await trace(app, journal, "module:orders"));
+  assert.ok(dependents.some((edge) => edge.from === "module:payments" && edge.kind === "depends_on"));
+
+  const callers = JSON.parse(await trace(app, journal, "module:orders", undefined, "callers"));
+  assert.deepEqual(callers, []);
+});
+
+test("graph builds and persists a knowledge graph, then reports up to date on an unchanged rebuild", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "nexo-cli-graph-"));
+  try {
+    const { app, knowledge: journal } = buildFixture();
+    const outPath = join(dir, "knowledge-graph.json");
+
+    const first = JSON.parse(await graph(app, journal, outPath));
+    assert.ok(first.graph.nodes.some((node) => node.id === "module:payments"));
+    assert.equal(typeof first.meta.structureHash, "string");
+
+    const second = await graph(app, journal, outPath);
+    assert.match(second, /up to date/);
+
+    const forced = JSON.parse(await graph(app, journal, outPath, undefined, true));
+    assert.equal(forced.meta.structureHash, first.meta.structureHash);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
 });
 

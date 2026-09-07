@@ -5,7 +5,15 @@ import {
   knowledgeToJson,
   type ApplicationKnowledge
 } from "@nexo-alpha/context";
-import { createSourceInterface, createVerificationInterface } from "@nexo-alpha/tools";
+import {
+  buildKnowledgeGraph,
+  createReadInterface,
+  createSourceInterface,
+  createVerificationInterface,
+  isGraphStale,
+  loadKnowledgeGraph,
+  saveKnowledgeGraph
+} from "@nexo-alpha/tools";
 import {
   renderApplicationSummary,
   renderDevelopmentState,
@@ -116,6 +124,89 @@ export async function sourceTree(projectRoot: string): Promise<string> {
   const source = createSourceInterface(projectRoot);
   const tree = await source.describeSourceTree();
   return JSON.stringify({ ...tree, sourceTreeHash: source.sourceTreeHash(tree) }, null, 2);
+}
+
+/**
+ * Builds (or reuses) the application's knowledge graph — the unified
+ * relationship graph over registered structure and, when `sourceRoot` is
+ * given, scanned source — and persists it to `outPath` as JSON.
+ *
+ * Hash-gated like `structureHash`/`sourceTreeHash` themselves: if a graph
+ * already exists at `outPath` and its saved `structureHash`/`sourceTreeHash`
+ * still match what's live right now, the existing file is left untouched
+ * and this reports "up to date" instead of silently rewriting an
+ * unchanged file on every invocation. Pass `force: true` to rebuild
+ * regardless.
+ */
+export async function graph(
+  app: NexoApplication,
+  knowledge: ApplicationKnowledge | undefined,
+  outPath: string,
+  sourceRoot?: string,
+  force = false
+): Promise<string> {
+  const sourceTree =
+    sourceRoot !== undefined ? await createSourceInterface(sourceRoot).describeSourceTree() : undefined;
+
+  const context = buildContext(app, knowledge, sourceTree);
+
+  if (!force) {
+    const existing = await loadKnowledgeGraph(outPath);
+    if (existing !== undefined && !isGraphStale(existing.meta, context.structureHash, context.sourceTreeHash)) {
+      return `Knowledge graph at ${outPath} is up to date (${existing.graph.nodes.length} nodes, ${existing.graph.edges.length} edges). Pass --force to rebuild anyway.`;
+    }
+  }
+
+  const knowledgeGraph = await buildKnowledgeGraph(context);
+  const stored = await saveKnowledgeGraph(outPath, knowledgeGraph, {
+    structureHash: context.structureHash,
+    ...(context.sourceTreeHash !== undefined && { sourceTreeHash: context.sourceTreeHash })
+  });
+
+  return JSON.stringify(stored, null, 2);
+}
+
+/**
+ * Keyword search over the knowledge graph's node names/descriptions —
+ * `NexoReadInterface.search()`'s CLI surface. Plain case-insensitive
+ * substring matching, not semantic search (see `searchKnowledgeGraph` in
+ * `@nexo-alpha/tools`). Scans `sourceRoot` fresh on every call, same as
+ * `context --source-root`/`graph` — there's no persisted index this reads
+ * from instead.
+ */
+export async function search(
+  app: NexoApplication,
+  knowledge: ApplicationKnowledge | undefined,
+  query: string,
+  sourceRoot?: string
+): Promise<string> {
+  const sourceTree =
+    sourceRoot !== undefined ? await createSourceInterface(sourceRoot).describeSourceTree() : undefined;
+  const results = await createReadInterface(app, knowledge, sourceTree).search(query);
+  return JSON.stringify(results, null, 2);
+}
+
+/**
+ * Edges touching one graph node — `NexoReadInterface.traceCallers()`/
+ * `traceDependents()`'s CLI surface. `direction: "callers"` returns only
+ * `"calls"` edges pointing at `nodeId` ("what calls this"); `"dependents"`
+ * (the default) returns every edge pointing at it, of any kind ("what
+ * would be affected if this changed"). Node IDs come from a prior `nexo
+ * graph`/`nexo search` output (e.g. `"symbol:src/orders.ts#createOrder"`,
+ * `"module:payments"`).
+ */
+export async function trace(
+  app: NexoApplication,
+  knowledge: ApplicationKnowledge | undefined,
+  nodeId: string,
+  sourceRoot?: string,
+  direction: "callers" | "dependents" = "dependents"
+): Promise<string> {
+  const sourceTree =
+    sourceRoot !== undefined ? await createSourceInterface(sourceRoot).describeSourceTree() : undefined;
+  const readInterface = createReadInterface(app, knowledge, sourceTree);
+  const edges = direction === "callers" ? await readInterface.traceCallers(nodeId) : await readInterface.traceDependents(nodeId);
+  return JSON.stringify(edges, null, 2);
 }
 
 export function validate(app: NexoApplication): string {

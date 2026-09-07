@@ -24,6 +24,8 @@ export interface ModuleContext {
   readonly services: readonly NexoService[];
   readonly events: readonly string[];
   readonly jobs: readonly NexoJob[];
+  /** Declared implementing file paths. See `NexoModule.sourceFiles`. */
+  readonly sourceFiles: readonly string[];
 }
 
 /** A declared dependency edge between a module and whatever it depends on. */
@@ -59,10 +61,31 @@ export interface ApplicationStructure {
  * without `@nexo-alpha/context` depending on `@nexo-alpha/tools`
  * (dependencies only ever point the other way in this framework).
  */
+/**
+ * A top-level declaration in a scanned file — a function, class, interface,
+ * type alias, enum, or variable. Produced by `@nexo-alpha/tools`'s
+ * `createSourceInterface()` from a real TypeScript AST walk (not regex).
+ * `exported` reflects only an inline `export` modifier on the declaration
+ * itself — a name re-exported later via a separate `export { x as y }`
+ * statement still appears in the owning `SourceFile.exports`, just not
+ * reflected back onto this flag, since that would require resolving the
+ * export list against every local declaration rather than reading each
+ * declaration in isolation.
+ */
+export interface SymbolInfo {
+  readonly name: string;
+  readonly kind: "function" | "class" | "interface" | "type" | "enum" | "variable";
+  readonly exported: boolean;
+  /** 1-based source line the declaration starts on. */
+  readonly line: number;
+}
+
 export interface SourceFile {
   readonly path: string;
   readonly exports: readonly string[];
   readonly imports: readonly string[];
+  /** Top-level declarations found in this file. See {@link SymbolInfo}. */
+  readonly symbols: readonly SymbolInfo[];
 }
 
 /** A resolved import edge between two files within the same scanned source tree. */
@@ -71,7 +94,33 @@ export interface ImportEdge {
   readonly to: string;
 }
 
-/** A file/export/import inventory produced by scanning a project's actual source tree. */
+/** One endpoint of a {@link CallEdge} — a symbol within a specific file. */
+export interface CallSite {
+  readonly file: string;
+  readonly symbol: string;
+}
+
+/**
+ * A first-slice call edge: a direct call (`foo()`), from inside a top-level
+ * function declaration or a top-level `const`/`let` bound to a function or
+ * arrow expression, to an identifier that resolves either to another
+ * top-level symbol in the same file, another file within the same scanned
+ * tree (via an import), or an unresolved external package. Exactly one of
+ * `to`/`toExternal` is present.
+ *
+ * Deliberately out of scope, same "not a full static-analysis engine"
+ * stance as {@link ImportEdge}: method calls (`obj.method()`), constructor
+ * calls (`new X()`), calls inside class methods, and anything needing type
+ * information. A callee that can't be resolved to a known local symbol or
+ * import binding is simply not recorded, not guessed at.
+ */
+export interface CallEdge {
+  readonly from: CallSite;
+  readonly to?: CallSite;
+  readonly toExternal?: string;
+}
+
+/** A file/export/import/symbol/call inventory produced by scanning a project's actual source tree. */
 export interface SourceTree {
   readonly fileCount: number;
   readonly files: readonly SourceFile[];
@@ -87,6 +136,8 @@ export interface SourceTree {
    * C, only the A→B and B→C edges exist, not A→C.
    */
   readonly importEdges: readonly ImportEdge[];
+  /** First-slice call graph edges. See {@link CallEdge}. */
+  readonly callEdges: readonly CallEdge[];
 }
 
 export interface ApplicationContext {
@@ -171,10 +222,20 @@ export function hashStructure(structure: ApplicationStructure): string {
 export function hashSourceTree(tree: SourceTree): string {
   const canonical = JSON.stringify({
     files: tree.files.map(
-      (file) => `${file.path}:${file.exports.join(",")}:${file.imports.join(",")}`
+      (file) =>
+        `${file.path}:${file.exports.join(",")}:${file.imports.join(",")}:` +
+        file.symbols.map((symbol) => `${symbol.name}/${symbol.kind}/${symbol.exported}`).join(",")
     ),
     importEdges: [...tree.importEdges]
       .map((edge) => `${edge.from}->${edge.to}`)
+      .sort(),
+    callEdges: [...tree.callEdges]
+      .map(
+        (edge) =>
+          `${edge.from.file}#${edge.from.symbol}->${
+            edge.to !== undefined ? `${edge.to.file}#${edge.to.symbol}` : `external:${edge.toExternal}`
+          }`
+      )
       .sort()
   });
   return createHash("sha256").update(canonical).digest("hex");
@@ -217,7 +278,8 @@ export function buildContext(
     apis: module.apis ?? [],
     services: module.services ?? [],
     events: module.events ?? [],
-    jobs: module.jobs ?? []
+    jobs: module.jobs ?? [],
+    sourceFiles: module.sourceFiles ?? []
   }));
 
   const structure = describeStructure(app);

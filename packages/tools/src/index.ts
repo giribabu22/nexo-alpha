@@ -60,5 +60,39 @@ export type {
   NexoSourceInterface,
   SourceFile,
   SourceTree,
-  SourceInterfaceOptions
+  SourceInterfaceOptions,
+  CallEdge,
+  CallSite,
+  ImportEdge,
+  SymbolInfo
 } from "./source-interface.js";
+
+export {
+  buildKnowledgeGraph,
+  searchKnowledgeGraph,
+  traceCallers,
+  traceDependents
+} from "./knowledge-graph.js";
+
+export type {
+  KnowledgeGraph,
+  KnowledgeGraphNode,
+  KnowledgeGraphEdge,
+  KnowledgeNodeKind,
+  KnowledgeEdgeKind,
+  KnowledgeEvidence,
+  KnowledgeNodeSummarizer,
+  BuildKnowledgeGraphOptions
+} from "./knowledge-graph.js";
+
+export {
+  saveKnowledgeGraph,
+  loadKnowledgeGraph,
+  isGraphStale,
+  KNOWLEDGE_GRAPH_SCHEMA_VERSION
+} from "./knowledge-store.js";
+
+export type {
+  StoredKnowledgeGraph,
+  KnowledgeGraphMeta
+} from "./knowledge-store.js";

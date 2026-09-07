@@ -67,6 +67,36 @@ test("nexo context --source-root folds a source-tree scan into the manifest", as
   assert.equal(typeof parsed.sourceTreeHash, "string");
 });
 
+test("nexo search finds nodes by keyword over the registry alone (no --source-root)", async () => {
+  const { stdout } = await execFileAsync("node", [cliPath, "search", "payments", fixtureAppPath]);
+  const results = JSON.parse(stdout);
+
+  assert.ok(results.some((node) => node.id === "module:payments"));
+});
+
+test("nexo trace reports dependents by default and narrows to callers with --callers", async () => {
+  const { stdout: dependents } = await execFileAsync("node", [cliPath, "trace", "module:orders", fixtureAppPath]);
+  const dependentEdges = JSON.parse(dependents);
+  assert.ok(dependentEdges.some((edge) => edge.from === "module:payments" && edge.kind === "depends_on"));
+
+  const { stdout: callers } = await execFileAsync("node", [
+    cliPath,
+    "trace",
+    "module:orders",
+    fixtureAppPath,
+    "--callers"
+  ]);
+  assert.deepEqual(JSON.parse(callers), []);
+});
+
+test("nexo search with no query prints usage and exits 1", async () => {
+  await assert.rejects(execFileAsync("node", [cliPath, "search"]), (error) => {
+    assert.equal(error.code, 1);
+    assert.match(error.stderr, /Usage: nexo search/);
+    return true;
+  });
+});
+
 test("nexo knowledge prints the journal as JSON and exits 0", async () => {
   const { stdout } = await execFileAsync("node", [cliPath, "knowledge", fixtureAppPath]);
   const parsed = JSON.parse(stdout);
