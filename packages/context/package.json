@@ -1,6 +1,6 @@
 {
   "name": "@nexo-alpha/context",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Application context manifest for the Nexo framework",
   "keywords": [
     "nexo",
