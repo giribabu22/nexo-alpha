@@ -31,3 +31,14 @@ export type {
   DependencyGraphEntry,
   ApplicationHealth
 } from "./verification-interface.js";
+
+export {
+  createMetricsCollector
+} from "./metrics-interface.js";
+
+export type {
+  NexoMetricsCollector,
+  NexoMetricsSnapshot,
+  ApiMetrics,
+  JobMetrics
+} from "./metrics-interface.js";

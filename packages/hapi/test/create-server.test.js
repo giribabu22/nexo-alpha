@@ -181,3 +181,76 @@ test("auth runs before validation: an unauthenticated request with an invalid pa
 
   assert.equal(response.statusCode, 401);
 });
+
+test("a successful call emits api.called with the right status and a measured duration", async () => {
+  const app = buildFixtureApp();
+  const events = [];
+  app.events.on("api.called", (event) => events.push(event));
+
+  const server = await createHapiServer(app);
+  const response = await server.inject({ method: "GET", url: "/health" });
+
+  assert.equal(response.statusCode, 200);
+  assert.equal(events.length, 1);
+  assert.equal(events[0].api, "health");
+  assert.equal(events[0].method, "GET");
+  assert.equal(events[0].path, "/health");
+  assert.equal(events[0].statusCode, 200);
+  assert.equal(typeof events[0].durationMs, "number");
+  assert.ok(events[0].durationMs >= 0);
+});
+
+test("a denied request (401/403/400) also emits api.called with that status code", async () => {
+  const app = buildSecuredApp();
+  const events = [];
+  app.events.on("api.called", (event) => events.push(event));
+
+  const server = await createHapiServer(app, {
+    authenticate: async () => ({ authenticated: false })
+  });
+
+  const response = await server.inject({
+    method: "POST",
+    url: "/secure-echo",
+    payload: { value: "hi" }
+  });
+
+  assert.equal(response.statusCode, 401);
+  assert.equal(events.length, 1);
+  assert.equal(events[0].api, "secureEcho");
+  assert.equal(events[0].statusCode, 401);
+});
+
+test("a throwing handler emits api.error and Hapi still returns its default 500", async () => {
+  const app = createApplication({ name: "shop" });
+  app.module({
+    name: "api",
+    apis: [
+      {
+        name: "broken",
+        method: "GET",
+        path: "/broken",
+        handler: async () => {
+          throw new Error("kaboom");
+        }
+      }
+    ]
+  });
+
+  const events = [];
+  app.events.on("api.error", (event) => events.push(event));
+  const calledEvents = [];
+  app.events.on("api.called", (event) => calledEvents.push(event));
+
+  const server = await createHapiServer(app);
+  const response = await server.inject({ method: "GET", url: "/broken" });
+
+  assert.equal(response.statusCode, 500);
+  assert.equal(events.length, 1);
+  assert.equal(events[0].api, "broken");
+  assert.equal(events[0].error, "kaboom");
+  assert.equal(typeof events[0].durationMs, "number");
+  // No api.called for the throwing path -- there's no meaningful status
+  // code to report from Nexo's side once the handler itself has thrown.
+  assert.equal(calledEvents.length, 0);
+});

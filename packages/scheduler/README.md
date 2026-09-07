@@ -50,6 +50,22 @@ scheduler.stop();
 
 Standard 5-field cron (`minute hour day-of-month month day-of-week`), hand-rolled with **no dependency** — consistent with how the rest of Nexo hand-rolls small parsers (the CLI's argv parsing and `nexo.config.json` discovery) rather than reaching for a library. Supported per field: `*`, an exact number, `*/step`, comma-separated lists, and `a-b` ranges (with an optional `/step`). This is the practical subset used in the wild — no `L`/`W`/named months or weekdays. Day-of-week `7` is treated as `0` (Sunday). When **both** day-of-month and day-of-week are restricted, a match is either one (standard cron OR semantics); when only one is restricted, that one alone must match.
 
+## Observability
+
+Every run emits through `app.events` (`@nexo-alpha/core`'s `NexoEventBus`):
+
+```ts
+app.events.on("job.ran", ({ job, durationMs }) => {
+  console.log(`${job} ran in ${durationMs}ms`);
+});
+
+app.events.on("job.failed", ({ job, error, durationMs }) => {
+  console.error(`${job} failed after ${durationMs}ms:`, error);
+});
+```
+
+`job.failed` fires alongside (not instead of) the `onError` option — use whichever fits: `onError` for handling a specific job's failure inline, the event for aggregate observability. `@nexo-alpha/tools`'s `createMetricsCollector(app)` subscribes to both events to build run/failure counts and average durations per job.
+
 ## Design notes
 
 - **No wiring into `NexoApplication.start()`/`stop()`.** Same precedent as `@nexo-alpha/hapi`: creating and starting the scheduler is a separate, explicit step the caller takes alongside the application's own lifecycle.

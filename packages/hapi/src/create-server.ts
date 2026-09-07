@@ -1,9 +1,10 @@
 import Hapi from "@hapi/hapi";
-import type {
-  NexoApi,
-  NexoApplication,
-  NexoAuthenticator,
-  NexoRequestContext
+import {
+  NexoEvent,
+  type NexoApi,
+  type NexoApplication,
+  type NexoAuthenticator,
+  type NexoRequestContext
 } from "@nexo-alpha/core";
 
 export interface CreateHapiServerOptions {
@@ -58,6 +59,22 @@ export async function createHapiServer(
       method: api.method,
       path: toHapiPath(api.path),
       handler: async (request, h) => {
+        const startedAt = Date.now();
+
+        const respond = (statusCode: number, body?: unknown) => {
+          app.events.emit(NexoEvent.API_CALLED, {
+            api: api.name,
+            method: api.method,
+            path: api.path,
+            statusCode,
+            durationMs: Date.now() - startedAt
+          });
+
+          return body === undefined
+            ? h.response().code(statusCode)
+            : h.response(body as Hapi.ResponseValue).code(statusCode);
+        };
+
         const context: NexoRequestContext = {
           params: request.params as Record<string, string>,
           query: request.query as Record<string, unknown>,
@@ -74,14 +91,12 @@ export async function createHapiServer(
           );
 
           if (!authResult.authenticated) {
-            return h.response({ error: "Unauthorized" }).code(401);
+            return respond(401, { error: "Unauthorized" });
           }
 
           const missing = missingScopes(api, authResult.scopes);
           if (missing.length > 0) {
-            return h
-              .response({ error: "Forbidden", missingScopes: missing })
-              .code(403);
+            return respond(403, { error: "Forbidden", missingScopes: missing });
           }
         }
 
@@ -89,15 +104,28 @@ export async function createHapiServer(
           const outcome = await api.validate(context);
 
           if (!outcome.valid) {
-            return h
-              .response({ error: "Validation failed", errors: outcome.errors ?? [] })
-              .code(400);
+            return respond(400, {
+              error: "Validation failed",
+              errors: outcome.errors ?? []
+            });
           }
         }
 
-        const result = await handler(context);
+        let result: unknown;
+        try {
+          result = await handler(context);
+        } catch (error) {
+          app.events.emit(NexoEvent.API_ERROR, {
+            api: api.name,
+            method: api.method,
+            path: api.path,
+            durationMs: Date.now() - startedAt,
+            error: error instanceof Error ? error.message : String(error)
+          });
+          throw error;
+        }
 
-        return result === undefined ? h.response().code(204) : result;
+        return result === undefined ? respond(204) : respond(200, result);
       }
     });
   }

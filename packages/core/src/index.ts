@@ -50,7 +50,15 @@ export type {
 } from "./history.js";
 
 export {
-  NexoEventBus
+  NexoEventBus,
+  NexoEvent
+} from "./events.js";
+
+export type {
+  ApiCalledEvent,
+  ApiErrorEvent,
+  JobRanEvent,
+  JobFailedEvent
 } from "./events.js";
 
 export {

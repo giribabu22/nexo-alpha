@@ -151,6 +151,62 @@ test("stop() prevents any further fires", async () => {
   assert.equal(runCount, 0);
 });
 
+test("a successful run emits job.ran with a measured duration", async () => {
+  const { clock, advanceTo } = createFakeClock(new Date(2026, 0, 1, 10, 0, 0));
+
+  const app = buildApp({
+    name: "tick",
+    schedule: "*/5 * * * *",
+    run: () => {}
+  });
+
+  const events = [];
+  app.events.on("job.ran", (event) => events.push(event));
+
+  const scheduler = createJobScheduler(app, { clock });
+  scheduler.start();
+
+  await advanceTo(new Date(2026, 0, 1, 10, 5, 0).getTime());
+
+  assert.equal(events.length, 1);
+  assert.equal(events[0].job, "tick");
+  assert.equal(typeof events[0].durationMs, "number");
+  assert.ok(events[0].durationMs >= 0);
+
+  scheduler.stop();
+});
+
+test("a failing run emits job.failed in addition to calling onError", async () => {
+  const { clock, advanceTo } = createFakeClock(new Date(2026, 0, 1, 10, 0, 0));
+
+  const app = buildApp({
+    name: "flaky",
+    schedule: "*/5 * * * *",
+    run: () => {
+      throw new Error("boom");
+    }
+  });
+
+  const failedEvents = [];
+  app.events.on("job.failed", (event) => failedEvents.push(event));
+  const errors = [];
+
+  const scheduler = createJobScheduler(app, {
+    clock,
+    onError: (job, error) => errors.push({ job: job.name, message: error.message })
+  });
+  scheduler.start();
+
+  await advanceTo(new Date(2026, 0, 1, 10, 5, 0).getTime());
+
+  assert.equal(failedEvents.length, 1);
+  assert.equal(failedEvents[0].job, "flaky");
+  assert.equal(failedEvents[0].error, "boom");
+  assert.deepEqual(errors, [{ job: "flaky", message: "boom" }]);
+
+  scheduler.stop();
+});
+
 test("start() throws immediately if a scheduled job has an invalid schedule", () => {
   const { clock } = createFakeClock(new Date(2026, 0, 1, 10, 0, 0));
 

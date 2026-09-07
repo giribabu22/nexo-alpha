@@ -79,6 +79,22 @@ const server = await startHapiServer(app, {
 
 Requests to `/widgets` now run through **Identity → Permission → Validation → Operation** before the handler: no/invalid auth → `401`; authenticated but missing a required scope → `403`; validation fails → `400` with `errors`; otherwise the handler runs, unchanged. If any API declares `auth.required` but no `authenticate` option is passed to `createHapiServer`/`startHapiServer`, server creation fails immediately rather than silently serving an unenforceable route.
 
+### Observability
+
+Every route emits through `app.events` (`@nexo-alpha/core`'s `NexoEventBus`), so you can observe traffic without touching the route logic:
+
+```ts
+app.events.on("api.called", ({ api, method, path, statusCode, durationMs }) => {
+  console.log(`${method} ${path} (${api}) -> ${statusCode} in ${durationMs}ms`);
+});
+
+app.events.on("api.error", ({ api, error }) => {
+  console.error(`${api} handler threw:`, error);
+});
+```
+
+`api.called` fires for every completed request — including auth/validation denials (`401`/`403`/`400`) — with the actual status code, so you can see e.g. how much traffic to an endpoint is getting rejected. `api.error` fires only when the handler itself throws; the error still propagates and Hapi still returns its own default `500`, unchanged. `@nexo-alpha/tools`'s `createMetricsCollector(app)` subscribes to these same events to build call/error counts and average durations, if you want aggregated numbers instead of raw events.
+
 ## What's here
 
 - **`createHapiServer(app, options?)`** — builds a `Hapi.server(...)` and registers a route for every API that has a `handler`. Path params use Express-style `:id` in `NexoApi.path` (matching the rest of Nexo's examples) and are converted to Hapi's `{id}` syntax automatically.

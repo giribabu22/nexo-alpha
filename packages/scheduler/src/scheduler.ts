@@ -1,4 +1,4 @@
-import type { NexoApplication, NexoJob } from "@nexo-alpha/core";
+import { NexoEvent, type NexoApplication, type NexoJob } from "@nexo-alpha/core";
 import { getNextRunTime, parseCronExpression, type CronSchedule } from "./cron.js";
 
 export interface JobSchedulerClock {
@@ -53,9 +53,22 @@ export function createJobScheduler(
   }
 
   function runJob(entry: ScheduledJobEntry): void {
+    const startedAt = clock.now().getTime();
+
     Promise.resolve()
       .then(() => entry.job.run?.())
+      .then(() => {
+        app.events.emit(NexoEvent.JOB_RAN, {
+          job: entry.job.name,
+          durationMs: clock.now().getTime() - startedAt
+        });
+      })
       .catch((error: unknown) => {
+        app.events.emit(NexoEvent.JOB_FAILED, {
+          job: entry.job.name,
+          durationMs: clock.now().getTime() - startedAt,
+          error: error instanceof Error ? error.message : String(error)
+        });
         onError?.(entry.job, error);
       })
       .finally(() => {

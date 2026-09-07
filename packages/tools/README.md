@@ -56,6 +56,13 @@ verify.validateArchitecture();
 // -> { valid: true, issues: [] } (or issues for cycles / self-deps / unresolved dependency names)
 verify.checkApplicationHealth();
 // -> { state, moduleCount, apiCount, serviceCount, architecture }
+
+import { createMetricsCollector } from "@nexo-alpha/tools";
+
+const metrics = createMetricsCollector(app);
+// ... traffic happens via @nexo-alpha/hapi / jobs run via @nexo-alpha/scheduler ...
+metrics.getMetrics();
+// -> { apis: { refundPayment: { calls, errors, averageDurationMs } }, jobs: {...} }
 ```
 
 ## What's here
@@ -76,6 +83,8 @@ Each call is a `{ success, data?, error? }` result — never a throw — and run
 
 `validateConfiguration`, `validateArchitecture`, `inspectDependencies`, `checkApplicationHealth` — the in-memory subset of PRD section 19's "Verification Capabilities." `validateArchitecture` detects dependency cycles and self-dependencies (errors) and dependency names that don't resolve to a registered module (a warning, not an error — it may be an external system like `"stripe"`). `validateConfiguration` flags config values that won't survive `JSON.stringify` cleanly (functions, circular references). These are read-only diagnostics and are not audited to history, unlike the write interface. `run_tests`/`run_typecheck`/`run_lint`/`run_build` from PRD section 19 are **not implemented** — they'd need to shell out to an external target application's own toolchain via an explicit project-root argument, and this repo has no lint tooling configured to call yet; left for a future pass once that's needed.
 
+`createMetricsCollector(app)` returns a `NexoMetricsCollector` with `getMetrics()`, `reset()`, and `stop()`. Unlike the other three interfaces (stateless — computed fresh from `app` on every call), this one is **stateful**: it subscribes to `app.events` at creation time and accumulates call/run counts, error/failure counts, and average durations per API/job as `@nexo-alpha/hapi` and `@nexo-alpha/scheduler` emit `api.called`/`api.error`/`job.ran`/`job.failed`. `checkApplicationHealth()` stays a separate, static-structure concern — this is the live-runtime counterpart, not a replacement for it. Call `stop()` when you're done with a collector (e.g. between tests) so it unsubscribes rather than leaking listeners on `app.events`.
+
 ## Design notes
 
 - **Explicit, bounded, auditable.** Per PRD section 20, write operations never bypass a permission check, and every attempt — granted or not — is audited. Actually running tests/lint/build (PRD section 19, "Verification Capabilities") is out of scope here; it's a separate tooling concern layered on top of a successful write.
@@ -88,7 +97,7 @@ Each call is a `{ success, data?, error? }` result — never a throw — and run
 
 ## Status
 
-**v0.1-alpha.** No MCP server or CLI wiring yet — this is the interface those will eventually sit on top of. `create_test()` and the verification ops (`run_tests`, `run_lint`, etc.) from the PRD are not implemented yet.
+**v0.1-alpha.** No MCP server or CLI wiring yet — this is the interface those will eventually sit on top of. `create_test()` and the verification ops (`run_tests`, `run_lint`, etc.) from the PRD are not implemented yet. No tracing/spans — `createMetricsCollector` is counts and durations only.
 
 ## License
 
