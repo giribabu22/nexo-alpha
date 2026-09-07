@@ -6,9 +6,9 @@ import { dirname, join } from "node:path";
 import { createRunInterface } from "../dist/index.js";
 
 const here = dirname(fileURLToPath(import.meta.url));
-const passingFixture = join(here, "fixtures", "run-passing");
-const failingFixture = join(here, "fixtures", "run-failing");
-const missingFixture = join(here, "fixtures", "does-not-exist");
+const passingFixture = join(here, "..", "fixtures", "run-passing");
+const failingFixture = join(here, "..", "fixtures", "run-failing");
+const missingFixture = join(here, "..", "fixtures", "does-not-exist");
 
 test("runTests succeeds when the target's \"test\" script exits 0", async () => {
   const run = createRunInterface(passingFixture);

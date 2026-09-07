@@ -9,7 +9,12 @@ const execFileAsync = promisify(execFile);
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const cliPath = join(__dirname, "..", "dist", "cli.js");
-const fixtureAppPath = join(__dirname, "fixtures", "app.js");
+// Fixtures live as a sibling of test/, not nested under it — Node's test
+// runner treats any .js/.ts file under a directory literally named "test"
+// as a test file to run, which would silently (and, for source-interface's
+// fixtures, not-so-silently) execute these as phantom test cases.
+const fixturesDir = join(__dirname, "..", "fixtures");
+const fixtureAppPath = join(fixturesDir, "app.js");
 
 test("nexo inspect prints the application summary and exits 0", async () => {
   const { stdout } = await execFileAsync("node", [cliPath, "inspect", fixtureAppPath]);
@@ -52,7 +57,7 @@ test("nexo context --source-root folds a source-tree scan into the manifest", as
     "context",
     fixtureAppPath,
     "--source-root",
-    join(__dirname, "fixtures")
+    fixturesDir
   ]);
   const parsed = JSON.parse(stdout);
 
@@ -75,7 +80,7 @@ test("nexo source scans a project root and prints a file/export inventory", asyn
   const { stdout } = await execFileAsync("node", [
     cliPath,
     "source",
-    join(__dirname, "fixtures")
+    fixturesDir
   ]);
   const parsed = JSON.parse(stdout);
 
@@ -118,8 +123,8 @@ test("missing arguments prints usage and exits 1", async () => {
   });
 });
 
-const withConfigDir = join(__dirname, "fixtures", "with-config");
-const noConfigDir = join(__dirname, "fixtures", "no-config");
+const withConfigDir = join(fixturesDir, "with-config");
+const noConfigDir = join(fixturesDir, "no-config");
 
 test("nexo inspect with no app path uses nexo.config.json in the cwd", async () => {
   const { stdout } = await execFileAsync("node", [cliPath, "inspect"], { cwd: withConfigDir });

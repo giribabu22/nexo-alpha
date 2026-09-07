@@ -11,7 +11,7 @@ import { findNexoConfig, resolveConfiguredAppPath } from "../dist/index.js";
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
 test("findNexoConfig finds a config file in the start directory", async () => {
-  const configDir = resolve(__dirname, "fixtures", "with-config");
+  const configDir = resolve(__dirname, "..", "fixtures", "with-config");
   const found = await findNexoConfig(configDir);
 
   assert.equal(found, join(configDir, "nexo.config.json"));
@@ -34,21 +34,21 @@ test("findNexoConfig walks up parent directories to find a config file", async (
 });
 
 test("findNexoConfig returns undefined when no config file exists", async () => {
-  const noConfigDir = resolve(__dirname, "fixtures", "no-config");
+  const noConfigDir = resolve(__dirname, "..", "fixtures", "no-config");
   const found = await findNexoConfig(noConfigDir);
 
   assert.equal(found, undefined);
 });
 
 test("resolveConfiguredAppPath resolves the app field relative to the config's directory", async () => {
-  const configDir = resolve(__dirname, "fixtures", "with-config");
+  const configDir = resolve(__dirname, "..", "fixtures", "with-config");
   const appPath = await resolveConfiguredAppPath(configDir);
 
-  assert.equal(appPath, resolve(__dirname, "fixtures", "app.js"));
+  assert.equal(appPath, resolve(__dirname, "..", "fixtures", "app.js"));
 });
 
 test("resolveConfiguredAppPath returns undefined when no config file exists", async () => {
-  const noConfigDir = resolve(__dirname, "fixtures", "no-config");
+  const noConfigDir = resolve(__dirname, "..", "fixtures", "no-config");
   const appPath = await resolveConfiguredAppPath(noConfigDir);
 
   assert.equal(appPath, undefined);

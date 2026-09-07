@@ -1,5 +1,7 @@
+import { DEFAULT_WIDGET_ID } from "../widget.js";
+
 export class Gadget {
-  constructor(name) {
+  constructor(name = DEFAULT_WIDGET_ID) {
     this.name = name;
   }
 }

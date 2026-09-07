@@ -1,6 +1,11 @@
 import { readdir, readFile } from "node:fs/promises";
-import { extname, join, relative, sep } from "node:path";
-import { hashSourceTree, type SourceFile, type SourceTree } from "@nexo-alpha/context";
+import { extname, join, posix, relative, sep } from "node:path";
+import {
+  hashSourceTree,
+  type ImportEdge,
+  type SourceFile,
+  type SourceTree
+} from "@nexo-alpha/context";
 
 // Re-exported so existing consumers of @nexo-alpha/tools don't need to
 // import these shapes from @nexo-alpha/context directly. They're defined
@@ -8,7 +13,7 @@ import { hashSourceTree, type SourceFile, type SourceTree } from "@nexo-alpha/co
 // can reference them without @nexo-alpha/context depending on
 // @nexo-alpha/tools; dependencies only ever point the other way in this
 // framework.
-export type { SourceFile, SourceTree };
+export type { ImportEdge, SourceFile, SourceTree };
 
 export interface SourceInterfaceOptions {
   /** File extensions to include. Defaults to TypeScript/JavaScript source. */
@@ -55,6 +60,83 @@ const NAMED_EXPORT_PATTERNS: readonly RegExp[] = [
 
 const EXPORT_LIST_PATTERN = /export\s*\{([^}]+)\}/g;
 const DEFAULT_EXPORT_PATTERN = /export\s+default\b/;
+
+// Same tradeoff as the export patterns above: regex, not a parser. These
+// cover the common forms (static import/export-from, require(), dynamic
+// import()) on a single logical statement per match — the character class
+// excludes newlines and quotes so a match can't accidentally span into an
+// unrelated statement later in the file.
+const IMPORT_PATTERNS: readonly RegExp[] = [
+  /\bimport\s+[^'";\n]*?\sfrom\s+["']([^"']+)["']/g,
+  /\bimport\s+["']([^"']+)["']\s*;?/g,
+  /\bexport\s+(?:\*(?:\s+as\s+[A-Za-z0-9_$]+)?|\{[^}]*\})\s+from\s+["']([^"']+)["']/g,
+  /\brequire\(\s*["']([^"']+)["']\s*\)/g,
+  /\bimport\(\s*["']([^"']+)["']\s*\)/g
+];
+
+function extractImports(source: string): string[] {
+  const specifiers = new Set<string>();
+
+  for (const pattern of IMPORT_PATTERNS) {
+    for (const match of source.matchAll(pattern)) {
+      const specifier = match[1];
+      if (specifier !== undefined) {
+        specifiers.add(specifier);
+      }
+    }
+  }
+
+  return [...specifiers].sort();
+}
+
+function stripKnownExtension(path: string, extensions: readonly string[]): string {
+  const match = extensions.find((extension) => path.endsWith(extension));
+  return match !== undefined ? path.slice(0, -match.length) : path;
+}
+
+/**
+ * Resolves a relative import specifier written in `fromPath` to another
+ * file within the same scan.
+ *
+ * Tries, in order: the specifier as-is (handles a same-extension or
+ * extensionless-source import); with any extension it already ends in
+ * stripped and each of `extensions` tried in its place (handles the
+ * TypeScript NodeNext convention this very repo uses throughout — writing
+ * `"./context.js"` in an import while the real file is `context.ts`); and
+ * finally as a directory index file. Returns `undefined` for anything that
+ * doesn't resolve to a known file — a bare package specifier, a relative
+ * import to a file outside the scanned extensions (e.g. `.json`), or a
+ * genuinely missing import.
+ */
+function resolveInternalImport(
+  fromPath: string,
+  specifier: string,
+  knownPaths: ReadonlySet<string>,
+  extensions: readonly string[]
+): string | undefined {
+  const joined = posix.normalize(posix.join(posix.dirname(fromPath), specifier));
+
+  if (knownPaths.has(joined)) {
+    return joined;
+  }
+
+  const base = stripKnownExtension(joined, extensions);
+
+  for (const extension of extensions) {
+    if (knownPaths.has(`${base}${extension}`)) {
+      return `${base}${extension}`;
+    }
+  }
+
+  for (const extension of extensions) {
+    const indexPath = posix.join(base, `index${extension}`);
+    if (knownPaths.has(indexPath)) {
+      return indexPath;
+    }
+  }
+
+  return undefined;
+}
 
 function extractExports(source: string): string[] {
   const names = new Set<string>();
@@ -122,23 +204,30 @@ function toPosixPath(path: string): string {
 }
 
 /**
- * Extracts a lightweight, per-file export inventory from the project's
- * source tree — the "what files exist and what do they expose" half of
- * codebase understanding that {@link "@nexo-alpha/context"}'s
- * `describeStructure()` can't provide, since that reads only what's been
- * registered with `NexoApplication`, not the source tree itself.
+ * Extracts a lightweight, per-file export/import inventory from the
+ * project's source tree — the "what files exist, what do they expose, and
+ * what do they pull in" half of codebase understanding that
+ * {@link "@nexo-alpha/context"}'s `describeStructure()` can't provide,
+ * since that reads only what's been registered with `NexoApplication`,
+ * not the source tree itself.
  *
  * This is deliberately not a full static-analysis engine: no AST, no
- * import-graph resolution, no cross-file symbol tracking. It answers
- * "what does this file export" cheaply and without a parser dependency;
- * building a precise code graph (real import edges, call graphs, symbol
- * usage) is separate, larger scope this does not attempt.
+ * cross-file symbol tracking, and import resolution is limited to relative
+ * specifiers that land on another file this same scan found — a bare
+ * package specifier (`"react"`, `"node:fs"`, `"@nexo-alpha/core"`) is
+ * recorded per-file but never turned into a graph edge, since resolving it
+ * would mean fully replicating Node's module resolution algorithm across
+ * `node_modules`. It answers "what does this file export/import" cheaply
+ * and without a parser dependency; a precise code graph (call graphs,
+ * symbol usage, full module resolution) is separate, larger scope this
+ * does not attempt.
  */
 export function createSourceInterface(
   projectRoot: string,
   options: SourceInterfaceOptions = {}
 ): NexoSourceInterface {
   const extensions = new Set(options.extensions ?? DEFAULT_EXTENSIONS);
+  const resolutionExtensions = [...extensions];
   const ignore = new Set([...DEFAULT_IGNORE, ...(options.ignore ?? [])]);
 
   return {
@@ -150,12 +239,24 @@ export function createSourceInterface(
           const contents = await readFile(absolutePath, "utf8");
           return {
             path: toPosixPath(relative(projectRoot, absolutePath)),
-            exports: extractExports(contents)
+            exports: extractExports(contents),
+            imports: extractImports(contents)
           };
         })
       );
 
-      return { fileCount: files.length, files };
+      const knownPaths = new Set(files.map((file) => file.path));
+      const importEdges: ImportEdge[] = files
+        .flatMap((file) =>
+          file.imports
+            .filter((specifier) => specifier.startsWith("."))
+            .map((specifier) => resolveInternalImport(file.path, specifier, knownPaths, resolutionExtensions))
+            .filter((to): to is string => to !== undefined)
+            .map((to) => ({ from: file.path, to }))
+        )
+        .sort((a, b) => (a.from === b.from ? a.to.localeCompare(b.to) : a.from.localeCompare(b.from)));
+
+      return { fileCount: files.length, files, importEdges };
     },
 
     sourceTreeHash(tree) {

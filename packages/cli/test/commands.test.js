@@ -70,7 +70,7 @@ test("context returns valid JSON matching the manifest", async () => {
 
 test("context folds in a source-tree scan when sourceRoot is given", async () => {
   const { app, knowledge } = buildFixture();
-  const output = await context(app, knowledge, join(here, "fixtures"));
+  const output = await context(app, knowledge, join(here, "..", "fixtures"));
   const parsed = JSON.parse(output);
 
   const appFile = parsed.sourceTree.files.find((file) => file.path === "app.js");

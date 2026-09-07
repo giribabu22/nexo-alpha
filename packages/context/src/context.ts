@@ -49,22 +49,44 @@ export interface ApplicationStructure {
 }
 
 /**
- * One scanned source file's path (relative to a project root, POSIX-style)
- * and its best-effort exported symbol names. This shape is produced by
- * `@nexo-alpha/tools`'s `createSourceInterface()` — defined here, not
- * there, so `ApplicationContext` can reference it without `@nexo-alpha/context`
- * depending on `@nexo-alpha/tools` (dependencies only ever point the other
- * way in this framework).
+ * One scanned source file's path (relative to a project root, POSIX-style),
+ * its best-effort exported symbol names, and its raw import specifiers as
+ * written (e.g. `"./widget.js"`, `"node:fs"`, `"@nexo-alpha/core"`) —
+ * unresolved. See {@link SourceTree.importEdges} for the subset of these
+ * that could be resolved to another file within the same scanned tree.
+ * This shape is produced by `@nexo-alpha/tools`'s `createSourceInterface()`
+ * — defined here, not there, so `ApplicationContext` can reference it
+ * without `@nexo-alpha/context` depending on `@nexo-alpha/tools`
+ * (dependencies only ever point the other way in this framework).
  */
 export interface SourceFile {
   readonly path: string;
   readonly exports: readonly string[];
+  readonly imports: readonly string[];
 }
 
-/** A file/export inventory produced by scanning a project's actual source tree. */
+/** A resolved import edge between two files within the same scanned source tree. */
+export interface ImportEdge {
+  readonly from: string;
+  readonly to: string;
+}
+
+/** A file/export/import inventory produced by scanning a project's actual source tree. */
 export interface SourceTree {
   readonly fileCount: number;
   readonly files: readonly SourceFile[];
+  /**
+   * Import edges resolved between files within this scanned tree only —
+   * a relative import (`"./x"`) that resolved to a file this scan actually
+   * found. A relative import that couldn't be matched to a scanned file,
+   * and any bare package specifier (`"react"`, `"node:fs"`,
+   * `"@nexo-alpha/core"`), is deliberately left out here — it's still
+   * visible in the owning file's `imports` list, just not turned into an
+   * edge to nowhere. This is a literal, file-level import graph, not a
+   * symbol-level one: if file A re-exports from B which re-exports from
+   * C, only the A→B and B→C edges exist, not A→C.
+   */
+  readonly importEdges: readonly ImportEdge[];
 }
 
 export interface ApplicationContext {
@@ -140,15 +162,21 @@ export function hashStructure(structure: ApplicationStructure): string {
 
 /**
  * Hashes a {@link SourceTree} deterministically (SHA-256 over each file's
- * path and export list), so re-scanning an unchanged tree always produces
- * the same hash. The single implementation lives here so
- * `@nexo-alpha/tools`'s `createSourceInterface()` and `buildContext()`
- * never risk computing this two different ways.
+ * path, export list, and import list, plus the resolved import edges), so
+ * re-scanning an unchanged tree always produces the same hash. The single
+ * implementation lives here so `@nexo-alpha/tools`'s
+ * `createSourceInterface()` and `buildContext()` never risk computing this
+ * two different ways.
  */
 export function hashSourceTree(tree: SourceTree): string {
-  const canonical = JSON.stringify(
-    tree.files.map((file) => `${file.path}:${file.exports.join(",")}`)
-  );
+  const canonical = JSON.stringify({
+    files: tree.files.map(
+      (file) => `${file.path}:${file.exports.join(",")}:${file.imports.join(",")}`
+    ),
+    importEdges: [...tree.importEdges]
+      .map((edge) => `${edge.from}->${edge.to}`)
+      .sort()
+  });
   return createHash("sha256").update(canonical).digest("hex");
 }
 

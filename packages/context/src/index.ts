@@ -10,6 +10,7 @@ export type {
   ApplicationContext,
   ApplicationStructure,
   DependencyEdge,
+  ImportEdge,
   ModuleContext,
   SourceFile,
   SourceTree
