@@ -170,3 +170,13 @@ test("getKnowledgeGraph, search, and trace work over the registry alone, with no
   assert.deepEqual(await tools.traceCallers("module:orders"), []);
 });
 
+test("traceImpact walks the transitive dependents of a module", async () => {
+  const { app, knowledge } = buildFixture();
+  const tools = createReadInterface(app, knowledge);
+
+  const result = await tools.traceImpact("module:orders");
+
+  assert.equal(result.direction, "dependents");
+  assert.ok(result.reached.some((hit) => hit.nodeId === "module:payments" && hit.depth === 1));
+});
+

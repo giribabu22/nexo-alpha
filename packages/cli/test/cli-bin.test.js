@@ -89,6 +89,34 @@ test("nexo trace reports dependents by default and narrows to callers with --cal
   assert.deepEqual(JSON.parse(callers), []);
 });
 
+test("nexo impact reports the transitive blast radius and narrows with --dependencies/--edge-kinds", async () => {
+  const { stdout: dependents } = await execFileAsync("node", [cliPath, "impact", "module:orders", fixtureAppPath]);
+  const dependentsResult = JSON.parse(dependents);
+  assert.equal(dependentsResult.direction, "dependents");
+  assert.ok(dependentsResult.reached.some((hit) => hit.nodeId === "module:payments"));
+
+  const { stdout: dependencies } = await execFileAsync("node", [
+    cliPath,
+    "impact",
+    "module:payments",
+    fixtureAppPath,
+    "--dependencies"
+  ]);
+  const dependenciesResult = JSON.parse(dependencies);
+  assert.equal(dependenciesResult.direction, "dependencies");
+  assert.ok(dependenciesResult.reached.some((hit) => hit.nodeId === "module:orders"));
+
+  const { stdout: capped } = await execFileAsync("node", [
+    cliPath,
+    "impact",
+    "module:orders",
+    fixtureAppPath,
+    "--edge-kinds",
+    "exposes"
+  ]);
+  assert.deepEqual(JSON.parse(capped).reached, []);
+});
+
 test("nexo search with no query prints usage and exits 1", async () => {
   await assert.rejects(execFileAsync("node", [cliPath, "search"]), (error) => {
     assert.equal(error.code, 1);

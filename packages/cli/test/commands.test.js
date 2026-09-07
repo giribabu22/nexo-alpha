@@ -7,7 +7,7 @@ import { dirname, join } from "node:path";
 
 import { createApplication } from "@nexo-alpha/core";
 import { createKnowledge } from "@nexo-alpha/context";
-import { context, graph, health, inspect, knowledge, search, status, trace, validate } from "../dist/commands.js";
+import { context, graph, health, impact, inspect, knowledge, search, status, trace, validate } from "../dist/commands.js";
 
 const here = dirname(fileURLToPath(import.meta.url));
 
@@ -136,6 +136,23 @@ test("trace defaults to dependents and narrows to callers with the direction arg
 
   const callers = JSON.parse(await trace(app, journal, "module:orders", undefined, "callers"));
   assert.deepEqual(callers, []);
+});
+
+test("impact walks the transitive dependents of a node and respects direction/maxDepth/edgeKinds", async () => {
+  const { app, knowledge: journal } = buildFixture();
+
+  const dependents = JSON.parse(await impact(app, journal, "module:orders"));
+  assert.equal(dependents.direction, "dependents");
+  assert.ok(dependents.reached.some((hit) => hit.nodeId === "module:payments" && hit.depth === 1));
+
+  const dependencies = JSON.parse(await impact(app, journal, "module:payments", undefined, "dependencies"));
+  assert.equal(dependencies.direction, "dependencies");
+  assert.ok(dependencies.reached.some((hit) => hit.nodeId === "module:orders"));
+
+  const capped = JSON.parse(
+    await impact(app, journal, "module:orders", undefined, "dependents", undefined, ["exposes"])
+  );
+  assert.deepEqual(capped.reached, []);
 });
 
 test("graph builds and persists a knowledge graph, then reports up to date on an unchanged rebuild", async () => {

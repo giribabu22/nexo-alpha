@@ -12,7 +12,9 @@ import {
   createVerificationInterface,
   isGraphStale,
   loadKnowledgeGraph,
-  saveKnowledgeGraph
+  saveKnowledgeGraph,
+  type KnowledgeEdgeKind,
+  type TraversalDirection
 } from "@nexo-alpha/tools";
 import {
   renderApplicationSummary,
@@ -207,6 +209,34 @@ export async function trace(
   const readInterface = createReadInterface(app, knowledge, sourceTree);
   const edges = direction === "callers" ? await readInterface.traceCallers(nodeId) : await readInterface.traceDependents(nodeId);
   return JSON.stringify(edges, null, 2);
+}
+
+/**
+ * Transitive blast radius of `nodeId` — `NexoReadInterface.traceImpact()`'s
+ * CLI surface. Unlike `trace()`, which only returns the immediate edges
+ * touching a node, this walks the graph breadth-first and reports every
+ * reachable node along with its hop count from `nodeId`, so "what would be
+ * affected, however indirectly, if I changed this" is answerable without
+ * chasing `trace()` by hand one hop at a time.
+ */
+export async function impact(
+  app: NexoApplication,
+  knowledge: ApplicationKnowledge | undefined,
+  nodeId: string,
+  sourceRoot?: string,
+  direction: TraversalDirection = "dependents",
+  maxDepth?: number,
+  edgeKinds?: readonly KnowledgeEdgeKind[]
+): Promise<string> {
+  const sourceTree =
+    sourceRoot !== undefined ? await createSourceInterface(sourceRoot).describeSourceTree() : undefined;
+  const readInterface = createReadInterface(app, knowledge, sourceTree);
+  const result = await readInterface.traceImpact(nodeId, {
+    direction,
+    ...(maxDepth !== undefined && { maxDepth }),
+    ...(edgeKinds !== undefined && { edgeKinds })
+  });
+  return JSON.stringify(result, null, 2);
 }
 
 export function validate(app: NexoApplication): string {

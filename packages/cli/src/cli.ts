@@ -2,10 +2,12 @@
 import { resolve } from "node:path";
 import { loadApplication } from "./load-application.js";
 import { resolveConfiguredAppPath } from "./config.js";
+import type { KnowledgeEdgeKind, TraversalDirection } from "@nexo-alpha/tools";
 import {
   context,
   graph,
   health,
+  impact,
   inspect,
   knowledge as renderKnowledge,
   search,
@@ -26,6 +28,7 @@ const USAGE = `Usage:
   nexo graph [app-module-path] [--source-root <path>] [--out <path>] [--force]
   nexo search <query> [app-module-path] [--source-root <path>]
   nexo trace <nodeId> [app-module-path] [--source-root <path>] [--callers]
+  nexo impact <nodeId> [app-module-path] [--source-root <path>] [--dependencies] [--max-depth <n>] [--edge-kinds <kind,...>]
   nexo validate [app-module-path]
   nexo health [app-module-path]
 
@@ -45,13 +48,18 @@ given) and persists it to --out (default ".nexo/knowledge-graph.json").
 Rebuilding is hash-gated: an up-to-date graph on disk is left alone unless
 --force is passed.
 
-"nexo search"/"nexo trace" query that same graph live (built fresh each
-call, not read from a saved --out file) — case-insensitive keyword search
-over node names/descriptions, and edge tracing from a node ID (as printed
-by "nexo graph"/"nexo search", e.g. "module:payments" or
+"nexo search"/"nexo trace"/"nexo impact" query that same graph live (built
+fresh each call, not read from a saved --out file) — case-insensitive
+keyword search over node names/descriptions, and edge tracing from a node
+ID (as printed by "nexo graph"/"nexo search", e.g. "module:payments" or
 "symbol:src/orders.ts#createOrder"). "nexo trace" defaults to "what would
 be affected if this changed" (every edge pointing at the node); --callers
-narrows that to only "calls" edges ("what calls this").`;
+narrows that to only "calls" edges ("what calls this"). "nexo impact" is
+"nexo trace" taken transitively: the full multi-hop blast radius, not just
+the immediate edges — defaults to the same "dependents" direction; pass
+--dependencies to instead walk what the node depends on. --max-depth caps
+the hop count (default: unlimited), and --edge-kinds (comma-separated,
+e.g. "calls,imports") narrows which edge kinds are followed (default: all).`;
 
 function extractFlagValue(args: readonly string[], flag: string): string | undefined {
   const index = args.indexOf(flag);
@@ -88,7 +96,7 @@ async function main(): Promise<void> {
     return;
   }
 
-  if (command === "search" || command === "trace") {
+  if (command === "search" || command === "trace" || command === "impact") {
     const [target, second] = rest;
 
     if (target === undefined) {
@@ -113,8 +121,15 @@ async function main(): Promise<void> {
 
     if (command === "search") {
       console.log(await search(app, knowledge, target, sourceRoot));
-    } else {
+    } else if (command === "trace") {
       console.log(await trace(app, knowledge, target, sourceRoot, rest.includes("--callers") ? "callers" : "dependents"));
+    } else {
+      const direction: TraversalDirection = rest.includes("--dependencies") ? "dependencies" : "dependents";
+      const maxDepthFlag = extractFlagValue(rest, "--max-depth");
+      const maxDepth = maxDepthFlag !== undefined ? Number(maxDepthFlag) : undefined;
+      const edgeKindsFlag = extractFlagValue(rest, "--edge-kinds");
+      const edgeKinds = edgeKindsFlag !== undefined ? (edgeKindsFlag.split(",") as KnowledgeEdgeKind[]) : undefined;
+      console.log(await impact(app, knowledge, target, sourceRoot, direction, maxDepth, edgeKinds));
     }
     return;
   }

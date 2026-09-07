@@ -21,9 +21,12 @@ import {
   searchKnowledgeGraph,
   traceCallers,
   traceDependents,
+  traceImpact,
   type KnowledgeGraph,
   type KnowledgeGraphEdge,
-  type KnowledgeGraphNode
+  type KnowledgeGraphNode,
+  type TraceImpactOptions,
+  type TraceImpactResult
 } from "./knowledge-graph.js";
 
 export interface ApplicationArchitecture {
@@ -82,6 +85,13 @@ export interface NexoReadInterface {
   traceCallers(nodeId: string): Promise<readonly KnowledgeGraphEdge[]>;
   /** Every edge pointing at `nodeId` — "what would be affected if this changed." */
   traceDependents(nodeId: string): Promise<readonly KnowledgeGraphEdge[]>;
+  /**
+   * Multi-hop traversal from `nodeId` — the full transitive blast radius,
+   * not just the immediate neighbors `traceDependents()` returns. See
+   * `traceImpact` in `@nexo-alpha/tools`'s `knowledge-graph.ts` for the
+   * BFS/shortest-path/cycle-protection behavior and `options` shape.
+   */
+  traceImpact(nodeId: string, options?: TraceImpactOptions): Promise<TraceImpactResult>;
   /** Case-insensitive keyword search over node names/descriptions/summaries — not semantic search. */
   search(query: string): Promise<readonly KnowledgeGraphNode[]>;
 }
@@ -173,6 +183,10 @@ export function createReadInterface(
 
     async traceDependents(nodeId) {
       return traceDependents(await getGraph(), nodeId);
+    },
+
+    async traceImpact(nodeId, options) {
+      return traceImpact(await getGraph(), nodeId, options);
     },
 
     async search(query) {
