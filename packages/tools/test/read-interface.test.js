@@ -113,3 +113,15 @@ test("getDecisions, getConstraints, getCurrentWork, and getStatus expose knowled
   assert.equal(status.state, "created");
   assert.equal(status.developmentState.currentObjective, "Implement payment recovery");
 });
+
+test("getHistory returns audit entries recorded on the application", () => {
+  const app = buildFixtureApp();
+  app.addHistoryEntry({ operation: "create_module", target: "shipping", result: "success" });
+
+  const tools = createReadInterface(app);
+
+  const history = tools.getHistory();
+  assert.equal(history.length, 1);
+  assert.equal(history[0].operation, "create_module");
+  assert.equal(history[0].result, "success");
+});

@@ -57,8 +57,10 @@ app.getDependents("orders"); // -> ["payments"]
 - **Module model** — `purpose`, `status`, `dependencies`, `apis`, `services`, `events`, `jobs`
 - **Dependency graph** — `getDependencies(name)` / `getDependents(name)`
 - **Events** — a plain `NexoEventBus` (wraps `node:events`) via `app.events`
-- **Configuration** — `getConfig(key)` / `getAllConfig()`
+- **Configuration** — `getConfig(key)` / `getAllConfig()` / `updateConfig(patch)`
 - **Knowledge records** — `addDecision`/`getDecisions`, `addConstraint`/`getConstraints`, `setDevelopmentState`/`getDevelopmentState`
+- **Structural mutators** — `addApiToModule`/`updateApi`, `addServiceToModule`/`updateService`, `addModuleDependency` (raw, unguarded operations; permissions/validation/audit live in `@nexo-alpha/tools`'s write interface, not here)
+- **Audit trail** — `addHistoryEntry`/`getHistory` — an append-only, timestamped log of operations (`success`/`denied`/`failed`)
 
 ## Related packages
 
@@ -67,7 +69,7 @@ app.getDependents("orders"); // -> ["payments"]
 
 ## Status
 
-**v0.1-alpha.** No CLI, no HTTP adapter, and no write/mutation AI operations yet — read-only, declarative model first.
+**v0.1-alpha.** No CLI, no HTTP adapter yet. Write/mutation AI operations exist as raw core mutators (`addApiToModule`, `updateApi`, `addModuleDependency`, etc.) — the permission/validation/audit pipeline that makes them safe for an AI tool to call lives in `@nexo-alpha/tools`'s `createWriteInterface`.
 
 ## License
 

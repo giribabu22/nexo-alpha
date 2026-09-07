@@ -5,6 +5,7 @@ import type {
   NexoApplication,
   NexoConstraint,
   NexoDecision,
+  NexoHistoryEntry,
   NexoService
 } from "@nexo-alpha/core";
 import {
@@ -38,6 +39,7 @@ export interface NexoReadInterface {
   getConstraints(): readonly NexoConstraint[];
   getCurrentWork(): DevelopmentState;
   getStatus(): ApplicationStatus;
+  getHistory(): readonly NexoHistoryEntry[];
 }
 
 export function createReadInterface(
@@ -101,6 +103,10 @@ export function createReadInterface(
         state: app.state,
         developmentState: app.getDevelopmentState()
       };
+    },
+
+    getHistory() {
+      return app.getHistory();
     }
   };
 }

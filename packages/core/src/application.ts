@@ -4,6 +4,7 @@ import type { NexoService } from "./service.js";
 import type { NexoDecision } from "./decision.js";
 import type { NexoConstraint } from "./constraint.js";
 import type { DevelopmentState } from "./development-state.js";
+import type { NexoHistoryEntry } from "./history.js";
 import { NexoConfigurationError, NexoLifecycleError } from "./errors.js";
 import { NexoEventBus } from "./events.js";
 
@@ -28,9 +29,10 @@ export class NexoApplication {
   readonly events: NexoEventBus = new NexoEventBus();
 
   private readonly modules = new Map<string, NexoModule>();
-  private readonly config: Readonly<Record<string, unknown>>;
+  private config: Readonly<Record<string, unknown>>;
   private readonly decisions: NexoDecision[] = [];
   private readonly constraints: NexoConstraint[] = [];
+  private readonly history: NexoHistoryEntry[] = [];
   private developmentState: DevelopmentState = {
     completed: [],
     inProgress: [],
@@ -97,6 +99,150 @@ export class NexoApplication {
     return [...this.modules.values()].flatMap(
       (module) => module.services ?? []
     );
+  }
+
+  private requireModule(moduleName: string): NexoModule {
+    const module = this.modules.get(moduleName);
+
+    if (!module) {
+      throw new NexoConfigurationError(
+        `Nexo module "${moduleName}" is not registered.`
+      );
+    }
+
+    return module;
+  }
+
+  addApiToModule(moduleName: string, api: NexoApi): this {
+    const module = this.requireModule(moduleName);
+
+    if (module.apis?.some((existing) => existing.name === api.name)) {
+      throw new NexoConfigurationError(
+        `API "${api.name}" is already registered on module "${moduleName}".`
+      );
+    }
+
+    this.modules.set(moduleName, {
+      ...module,
+      apis: [...(module.apis ?? []), api]
+    });
+
+    return this;
+  }
+
+  updateApi(
+    moduleName: string,
+    apiName: string,
+    patch: Partial<NexoApi>
+  ): NexoApi {
+    const module = this.requireModule(moduleName);
+    const existing = module.apis?.find((api) => api.name === apiName);
+
+    if (!existing) {
+      throw new NexoConfigurationError(
+        `API "${apiName}" is not registered on module "${moduleName}".`
+      );
+    }
+
+    const updated: NexoApi = { ...existing, ...patch };
+
+    this.modules.set(moduleName, {
+      ...module,
+      apis: (module.apis ?? []).map((api) =>
+        api.name === apiName ? updated : api
+      )
+    });
+
+    return updated;
+  }
+
+  addServiceToModule(moduleName: string, service: NexoService): this {
+    const module = this.requireModule(moduleName);
+
+    if (
+      module.services?.some((existing) => existing.name === service.name)
+    ) {
+      throw new NexoConfigurationError(
+        `Service "${service.name}" is already registered on module "${moduleName}".`
+      );
+    }
+
+    this.modules.set(moduleName, {
+      ...module,
+      services: [...(module.services ?? []), service]
+    });
+
+    return this;
+  }
+
+  updateService(
+    moduleName: string,
+    serviceName: string,
+    patch: Partial<NexoService>
+  ): NexoService {
+    const module = this.requireModule(moduleName);
+    const existing = module.services?.find(
+      (service) => service.name === serviceName
+    );
+
+    if (!existing) {
+      throw new NexoConfigurationError(
+        `Service "${serviceName}" is not registered on module "${moduleName}".`
+      );
+    }
+
+    const updated: NexoService = { ...existing, ...patch };
+
+    this.modules.set(moduleName, {
+      ...module,
+      services: (module.services ?? []).map((service) =>
+        service.name === serviceName ? updated : service
+      )
+    });
+
+    return updated;
+  }
+
+  updateConfig(patch: Record<string, unknown>): Readonly<Record<string, unknown>> {
+    this.config = { ...this.config, ...patch };
+    return this.config;
+  }
+
+  addModuleDependency(moduleName: string, dependencyName: string): readonly string[] {
+    const module = this.requireModule(moduleName);
+
+    if (dependencyName === moduleName) {
+      throw new NexoConfigurationError(
+        `Module "${moduleName}" cannot depend on itself.`
+      );
+    }
+
+    if (!this.modules.has(dependencyName)) {
+      throw new NexoConfigurationError(
+        `Nexo module "${dependencyName}" is not registered.`
+      );
+    }
+
+    if (module.dependencies?.includes(dependencyName)) {
+      throw new NexoConfigurationError(
+        `Module "${moduleName}" already depends on "${dependencyName}".`
+      );
+    }
+
+    const dependencies = [...(module.dependencies ?? []), dependencyName];
+
+    this.modules.set(moduleName, { ...module, dependencies });
+
+    return dependencies;
+  }
+
+  addHistoryEntry(entry: Omit<NexoHistoryEntry, "timestamp">): this {
+    this.history.push({ ...entry, timestamp: new Date().toISOString() });
+    return this;
+  }
+
+  getHistory(): readonly NexoHistoryEntry[] {
+    return [...this.history];
   }
 
   addDecision(decision: NexoDecision): this {

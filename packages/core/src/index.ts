@@ -39,6 +39,10 @@ export type {
   DevelopmentState
 } from "./development-state.js";
 
+export type {
+  NexoHistoryEntry
+} from "./history.js";
+
 export {
   NexoEventBus
 } from "./events.js";
