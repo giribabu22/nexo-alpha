@@ -15,11 +15,35 @@ importers:
         specifier: ^5.0.0
         version: 5.9.3
 
-  examples/hello-world:
+  examples/fullstack-react:
     dependencies:
+      '@nexo-alpha/context':
+        specifier: workspace:*
+        version: link:../../packages/context
       '@nexo-alpha/core':
         specifier: workspace:*
         version: link:../../packages/core
+      '@nexo-alpha/hapi':
+        specifier: workspace:*
+        version: link:../../packages/hapi
+      '@nexo-alpha/scheduler':
+        specifier: workspace:*
+        version: link:../../packages/scheduler
+      '@nexo-alpha/tools':
+        specifier: workspace:*
+        version: link:../../packages/tools
+
+  examples/hello-world:
+    dependencies:
+      '@nexo-alpha/context':
+        specifier: workspace:*
+        version: link:../../packages/context
+      '@nexo-alpha/core':
+        specifier: workspace:*
+        version: link:../../packages/core
+      '@nexo-alpha/hapi':
+        specifier: workspace:*
+        version: link:../../packages/hapi
 
   packages/cli:
     dependencies:
@@ -29,6 +53,9 @@ importers:
       '@nexo-alpha/core':
         specifier: workspace:*
         version: link:../core
+      '@nexo-alpha/tools':
+        specifier: workspace:*
+        version: link:../tools
 
   packages/context:
     dependencies:
@@ -37,6 +64,15 @@ importers:
         version: link:../core
 
   packages/core: {}
+
+  packages/create-nexo-app:
+    devDependencies:
+      '@types/node':
+        specifier: ^20.0.0
+        version: 20.19.43
+      typescript:
+        specifier: ^5.0.0
+        version: 5.9.3
 
   packages/hapi:
     dependencies:
