@@ -1,0 +1,915 @@
+Yes. I’d start Nexo as a **small TypeScript monorepo**, but keep the first implementation deliberately boring. The first milestone is not “build a framework”; it is **prove that the Nexo application model works**.
+
+## 1. Repository structure
+
+Start with this:
+
+```text
+nexo/
+├── packages/
+│   └── core/
+│       ├── src/
+│       │   ├── application.ts
+│       │   ├── module.ts
+│       │   ├── service.ts
+│       │   ├── api.ts
+│       │   ├── errors.ts
+│       │   └── index.ts
+│       │
+│       ├── test/
+│       │   └── application.test.ts
+│       │
+│       ├── package.json
+│       └── tsconfig.json
+│
+├── examples/
+│   └── hello-world/
+│       ├── src/
+│       │   └── index.ts
+│       ├── package.json
+│       └── tsconfig.json
+│
+├── docs/
+│   └── architecture/
+│       └── README.md
+│
+├── package.json
+├── pnpm-workspace.yaml
+├── tsconfig.json
+├── tsconfig.build.json
+├── .gitignore
+├── .editorconfig
+├── LICENSE
+└── README.md
+```
+
+Don't create `@nexo/context`, `@nexo/cli`, `@nexo/hapi`, etc. yet.
+
+First make **`@nexo/core` correct**.
+
+The dependency direction should eventually look like:
+
+```text
+@nexo/cli
+     │
+@nexo/tools ──────┐
+     │            │
+@nexo/context     │
+     │            │
+@nexo/hapi        │
+     │            │
+     └─────── @nexo/core
+                    │
+                  Node.js
+```
+
+The important rule is:
+
+> **`@nexo/core` must not depend on AI, Hapi, CLI, database libraries, or cloud services.**
+
+---
+
+# 2. Create the repository
+
+```bash
+mkdir nexo
+cd nexo
+
+git init
+
+corepack enable
+corepack prepare pnpm@latest --activate
+
+mkdir -p packages/core/src
+mkdir -p packages/core/test
+mkdir -p examples/hello-world/src
+mkdir -p docs/architecture
+```
+
+Then:
+
+```bash
+pnpm init
+```
+
+---
+
+# 3. Root `package.json`
+
+Use this:
+
+```json
+{
+  "name": "nexo",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Application framework and environment for the AI era",
+  "license": "MIT",
+  "packageManager": "pnpm@10.0.0",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "pnpm -r build",
+    "test": "pnpm -r test",
+    "typecheck": "pnpm -r typecheck",
+    "lint": "pnpm -r lint",
+    "clean": "pnpm -r clean"
+  },
+  "devDependencies": {
+    "typescript": "^5.0.0"
+  }
+}
+```
+
+I would use Node 20+ for the initial project.
+
+Don't add Hapi yet.
+
+Don't add AI SDKs yet.
+
+Don't add an ORM yet.
+
+The core should have almost no dependencies.
+
+---
+
+# 4. `pnpm-workspace.yaml`
+
+```yaml
+packages:
+  - "packages/*"
+  - "examples/*"
+```
+
+This gives you:
+
+```text
+packages/core
+examples/hello-world
+```
+
+as workspace packages.
+
+---
+
+# 5. Root TypeScript configuration
+
+`tsconfig.json`:
+
+```json
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "strict": true,
+    "declaration": true,
+    "declarationMap": true,
+    "sourceMap": true,
+    "noUncheckedIndexedAccess": true,
+    "exactOptionalPropertyTypes": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true
+  }
+}
+```
+
+And create `tsconfig.build.json`:
+
+```json
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": false
+  }
+}
+```
+
+---
+
+# 6. `@nexo/core/package.json`
+
+Create:
+
+```text
+packages/core/package.json
+```
+
+with:
+
+```json
+{
+  "name": "@nexo/core",
+  "version": "0.1.0",
+  "description": "Core runtime for the Nexo application framework",
+  "license": "MIT",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "node --test",
+    "clean": "rm -rf dist"
+  }
+}
+```
+
+Notice something important:
+
+**No dependencies.**
+
+That is intentional.
+
+---
+
+# 7. Core TypeScript configuration
+
+`packages/core/tsconfig.json`:
+
+```json
+{
+  "extends": "../../tsconfig.json",
+  "compilerOptions": {
+    "rootDir": "src",
+    "outDir": "dist"
+  },
+  "include": [
+    "src/**/*.ts"
+  ]
+}
+```
+
+---
+
+# 8. First Nexo concept: Module
+
+Create:
+
+```text
+packages/core/src/module.ts
+```
+
+```ts
+export interface NexoModule {
+  readonly name: string;
+  readonly description?: string;
+
+  initialize?(): Promise<void> | void;
+  start?(): Promise<void> | void;
+  stop?(): Promise<void> | void;
+}
+```
+
+This is intentionally tiny.
+
+A module is currently just:
+
+```text
+Identity
++
+Lifecycle
+```
+
+We'll add APIs, services, dependencies and context later.
+
+---
+
+# 9. Application
+
+Create:
+
+```text
+packages/core/src/application.ts
+```
+
+```ts
+import type { NexoModule } from "./module.js";
+
+export interface ApplicationOptions {
+  readonly name: string;
+  readonly version?: string;
+  readonly description?: string;
+}
+
+export type ApplicationState =
+  | "created"
+  | "initializing"
+  | "running"
+  | "stopping"
+  | "stopped";
+
+export class NexoApplication {
+  readonly name: string;
+  readonly version: string;
+  readonly description?: string;
+
+  private readonly modules = new Map<string, NexoModule>();
+
+  private _state: ApplicationState = "created";
+
+  constructor(options: ApplicationOptions) {
+    this.name = options.name;
+    this.version = options.version ?? "0.1.0";
+    this.description = options.description;
+  }
+
+  get state(): ApplicationState {
+    return this._state;
+  }
+
+  module(module: NexoModule): this {
+    if (this.modules.has(module.name)) {
+      throw new Error(
+        `Nexo module "${module.name}" is already registered.`
+      );
+    }
+
+    this.modules.set(module.name, module);
+
+    return this;
+  }
+
+  getModule(name: string): NexoModule | undefined {
+    return this.modules.get(name);
+  }
+
+  getModules(): readonly NexoModule[] {
+    return [...this.modules.values()];
+  }
+
+  async start(): Promise<void> {
+    if (this._state === "running") {
+      return;
+    }
+
+    if (this._state !== "created" && this._state !== "stopped") {
+      throw new Error(
+        `Cannot start application while in "${this._state}" state.`
+      );
+    }
+
+    this._state = "initializing";
+
+    for (const module of this.modules.values()) {
+      await module.initialize?.();
+    }
+
+    for (const module of this.modules.values()) {
+      await module.start?.();
+    }
+
+    this._state = "running";
+  }
+
+  async stop(): Promise<void> {
+    if (this._state === "stopped") {
+      return;
+    }
+
+    if (this._state !== "running") {
+      throw new Error(
+        `Cannot stop application while in "${this._state}" state.`
+      );
+    }
+
+    this._state = "stopping";
+
+    const modules = [...this.modules.values()].reverse();
+
+    for (const module of modules) {
+      await module.stop?.();
+    }
+
+    this._state = "stopped";
+  }
+}
+
+export function createApplication(
+  options: ApplicationOptions
+): NexoApplication {
+  return new NexoApplication(options);
+}
+```
+
+This gives us the first real Nexo runtime.
+
+---
+
+# 10. Service
+
+Create:
+
+```text
+packages/core/src/service.ts
+```
+
+Keep services simple for now:
+
+```ts
+export interface NexoService {
+  readonly name: string;
+}
+```
+
+Later this becomes one of the most important concepts in Nexo.
+
+For example:
+
+```text
+PaymentService
+OrderService
+UserService
+```
+
+But don't build a complicated dependency-injection container yet.
+
+---
+
+# 11. API
+
+Create:
+
+```text
+packages/core/src/api.ts
+```
+
+```ts
+export type HttpMethod =
+  | "GET"
+  | "POST"
+  | "PUT"
+  | "PATCH"
+  | "DELETE"
+  | "OPTIONS"
+  | "HEAD";
+
+export interface NexoApi {
+  readonly name: string;
+  readonly method: HttpMethod;
+  readonly path: string;
+  readonly description?: string;
+}
+```
+
+Eventually an API will become much richer:
+
+```text
+API
+├── identity
+├── purpose
+├── method
+├── path
+├── input
+├── output
+├── authentication
+├── permissions
+├── handler
+├── dependencies
+└── context
+```
+
+But don't implement all of that on day one.
+
+---
+
+# 12. Nexo errors
+
+Create:
+
+```text
+packages/core/src/errors.ts
+```
+
+```ts
+export class NexoError extends Error {
+  readonly code: string;
+
+  constructor(code: string, message: string) {
+    super(message);
+
+    this.name = "NexoError";
+    this.code = code;
+  }
+}
+
+export class NexoConfigurationError extends NexoError {
+  constructor(message: string) {
+    super("NEXO_CONFIGURATION_ERROR", message);
+    this.name = "NexoConfigurationError";
+  }
+}
+
+export class NexoLifecycleError extends NexoError {
+  constructor(message: string) {
+    super("NEXO_LIFECYCLE_ERROR", message);
+    this.name = "NexoLifecycleError";
+  }
+}
+```
+
+We'll eventually want a proper error hierarchy, but this is enough to establish the concept.
+
+---
+
+# 13. Public API
+
+Create:
+
+```text
+packages/core/src/index.ts
+```
+
+```ts
+export {
+  createApplication,
+  NexoApplication
+} from "./application.js";
+
+export type {
+  ApplicationOptions,
+  ApplicationState
+} from "./application.js";
+
+export type {
+  NexoModule
+} from "./module.js";
+
+export type {
+  NexoService
+} from "./service.js";
+
+export type {
+  NexoApi,
+  HttpMethod
+} from "./api.js";
+
+export {
+  NexoError,
+  NexoConfigurationError,
+  NexoLifecycleError
+} from "./errors.js";
+```
+
+Now the package has a clean public API.
+
+---
+
+# 14. First test
+
+Create:
+
+```text
+packages/core/test/application.test.js
+```
+
+For the very first test, we can test the compiled package with Node's built-in test runner.
+
+```js
+import test from "node:test";
+import assert from "node:assert/strict";
+
+import { createApplication } from "../dist/index.js";
+
+test("creates a Nexo application", () => {
+  const app = createApplication({
+    name: "shop"
+  });
+
+  assert.equal(app.name, "shop");
+  assert.equal(app.version, "0.1.0");
+  assert.equal(app.state, "created");
+});
+
+test("registers modules", () => {
+  const app = createApplication({
+    name: "shop"
+  });
+
+  app.module({
+    name: "payments",
+    description: "Handle customer payments"
+  });
+
+  assert.equal(app.getModules().length, 1);
+  assert.equal(app.getModule("payments")?.name, "payments");
+});
+
+test("runs module lifecycle", async () => {
+  const events = [];
+
+  const app = createApplication({
+    name: "shop"
+  });
+
+  app.module({
+    name: "payments",
+
+    initialize() {
+      events.push("initialize");
+    },
+
+    start() {
+      events.push("start");
+    },
+
+    stop() {
+      events.push("stop");
+    }
+  });
+
+  await app.start();
+
+  assert.equal(app.state, "running");
+  assert.deepEqual(events, [
+    "initialize",
+    "start"
+  ]);
+
+  await app.stop();
+
+  assert.equal(app.state, "stopped");
+  assert.deepEqual(events, [
+    "initialize",
+    "start",
+    "stop"
+  ]);
+});
+```
+
+---
+
+# 15. First example application
+
+Create:
+
+```text
+examples/hello-world/package.json
+```
+
+```json
+{
+  "name": "@nexo/example-hello-world",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "start": "node dist/index.js",
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@nexo/core": "workspace:*"
+  }
+}
+```
+
+Then:
+
+```text
+examples/hello-world/tsconfig.json
+```
+
+```json
+{
+  "extends": "../../tsconfig.json",
+  "compilerOptions": {
+    "rootDir": "src",
+    "outDir": "dist"
+  },
+  "include": [
+    "src/**/*.ts"
+  ]
+}
+```
+
+And:
+
+```text
+examples/hello-world/src/index.ts
+```
+
+```ts
+import {
+  createApplication
+} from "@nexo/core";
+
+const app = createApplication({
+  name: "hello-world",
+  version: "0.1.0",
+  description: "My first Nexo application"
+});
+
+app.module({
+  name: "hello",
+  description: "Hello World module",
+
+  initialize() {
+    console.log("Hello module initialized");
+  },
+
+  start() {
+    console.log("Hello module started");
+  },
+
+  stop() {
+    console.log("Hello module stopped");
+  }
+});
+
+await app.start();
+
+console.log({
+  name: app.name,
+  version: app.version,
+  state: app.state,
+  modules: app.getModules().map((module) => module.name)
+});
+```
+
+---
+
+# 16. Install and run
+
+From the root:
+
+```bash
+pnpm install
+```
+
+Then:
+
+```bash
+pnpm build
+```
+
+Then:
+
+```bash
+pnpm test
+```
+
+And:
+
+```bash
+pnpm --filter @nexo/example-hello-world build
+pnpm --filter @nexo/example-hello-world start
+```
+
+You should get something conceptually like:
+
+```text
+Hello module initialized
+Hello module started
+
+{
+  name: 'hello-world',
+  version: '0.1.0',
+  state: 'running',
+  modules: [ 'hello' ]
+}
+```
+
+---
+
+# 17. What we have now
+
+At this point Nexo is tiny:
+
+```text
+@nexo/core
+│
+├── Application
+│
+├── Module
+│
+├── Service
+│
+├── API
+│
+├── Lifecycle
+│
+└── Errors
+```
+
+And the application looks like:
+
+```ts
+const app = createApplication({
+  name: "shop"
+});
+
+app.module(users);
+app.module(orders);
+app.module(payments);
+
+await app.start();
+```
+
+That's exactly where I would stop the first coding session.
+
+## 18. The next architectural step
+
+**Do not jump directly to Hapi.**
+
+The next thing I'd build is the **Nexo internal application model**.
+
+Right now:
+
+```text
+Application
+   │
+   └── Modules
+```
+
+We want:
+
+```text
+Application
+│
+├── Modules
+│   ├── Users
+│   ├── Orders
+│   └── Payments
+│
+├── APIs
+├── Services
+├── Dependencies
+├── Configuration
+└── Context
+```
+
+And eventually:
+
+```text
+Application
+│
+├── Identity
+├── Architecture
+│   ├── Modules
+│   ├── APIs
+│   ├── Services
+│   └── Dependencies
+│
+├── Business Context
+│   ├── Requirements
+│   └── Rules
+│
+├── Development State
+│   ├── Current Work
+│   ├── Completed
+│   ├── In Progress
+│   └── Blocked
+│
+├── Decisions
+├── Constraints
+└── History
+```
+
+**That is the part that makes Nexo different.**
+
+Hapi is infrastructure. The Nexo application model is the product.
+
+So I recommend this exact build sequence:
+
+```text
+STEP 1  Repository
+   ↓
+STEP 2  @nexo/core
+   ↓
+STEP 3  Application lifecycle       ← we are here
+   ↓
+STEP 4  Module model
+   ↓
+STEP 5  Service model
+   ↓
+STEP 6  API model
+   ↓
+STEP 7  Dependency model
+   ↓
+STEP 8  Configuration
+   ↓
+STEP 9  Application Context          ← Nexo's key differentiator
+   ↓
+STEP 10 Hapi adapter
+   ↓
+STEP 11 CLI
+   ↓
+STEP 12 Inspect / Status
+   ↓
+STEP 13 AI read interface
+   ↓
+STEP 14 Safe AI operations
+```
+
+**The most important design decision right now:** keep `@nexo/core` framework-level and provider-independent. If we get the core application model right, Hapi, CLI, MCP, AI agents, IDEs, and other tooling can all sit on top of it instead of becoming the framework itself.

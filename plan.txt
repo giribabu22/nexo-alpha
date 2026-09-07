@@ -1,0 +1,723 @@
+Yes. Since **Nexo is now fixed**, I would stop spending time on naming and start building.
+
+One important thing from a quick current check: **“Nexo” is already used by several projects**, including `@formigio/nexo`, GitHub projects, and other software. ([npm][1]) That doesn't necessarily prevent us from using **Nexo** as the product/brand, but we should be careful with the exact npm package name and GitHub organization before publishing.
+
+Now, for actually starting the project, I recommend **we don't build the whole framework at once**.
+
+# Nexo — How We Start
+
+Our first objective should be very small:
+
+> **Build the smallest Nexo runtime that can create an application, understand its structure, and expose that understanding to development tools.**
+
+Not AI yet. Not autonomous coding yet. Not 50 packages.
+
+---
+
+## Phase 0 — Freeze the architecture
+
+Before writing code, we should establish these five concepts:
+
+```text
+Nexo
+│
+├── Application
+├── Module
+├── API
+├── Service
+└── Context
+```
+
+Everything else comes later.
+
+The first architecture:
+
+```text
+                 Nexo
+                  │
+          ┌───────┴────────┐
+          │                │
+     Application        Context
+          │                │
+     ┌────┼────┐           │
+     │    │    │           │
+  Module API Service       │
+     │    │    │           │
+     └────┼────┘           │
+          │                │
+          └───────┬────────┘
+                  │
+                Hapi
+                  │
+                Node.js
+```
+
+---
+
+# Phase 1 — Create the repository
+
+I'd start with a monorepo.
+
+Something like:
+
+```text
+nexo/
+│
+├── packages/
+│
+├── examples/
+│
+├── docs/
+│
+├── tests/
+│
+├── benchmarks/
+│
+├── package.json
+├── pnpm-workspace.yaml
+├── tsconfig.json
+├── README.md
+└── LICENSE
+```
+
+I recommend **TypeScript** from day one.
+
+And I'd use **pnpm workspaces** so we can eventually have:
+
+```text
+@nexo/core
+@nexo/cli
+@nexo/hapi
+@nexo/context
+@nexo/tools
+```
+
+But initially we should publish **nothing**.
+
+Build locally first.
+
+---
+
+# Phase 2 — Build `@nexo/core`
+
+This is the most important package.
+
+It should NOT know about AI.
+
+It should NOT know about OpenAI.
+
+It should NOT depend on an AI SDK.
+
+It should define the application itself.
+
+Conceptually:
+
+```text
+@nexo/core
+
+Application
+Module
+Service
+API
+Lifecycle
+Configuration
+Context
+Errors
+```
+
+For example:
+
+```text
+Application
+    │
+    ├── register(Module)
+    ├── start()
+    ├── stop()
+    └── context()
+```
+
+---
+
+# Phase 3 — Build the Application Runtime
+
+We want this to work:
+
+```text
+const app = createApplication({
+  name: "shop"
+});
+```
+
+Then:
+
+```text
+app.module(users);
+app.module(orders);
+app.module(payments);
+```
+
+Then:
+
+```text
+await app.start();
+```
+
+And eventually:
+
+```text
+await app.stop();
+```
+
+This gives us the basic lifecycle.
+
+```text
+Create
+  ↓
+Configure
+  ↓
+Register Modules
+  ↓
+Initialize
+  ↓
+Start
+  ↓
+Running
+  ↓
+Shutdown
+```
+
+---
+
+# Phase 4 — Build the Module System
+
+This is where Nexo starts becoming a real framework.
+
+Example:
+
+```text
+modules/
+│
+├── users/
+├── orders/
+└── payments/
+```
+
+A module should have a clear identity:
+
+```text
+Module
+│
+├── name
+├── description
+├── APIs
+├── services
+├── dependencies
+├── events
+└── context
+```
+
+For example:
+
+```text
+Payments
+
+Purpose:
+Handle customer payments.
+
+Dependencies:
+Stripe
+Orders
+
+APIs:
+POST /payments
+GET /payments/:id
+
+Services:
+PaymentService
+
+Current state:
+Active
+```
+
+Notice something important:
+
+**This information isn't only useful for the framework.**
+
+It's exactly the information our future AI development tools need.
+
+---
+
+# Phase 5 — Hapi Adapter
+
+Now bring Hapi into the picture.
+
+Keep Hapi behind an adapter.
+
+```text
+@nexo/core
+      │
+      │
+@nexo/hapi
+      │
+      ▼
+    Hapi
+      │
+      ▼
+   Node.js
+```
+
+This is important because we don't want Nexo's entire architecture to become Hapi-specific.
+
+For example:
+
+```text
+Nexo API
+   ↓
+HTTP Adapter
+   ↓
+Hapi
+```
+
+Later, theoretically:
+
+```text
+Nexo API
+   ↓
+HTTP Adapter
+   ↓
+Fastify
+```
+
+The application model stays the same.
+
+---
+
+# Phase 6 — API System
+
+Now create a simple API model.
+
+For example:
+
+```text
+payments/
+    api/
+        create-payment.ts
+        get-payment.ts
+```
+
+An API should describe:
+
+```text
+API
+│
+├── method
+├── path
+├── input
+├── output
+├── authentication
+├── permissions
+└── handler
+```
+
+That information is extremely valuable later.
+
+AI doesn't have to discover:
+
+> "Maybe `/payments/:id` exists somewhere."
+
+Nexo can say:
+
+```text
+Payments module
+
+GET /payments/:id
+
+Purpose:
+Retrieve payment information.
+
+Authentication:
+Required
+
+Permission:
+payments.read
+```
+
+---
+
+# Phase 7 — Context System
+
+This is where I think Nexo becomes **different from a normal framework**.
+
+Create:
+
+```text
+@nexo/context
+```
+
+Initially, it doesn't need to be complicated.
+
+It should be able to produce something like:
+
+```json
+{
+  "application": {
+    "name": "shop",
+    "version": "0.1.0"
+  },
+  "modules": [
+    {
+      "name": "payments",
+      "purpose": "Handle customer payments",
+      "apis": [
+        "POST /payments",
+        "GET /payments/:id"
+      ]
+    }
+  ]
+}
+```
+
+This becomes the first version of the **Nexo Application Context**.
+
+---
+
+# Phase 8 — `nexo inspect`
+
+Now create the CLI.
+
+```bash
+nexo inspect
+```
+
+Output:
+
+```text
+Nexo Application
+
+Name: shop
+Version: 0.1.0
+
+Modules:
+  users
+  orders
+  payments
+
+APIs:
+  12
+
+Services:
+  8
+
+Dependencies:
+  24
+```
+
+Then:
+
+```bash
+nexo inspect payments
+```
+
+Could show:
+
+```text
+Payments
+
+Purpose:
+Handle customer payments.
+
+APIs:
+  POST /payments
+  GET /payments/:id
+
+Services:
+  PaymentService
+
+Dependencies:
+  Stripe
+  Orders
+
+Status:
+  Active
+```
+
+**This is the first real demonstration of our idea.**
+
+---
+
+# Phase 9 — `nexo status`
+
+Then we introduce development state.
+
+```bash
+nexo status
+```
+
+Example:
+
+```text
+Nexo Development Status
+
+Current work:
+Payment retry system
+
+Completed:
+✓ Retry API
+✓ Retry model
+
+In progress:
+→ Retry worker
+
+Blocked:
+! Webhook reconciliation
+
+Next:
+Implement retry worker
+```
+
+This is not AI.
+
+That's intentional.
+
+We're building the **foundation that AI tools will eventually consume.**
+
+---
+
+# Phase 10 — AI Tool Interface
+
+Only after the above works should we build:
+
+```text
+@nexo/tools
+```
+
+The idea becomes:
+
+```text
+AI Development Tool
+        │
+        ▼
+@nexo/tools
+        │
+        ▼
+Nexo Context
+        │
+        ▼
+Nexo Application
+```
+
+The tool can ask:
+
+```text
+get_application
+get_module
+get_api
+get_service
+get_dependencies
+get_status
+get_decisions
+get_constraints
+```
+
+Later:
+
+```text
+create_module
+modify_api
+create_test
+run_tests
+validate
+```
+
+But **read-only first**.
+
+That's important.
+
+---
+
+# Phase 11 — Make AI Read Nexo
+
+Our first AI milestone should be extremely simple:
+
+Give an AI development tool access to:
+
+```text
+get_application()
+get_modules()
+get_module()
+get_api()
+get_dependencies()
+get_status()
+```
+
+Then ask:
+
+> "Explain this project."
+
+The AI should answer from the Nexo context.
+
+Then:
+
+> "What is the Payments module?"
+
+Then:
+
+> "What depends on PaymentService?"
+
+Then:
+
+> "What is currently being developed?"
+
+If Nexo can answer these accurately, **we have proven the core concept.**
+
+---
+
+# Phase 12 — Only Then Allow Changes
+
+Once read-only works, introduce:
+
+```text
+AI
+ ↓
+Plan
+ ↓
+Permission
+ ↓
+Change
+ ↓
+Test
+ ↓
+Validate
+ ↓
+Record
+```
+
+For example:
+
+```text
+AI:
+Add a cancellation API to Orders.
+```
+
+Nexo should eventually be able to provide:
+
+```text
+Affected module:
+Orders
+
+Existing APIs:
+GET /orders/:id
+POST /orders
+
+Proposed:
+POST /orders/:id/cancel
+
+Dependencies affected:
+Orders
+Payments
+Shipping
+
+Required permission:
+orders.write
+```
+
+Then the AI can make the change.
+
+---
+
+# The actual first milestone
+
+I don't want us to start by trying to build all of this.
+
+Our **first milestone should be:**
+
+## Nexo v0.1-alpha
+
+```text
+✓ TypeScript
+✓ Node.js
+✓ Hapi
+✓ Application
+✓ Module
+✓ API
+✓ Service
+✓ Lifecycle
+✓ Configuration
+✓ CLI
+✓ Application Context
+✓ Inspect
+✓ Status
+```
+
+And:
+
+```text
+✗ Autonomous AI
+✗ Code generation
+✗ AI provider dependency
+✗ Complex agent system
+✗ Cloud platform
+✗ Distributed architecture
+```
+
+Keep it tiny.
+
+---
+
+# Recommended development order
+
+```text
+1. Repository
+      ↓
+2. @nexo/core
+      ↓
+3. Application lifecycle
+      ↓
+4. Module system
+      ↓
+5. API system
+      ↓
+6. Hapi adapter
+      ↓
+7. Configuration
+      ↓
+8. Errors + logging
+      ↓
+9. Context
+      ↓
+10. CLI
+      ↓
+11. Inspect
+      ↓
+12. Status
+      ↓
+13. AI read interface
+      ↓
+14. AI development operations
+```
+
+That is the path I would follow.
+
+### One more important thing
+
+Before we publish anything to npm, I would use a **scoped package name** such as `@nexo/...` rather than assuming the unscoped `nexo` package name is available. There are already projects using Nexo and `@formigio/nexo` exists today. ([npm][1])
+
+So our first repository can simply be:
+
+```text
+nexo
+```
+
+and later we decide whether the public packages become:
+
+```text
+@nexo/core
+@nexo/cli
+@nexo/hapi
+@nexo/context
+@nexo/tools
+```
+
+**If you want to start coding right now, the next step is Phase 1: I can lay out the exact Nexo repository structure and give you the initial `package.json`, `pnpm-workspace.yaml`, TypeScript configuration, and the first `@nexo/core` implementation.**
+
+[1]: https://www.npmjs.com/package/%40formigio/nexo?utm_source=chatgpt.com "@formigio/nexo - npm"
