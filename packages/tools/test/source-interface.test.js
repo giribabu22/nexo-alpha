@@ -191,3 +191,96 @@ test("describeSourceTree resolves a constructor call to a local class", async ()
     "expected a factory.ts#createLocal -> factory.ts#Local call edge"
   );
 });
+
+test("describeSourceTree resolves a namespace-member call to an internal export, exactly (no confidence marker)", async () => {
+  const source = createSourceInterface(graphFixture);
+  const tree = await source.describeSourceTree();
+
+  const edge = tree.callEdges.find(
+    (edge) => edge.from.file === "namespace-caller.ts" && edge.from.symbol === "useNamespace"
+  );
+  assert.ok(edge, "expected a namespace-caller.ts#useNamespace call edge");
+  assert.equal(edge.to?.file, "ns-target.ts");
+  assert.equal(edge.to?.symbol, "double");
+  assert.equal(edge.confidence, undefined);
+});
+
+test("describeSourceTree resolves a namespace-member call to an external package as toExternal, exactly", async () => {
+  const source = createSourceInterface(graphFixture);
+  const tree = await source.describeSourceTree();
+
+  const edge = tree.callEdges.find(
+    (edge) => edge.from.file === "namespace-caller.ts" && edge.from.symbol === "useExternalNamespace"
+  );
+  assert.ok(edge, "expected a namespace-caller.ts#useExternalNamespace call edge");
+  assert.equal(edge.toExternal, "node:fs");
+  assert.equal(edge.to, undefined);
+  assert.equal(edge.confidence, undefined);
+});
+
+test("describeSourceTree heuristically resolves obj.method() through a const-bound cross-file instance, alongside the exact new Widget() edge", async () => {
+  const source = createSourceInterface(graphFixture);
+  const tree = await source.describeSourceTree();
+
+  const edgesFromSymbol = tree.callEdges.filter(
+    (edge) => edge.from.file === "instances.ts" && edge.from.symbol === "useWidgetInstance"
+  );
+
+  const exactEdge = edgesFromSymbol.find((edge) => edge.confidence === undefined);
+  assert.ok(exactEdge, "expected an exact new Widget() constructor-call edge");
+  assert.equal(exactEdge.to?.file, "models.ts");
+  assert.equal(exactEdge.to?.symbol, "Widget");
+
+  const heuristicEdge = edgesFromSymbol.find((edge) => edge.confidence === "heuristic");
+  assert.ok(heuristicEdge, "expected a heuristic w.touch() call edge");
+  assert.equal(heuristicEdge.to?.file, "models.ts");
+  assert.equal(heuristicEdge.to?.symbol, "Widget");
+});
+
+test("describeSourceTree heuristically resolves obj.method() through a const-bound same-file instance, alongside the exact new LocalThing() edge", async () => {
+  const source = createSourceInterface(graphFixture);
+  const tree = await source.describeSourceTree();
+
+  const edgesFromSymbol = tree.callEdges.filter(
+    (edge) => edge.from.file === "instances.ts" && edge.from.symbol === "useLocalInstance"
+  );
+
+  const exactEdge = edgesFromSymbol.find((edge) => edge.confidence === undefined);
+  assert.ok(exactEdge, "expected an exact new LocalThing() constructor-call edge");
+  assert.equal(exactEdge.to?.symbol, "LocalThing");
+
+  const heuristicEdge = edgesFromSymbol.find((edge) => edge.confidence === "heuristic");
+  assert.ok(heuristicEdge, "expected a heuristic local.touch() call edge");
+  assert.equal(heuristicEdge.to?.file, "instances.ts");
+  assert.equal(heuristicEdge.to?.symbol, "LocalThing");
+});
+
+test("describeSourceTree never resolves obj.method() through a let-bound instance (the exact new Widget() edge still exists)", async () => {
+  const source = createSourceInterface(graphFixture);
+  const tree = await source.describeSourceTree();
+
+  const edgesFromSymbol = tree.callEdges.filter(
+    (edge) => edge.from.file === "instances.ts" && edge.from.symbol === "ignoresLetInstance"
+  );
+
+  assert.ok(
+    !edgesFromSymbol.some((edge) => edge.confidence === "heuristic"),
+    "a let-bound instance should never produce a heuristic call edge"
+  );
+  assert.ok(
+    edgesFromSymbol.some((edge) => edge.confidence === undefined && edge.to?.symbol === "Widget"),
+    "the exact new Widget() constructor-call edge should still be present"
+  );
+});
+
+test("describeSourceTree never resolves obj.method() on an untracked parameter", async () => {
+  const source = createSourceInterface(graphFixture);
+  const tree = await source.describeSourceTree();
+
+  assert.ok(
+    !tree.callEdges.some(
+      (edge) => edge.from.file === "instances.ts" && edge.from.symbol === "ignoresUntrackedObject"
+    ),
+    "a method call on an untracked parameter should never produce a call edge"
+  );
+});

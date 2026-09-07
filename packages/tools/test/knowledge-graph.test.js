@@ -118,6 +118,34 @@ test("buildKnowledgeGraph resolves constructor calls to the target class's own s
   );
 });
 
+test("buildKnowledgeGraph resolves a namespace-member call exactly, with no confidence marker", async () => {
+  const graph = await buildKnowledgeGraph(await buildFixtureContext());
+
+  const edge = graph.edges.find(
+    (e) => e.from === "symbol:namespace-caller.ts#useNamespace" && e.kind === "calls"
+  );
+  assert.ok(edge, "expected a namespace-caller.ts#useNamespace calls edge");
+  assert.equal(edge.to, "symbol:ns-target.ts#double");
+  assert.ok(!("confidence" in edge), "namespace resolution should be exact, no confidence key");
+});
+
+test("buildKnowledgeGraph resolves a heuristic method call, marked with confidence, alongside the exact constructor-call edge", async () => {
+  const graph = await buildKnowledgeGraph(await buildFixtureContext());
+
+  const edgesFromSymbol = graph.edges.filter(
+    (e) => e.from === "symbol:instances.ts#useWidgetInstance" && e.kind === "calls"
+  );
+
+  const exactEdge = edgesFromSymbol.find((e) => e.confidence === undefined);
+  assert.ok(exactEdge, "expected the exact new Widget() calls edge");
+  assert.equal(exactEdge.to, "symbol:models.ts#Widget");
+
+  const edge = edgesFromSymbol.find((e) => e.confidence === "heuristic");
+  assert.ok(edge, "expected a heuristic calls edge");
+  assert.equal(edge.to, "symbol:models.ts#Widget");
+  assert.equal(edge.confidence, "heuristic");
+});
+
 test("buildKnowledgeGraph links a module to its declared sourceFiles, skipping any path the scan didn't find", async () => {
   const graph = await buildKnowledgeGraph(await buildFixtureContext());
 

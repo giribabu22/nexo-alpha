@@ -310,8 +310,20 @@ interface ImportBinding {
   readonly importedName: string;
 }
 
-function extractImportBindings(sourceFile: ts.SourceFile): Map<string, ImportBinding> {
+interface ImportInfo {
+  readonly bindings: Map<string, ImportBinding>;
+  /**
+   * Local binding name -> module specifier, for `import * as ns from "x"`.
+   * Kept separate from `bindings` rather than folded in with a sentinel
+   * `importedName`: a namespace import has no single exported name, so
+   * reusing `ImportBinding`'s shape here would be a lie by convention.
+   */
+  readonly namespaceImports: Map<string, string>;
+}
+
+function extractImportBindings(sourceFile: ts.SourceFile): ImportInfo {
   const bindings = new Map<string, ImportBinding>();
+  const namespaceImports = new Map<string, string>();
 
   for (const statement of sourceFile.statements) {
     if (!ts.isImportDeclaration(statement) || !ts.isStringLiteral(statement.moduleSpecifier)) {
@@ -332,30 +344,50 @@ function extractImportBindings(sourceFile: ts.SourceFile): Map<string, ImportBin
         const importedName = element.propertyName?.text ?? element.name.text;
         bindings.set(element.name.text, { specifier, importedName });
       }
+    } else if (clause.namedBindings !== undefined && ts.isNamespaceImport(clause.namedBindings)) {
+      namespaceImports.set(clause.namedBindings.name.text, specifier);
     }
   }
 
-  return bindings;
+  return { bindings, namespaceImports };
 }
 
 /**
- * Direct calls (`foo()`) and constructor calls (`new Foo()`) found anywhere
- * within `body`, keyed by the callee/class identifier's text. Both resolve
- * through the same local-symbol/import-binding lookup in
- * {@link extractCallEdges} — a class is already recorded as a `LocalSymbol`,
- * so no extra resolution machinery is needed for `new X()`. Method calls
- * (`obj.method()`) and calls through anything other than a bare identifier
- * (`new (getCtor())()`, `new obj.Ctor()`) are still not captured — that
- * would need type information this module deliberately doesn't use.
+ * A callee found by {@link extractCallCallees}: either a bare identifier
+ * (`foo()`, `new Foo()`) or a property access (`ns.foo()`, `obj.method()`)
+ * — the two resolve very differently downstream in {@link extractCallEdges},
+ * so the distinction is carried through rather than flattened here.
  */
-function extractCallCallees(body: ts.Node): string[] {
-  const callees: string[] = [];
+type CalleeRef = { readonly kind: "bare"; readonly name: string } | { readonly kind: "member"; readonly object: string; readonly member: string };
+
+/**
+ * Direct calls (`foo()`), constructor calls (`new Foo()`), and
+ * property-access calls (`ns.foo()`, `obj.method()`) found anywhere within
+ * `body`. Bare calls/constructor calls resolve exactly through the same
+ * local-symbol/import-binding lookup in {@link extractCallEdges} — a class
+ * is already recorded as a `LocalSymbol`, so no extra resolution machinery
+ * is needed for `new X()`. Property-access calls resolve two different
+ * ways downstream (namespace-member access exactly, local-instance method
+ * calls only heuristically) — see {@link extractCallEdges}. Calls through
+ * anything other than a bare identifier or single-level property access
+ * (`new (getCtor())()`, `new obj.Ctor()`, `a.b.c()`) are still not
+ * captured — that would need type information this module deliberately
+ * doesn't use.
+ */
+function extractCallCallees(body: ts.Node): CalleeRef[] {
+  const callees: CalleeRef[] = [];
 
   const visit = (node: ts.Node): void => {
     if (ts.isCallExpression(node) && ts.isIdentifier(node.expression)) {
-      callees.push(node.expression.text);
+      callees.push({ kind: "bare", name: node.expression.text });
     } else if (ts.isNewExpression(node) && node.expression !== undefined && ts.isIdentifier(node.expression)) {
-      callees.push(node.expression.text);
+      callees.push({ kind: "bare", name: node.expression.text });
+    } else if (
+      ts.isCallExpression(node) &&
+      ts.isPropertyAccessExpression(node.expression) &&
+      ts.isIdentifier(node.expression.expression)
+    ) {
+      callees.push({ kind: "member", object: node.expression.expression.text, member: node.expression.name.text });
     }
     ts.forEachChild(node, visit);
   };
@@ -365,42 +397,122 @@ function extractCallCallees(body: ts.Node): string[] {
   return callees;
 }
 
+/**
+ * Local `const x = new ClassName()` bindings within `body`, mapping the
+ * variable name to the class identifier it was constructed from — the
+ * basis for the heuristic `obj.method()` resolution in
+ * {@link extractCallEdges}. Only `const` qualifies: a `let` could be
+ * reassigned to something else by the time a later `.method()` call runs,
+ * and this module doesn't track reassignment, so a `let` binding is never
+ * trusted, even when it factually never changes. A name bound to two
+ * different classes within the same body (impossible for a single `const`,
+ * but possible across nested scopes reusing a name) collapses to `null` —
+ * ambiguous, so no edge is ever produced for it, rather than guessing
+ * which one a later call meant.
+ */
+function extractLocalInstanceBindings(body: ts.Node): Map<string, string | null> {
+  const instances = new Map<string, string | null>();
+
+  const visit = (node: ts.Node): void => {
+    if (
+      ts.isVariableDeclaration(node) &&
+      ts.isVariableDeclarationList(node.parent) &&
+      (node.parent.flags & ts.NodeFlags.Const) !== 0 &&
+      ts.isIdentifier(node.name) &&
+      node.initializer !== undefined &&
+      ts.isNewExpression(node.initializer) &&
+      ts.isIdentifier(node.initializer.expression)
+    ) {
+      const localName = node.name.text;
+      const className = node.initializer.expression.text;
+      const existing = instances.get(localName);
+      if (existing === undefined) {
+        instances.set(localName, className);
+      } else if (existing !== className) {
+        instances.set(localName, null);
+      }
+    }
+    ts.forEachChild(node, visit);
+  };
+
+  ts.forEachChild(body, visit);
+
+  return instances;
+}
+
 function extractCallEdges(
   filePath: string,
   localSymbols: readonly LocalSymbol[],
-  importBindings: ReadonlyMap<string, ImportBinding>,
+  importInfo: ImportInfo,
   knownPaths: ReadonlySet<string>,
   extensions: readonly string[]
 ): CallEdge[] {
+  const { bindings: importBindings, namespaceImports } = importInfo;
   const localSymbolNames = new Set(localSymbols.map((symbol) => symbol.name));
   const edges: CallEdge[] = [];
+
+  /** Resolves a bare identifier (a same-file symbol name, an import binding, or nothing) to a CallEdge target. */
+  const resolveBareName = (name: string): { to?: CallSite; toExternal?: string } | undefined => {
+    if (localSymbolNames.has(name)) {
+      return { to: { file: filePath, symbol: name } };
+    }
+
+    const binding = importBindings.get(name);
+    if (binding === undefined) {
+      return undefined;
+    }
+
+    const resolvedFile = binding.specifier.startsWith(".")
+      ? resolveInternalImport(filePath, binding.specifier, knownPaths, extensions)
+      : undefined;
+
+    return resolvedFile !== undefined
+      ? { to: { file: resolvedFile, symbol: binding.importedName } }
+      : { toExternal: binding.specifier };
+  };
 
   for (const symbol of localSymbols) {
     if (symbol.body === undefined) {
       continue;
     }
 
-    for (const callee of extractCallCallees(symbol.body)) {
+    const instanceBindings = extractLocalInstanceBindings(symbol.body);
+
+    for (const ref of extractCallCallees(symbol.body)) {
       const from: CallSite = { file: filePath, symbol: symbol.name };
 
-      if (localSymbolNames.has(callee) && callee !== symbol.name) {
-        edges.push({ from, to: { file: filePath, symbol: callee } });
+      if (ref.kind === "bare") {
+        if (ref.name === symbol.name) {
+          continue;
+        }
+        const resolved = resolveBareName(ref.name);
+        if (resolved !== undefined) {
+          edges.push({ from, ...resolved });
+        }
         continue;
       }
 
-      const binding = importBindings.get(callee);
-      if (binding === undefined) {
+      // ref.kind === "member": ns.foo() or obj.method().
+      const namespaceSpecifier = namespaceImports.get(ref.object);
+      if (namespaceSpecifier !== undefined) {
+        const resolvedFile = namespaceSpecifier.startsWith(".")
+          ? resolveInternalImport(filePath, namespaceSpecifier, knownPaths, extensions)
+          : undefined;
+        if (resolvedFile !== undefined) {
+          edges.push({ from, to: { file: resolvedFile, symbol: ref.member } });
+        } else {
+          edges.push({ from, toExternal: namespaceSpecifier });
+        }
         continue;
       }
 
-      const resolvedFile = binding.specifier.startsWith(".")
-        ? resolveInternalImport(filePath, binding.specifier, knownPaths, extensions)
-        : undefined;
-
-      if (resolvedFile !== undefined) {
-        edges.push({ from, to: { file: resolvedFile, symbol: binding.importedName } });
-      } else {
-        edges.push({ from, toExternal: binding.specifier });
+      const className = instanceBindings.get(ref.object);
+      if (className === undefined || className === null) {
+        continue;
+      }
+      const resolved = resolveBareName(className);
+      if (resolved !== undefined) {
+        edges.push({ from, ...resolved, confidence: "heuristic" });
       }
     }
   }
@@ -426,16 +538,19 @@ function scriptKindFor(path: string): ts.ScriptKind {
  * Parsing uses the real TypeScript AST (`ts.createSourceFile`, syntactic
  * only — no `Program`/type-checker, so no cross-project module resolution
  * or type information is used). This is deliberately still not a full
- * static-analysis engine: no type-aware call resolution, no method calls
- * (`obj.method()`), and import resolution is limited to relative specifiers
- * that land on another file this same scan found — a bare package specifier
- * (`"react"`, `"node:fs"`, `"@nexo-alpha/core"`) is recorded per-file but
- * never resolved to a file path here, since that would mean fully
- * replicating Node's module resolution algorithm across `node_modules`
- * (`buildKnowledgeGraph`, one layer up, does represent it — as an edge to an
- * opaque `external` node, not a resolved file). Constructor calls
- * (`new X()`) through a bare identifier *are* resolved, the same way a bare
- * function call is — see {@link extractCallCallees}.
+ * static-analysis engine, and import resolution is limited to relative
+ * specifiers that land on another file this same scan found — a bare
+ * package specifier (`"react"`, `"node:fs"`, `"@nexo-alpha/core"`) is
+ * recorded per-file but never resolved to a file path here, since that
+ * would mean fully replicating Node's module resolution algorithm across
+ * `node_modules` (`buildKnowledgeGraph`, one layer up, does represent it —
+ * as an edge to an opaque `external` node, not a resolved file).
+ * Constructor calls (`new X()`) and namespace-member calls (`ns.foo()`
+ * through `import * as ns from "..."`) through a bare identifier resolve
+ * exactly, the same way a bare function call does. `obj.method()` resolves
+ * only heuristically, and only when `obj` is a local `const obj = new
+ * ClassName()` binding in the same scanned body — see
+ * {@link extractCallCallees} and {@link extractLocalInstanceBindings}.
  */
 export function createSourceInterface(
   projectRoot: string,

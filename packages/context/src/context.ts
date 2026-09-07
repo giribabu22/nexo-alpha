@@ -101,26 +101,43 @@ export interface CallSite {
 }
 
 /**
- * A first-slice call edge: a direct call (`foo()`) or constructor call
- * (`new Foo()`), from inside a top-level function declaration or a
- * top-level `const`/`let` bound to a function or arrow expression, to an
- * identifier that resolves either to another top-level symbol in the same
- * file, another file within the same scanned tree (via an import), or an
- * unresolved external package. Exactly one of `to`/`toExternal` is present.
- * A resolved constructor call's `to` points at the class's own symbol —
- * there's no separate "constructor" symbol, since class members still
- * aren't parsed at all.
+ * A first-slice call edge: a direct call (`foo()`), constructor call
+ * (`new Foo()`), or namespace-member call (`ns.foo()` through
+ * `import * as ns from "..."`), from inside a top-level function
+ * declaration or a top-level `const`/`let` bound to a function or arrow
+ * expression, to an identifier that resolves either to another top-level
+ * symbol in the same file, another file within the same scanned tree (via
+ * an import), or an unresolved external package. Exactly one of
+ * `to`/`toExternal` is present. A resolved constructor call's `to` points
+ * at the class's own symbol — there's no separate "constructor" symbol,
+ * since class members still aren't parsed at all.
+ *
+ * A fourth, narrower case is also captured: `obj.method()` where `obj` is
+ * a local `const obj = new ClassName()` binding in the same scanned body.
+ * Unlike everything else here, this is a heuristic, not a syntactic
+ * certainty — `obj` could hold something other than what its initializer
+ * suggests by the time `.method()` runs, and the class isn't checked for
+ * actually declaring that method. Such an edge resolves to the class's own
+ * symbol (same target a constructor call would use) and carries
+ * `confidence: "heuristic"`; every other edge here stays exact, so the
+ * field's absence still means "not guessed at." Only `const` bindings
+ * qualify — `let` never produces a heuristic edge, even if it's factually
+ * never reassigned, and a name rebound to two different classes in the
+ * same body is treated as ambiguous and skipped rather than guessed at.
  *
  * Deliberately out of scope, same "not a full static-analysis engine"
- * stance as {@link ImportEdge}: method calls (`obj.method()`), calls inside
- * class methods, and anything needing type information. A callee that can't
- * be resolved to a known local symbol or import binding is simply not
- * recorded, not guessed at.
+ * stance as {@link ImportEdge}: calls inside class methods, constructor
+ * calls through a property access (`new ns.Thing()`, `new obj.Thing()`),
+ * and anything needing real type information. A callee that can't be
+ * resolved to a known local symbol, import binding, or heuristic instance
+ * binding is simply not recorded, not guessed at.
  */
 export interface CallEdge {
   readonly from: CallSite;
   readonly to?: CallSite;
   readonly toExternal?: string;
+  /** Present only for the heuristic `obj.method()` case described above. */
+  readonly confidence?: "heuristic";
 }
 
 /** A file/export/import/symbol/call inventory produced by scanning a project's actual source tree. */
@@ -237,7 +254,7 @@ export function hashSourceTree(tree: SourceTree): string {
         (edge) =>
           `${edge.from.file}#${edge.from.symbol}->${
             edge.to !== undefined ? `${edge.to.file}#${edge.to.symbol}` : `external:${edge.toExternal}`
-          }`
+          }${edge.confidence !== undefined ? `|${edge.confidence}` : ""}`
       )
       .sort()
   });

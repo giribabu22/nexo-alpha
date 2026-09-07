@@ -7,6 +7,7 @@ import {
   contextToJson,
   createKnowledge,
   describeStructure,
+  hashSourceTree,
   hashStructure
 } from "../dist/index.js";
 
@@ -151,6 +152,21 @@ test("hashStructure is stable for identical structure and changes when structure
 
   app.module({ name: "shipping" });
   assert.notEqual(hashStructure(structure), hashStructure(describeStructure(app)));
+});
+
+test("hashSourceTree is sensitive to a call edge's confidence field", () => {
+  const baseTree = {
+    fileCount: 1,
+    files: [],
+    importEdges: [],
+    callEdges: [{ from: { file: "a.ts", symbol: "run" }, to: { file: "b.ts", symbol: "Widget" } }]
+  };
+  const heuristicTree = {
+    ...baseTree,
+    callEdges: [{ ...baseTree.callEdges[0], confidence: "heuristic" }]
+  };
+
+  assert.notEqual(hashSourceTree(baseTree), hashSourceTree(heuristicTree));
 });
 
 test("contextToJson round-trips through JSON.parse", () => {

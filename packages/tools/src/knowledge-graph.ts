@@ -23,6 +23,8 @@ export interface KnowledgeGraphEdge {
   readonly from: string;
   readonly to: string;
   readonly kind: KnowledgeEdgeKind;
+  /** Present only for a `"calls"` edge resolved via the heuristic `obj.method()` pattern. See `CallEdge` in `@nexo-alpha/context`. */
+  readonly confidence?: "heuristic";
 }
 
 export interface KnowledgeGraph {
@@ -204,12 +206,13 @@ export async function buildKnowledgeGraph(
 
     for (const edge of context.sourceTree.callEdges) {
       const from = symbolId(edge.from.file, edge.from.symbol);
+      const confidence = edge.confidence !== undefined ? { confidence: edge.confidence } : {};
       if (edge.to !== undefined) {
-        edges.push({ from, to: symbolId(edge.to.file, edge.to.symbol), kind: "calls" });
+        edges.push({ from, to: symbolId(edge.to.file, edge.to.symbol), kind: "calls", ...confidence });
       } else if (edge.toExternal !== undefined) {
         const to = externalId(edge.toExternal);
         addNode({ id: to, kind: "external", name: edge.toExternal });
-        edges.push({ from, to, kind: "calls" });
+        edges.push({ from, to, kind: "calls", ...confidence });
       }
     }
   }
