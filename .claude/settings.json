@@ -1,0 +1,21 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(pnpm install *)",
+      "Bash(pnpm build *)",
+      "Bash(pnpm test *)",
+      "Bash(pnpm --filter @nexo/example-hello-world start)",
+      "Bash(npm test *)",
+      "Bash(node scratch-verify.mjs)",
+      "Bash(npm run *)",
+      "Bash(node ../../../dist/cli.js inspect)",
+      "Bash(node ../../../dist/cli.js status)",
+      "Bash(node ../../../dist/cli.js context)",
+      "Bash(git commit -m ' *)",
+      "Bash(node scratch-hapi-auth.mjs)",
+      "Bash(git add *)",
+      "Bash(node scratch-observability.mjs)",
+      "Bash(node scratch-job-mutators.mjs)"
+    ]
+  }
+}

@@ -1,7 +1,7 @@
 {
   "name": "nexo",
   "private": true,
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Application framework and environment for the AI era",
   "license": "MIT",
   "packageManager": "pnpm@10.0.0",
@@ -12,7 +12,8 @@
     "build": "pnpm -r build",
     "test": "pnpm -r --if-present test",
     "typecheck": "pnpm -r typecheck",
-    "clean": "pnpm -r --if-present clean"
+    "clean": "pnpm -r --if-present clean",
+    "publish:all": "pnpm build && pnpm -r publish --access public --no-git-checks"
   },
   "devDependencies": {
     "typescript": "^5.0.0",

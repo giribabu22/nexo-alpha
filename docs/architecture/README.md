@@ -1,4 +1,4 @@
-# Architecture Notes — v0.14
+# Architecture Notes — v0.17
 
 **npm scope note:** packages publish under `@nexo-alpha` (an npm Organization), not `@nexo` — the unscoped `@nexo` scope required an org that wasn't set up in time; `nexo-alpha` was used instead and is treated as the project's real published identity going forward. All package names below reflect this.
 
@@ -40,23 +40,31 @@ also gained `getJobs()`, flattening jobs across modules the same way
 `getApis()`/`getServices()` already do. Actually executing jobs is
 `@nexo-alpha/scheduler`'s job (below), not core's — core only declares.
 
-## Decisions, constraints, development state
+## Decisions, constraints, development state (superseded — see v0.17 boundary)
 
-Alongside modules, `NexoApplication` now holds application-level (not
-per-module) knowledge records: `addDecision()`/`getDecisions()`
-(`NexoDecision`: `title`, `reason?`, `alternatives?`, `status?`),
-`addConstraint()`/`getConstraints()` (`NexoConstraint`: `description`,
-`reason?`), and `setDevelopmentState()`/`getDevelopmentState()`
-(`DevelopmentState`: `currentObjective?`, `completed`, `inProgress`,
-`blocked`, `knownIssues`, `nextStep?`). `setDevelopmentState` shallow-merges
-a partial patch into the current snapshot — array fields are replaced
-wholesale by the caller, not appended to, since this models "where
-development currently stands," not an append-only log.
+> **This section describes the Phase 3 design, when these records lived on
+> `NexoApplication` itself.** As of the v0.17 boundary below, they were
+> extracted out of `@nexo-alpha/core` entirely and now live in
+> `@nexo-alpha/context`'s `createKnowledge()` container. The API shapes
+> described here are unchanged — only their package/owner moved. Read this
+> section for the *shape*, and "Knowledge extraction and serialization"
+> under the v0.17 boundary for *where it lives now*.
 
-These complete Phase 3 (Context) as scoped in `plan.txt`: `@nexo-alpha/context`'s
-`buildContext()` now also surfaces `decisions`, `constraints`, and
-`developmentState` in the manifest, using the same
-omit-rather-than-`undefined` discipline as module metadata.
+Alongside modules, application-level (not per-module) knowledge records
+were tracked: `addDecision()`/`getDecisions()` (`NexoDecision`: `title`,
+`reason?`, `alternatives?`, `status?`), `addConstraint()`/`getConstraints()`
+(`NexoConstraint`: `description`, `reason?`), and
+`setDevelopmentState()`/`getDevelopmentState()` (`DevelopmentState`:
+`currentObjective?`, `completed`, `inProgress`, `blocked`, `knownIssues`,
+`nextStep?`). `setDevelopmentState` shallow-merges a partial patch into the
+current snapshot — array fields are replaced wholesale by the caller, not
+appended to, since this models "where development currently stands," not
+an append-only log.
+
+These completed Phase 3 (Context) as scoped in `plan.txt`: `@nexo-alpha/context`'s
+`buildContext()` surfaces `decisions`, `constraints`, and `developmentState`
+in the manifest (when a `knowledge` instance is passed to it), using the
+same omit-rather-than-`undefined` discipline as module metadata.
 
 ## Context manifest
 
@@ -112,14 +120,17 @@ The split follows the existing core/tools boundary:
 - **`@nexo-alpha/core`** gained raw, unguarded mutators on
   `NexoApplication` — `addApiToModule`/`updateApi`,
   `addServiceToModule`/`updateService`, `updateConfig`,
-  `addModuleDependency` — plus a `History` data model
+  `addModuleDependency` — plus, at the time, a `History` data model
   (`NexoHistoryEntry`: `timestamp`, `operation`, `target?`, `actor?`,
   `result: "success" | "denied" | "failed"`, `detail?`) with
-  `addHistoryEntry()`/`getHistory()`. This finally implements
-  `get_history()` from PRD section 17, previously an unfilled gap.
+  `addHistoryEntry()`/`getHistory()`, living directly on `NexoApplication`.
+  **This is now superseded** — as of the v0.17 boundary, `NexoHistoryEntry`
+  and its accessors moved to `@nexo-alpha/context`'s `createKnowledge()`,
+  alongside decisions/constraints/development state, for the same reason:
+  core stays a dumb, trusted structural model, and doesn't know what a
+  "permission," a "decision," or an audit trail is.
   `create_module()` needed no new core method — the existing
-  `.module()` registration call already covers it. Core stays a dumb,
-  trusted model: it does not know what a "permission" is.
+  `.module()` registration call already covers it.
 - **`@nexo-alpha/tools`** gained `createWriteInterface(app, grants)`,
   parallel to `createReadInterface`. Each of its seven methods runs
   Permission Check (against a caller-supplied `PermissionGrants` —
@@ -420,6 +431,155 @@ one method's return shape); metrics persistence across restarts
 (in-memory only, same stance as the scheduler's own no-persistence
 design); a CLI command to display metrics.
 
+## Lifecycle failure semantics
+
+Closes a long-standing gap in `NexoApplication.start()`/`stop()`: until now,
+a module throwing mid-lifecycle (e.g. `initialize()` rejects) left `_state`
+stuck at an in-transit value (`"initializing"`/`"stopping"`) forever, since
+both methods only guard entry (`start()` requires `"created"`/`"stopped"`;
+`stop()` requires `"running"`) and neither wrapped its loop in a `try/catch`.
+The application became permanently unstartable/unstoppable with no signal
+of *why* beyond the original thrown error, and no observable difference
+between "still working" and "died mid-initialize."
+
+`ApplicationState` gained a fifth value, `"failed"`. Both `start()`'s
+initialize/start loops and `stop()`'s stop loop are now wrapped in
+`try/catch`: on a thrown/rejected error, `_state` is set to `"failed"`
+before rethrowing the original error unchanged (not wrapped in
+`NexoLifecycleError` — the failure is the module's, not a lifecycle-API
+misuse). No new guard code was needed to keep the application from being
+restarted or stopped again from `"failed"` — the existing entry guards
+already reject any state other than their required one, so `"failed"`
+falls through to the same `NexoLifecycleError` path as `"initializing"`
+or `"stopping"` would. `state`/`checkApplicationHealth()` (verification
+interface) and the context manifest all just pass `app.state` through
+with no exhaustive switch anywhere in the workspace, so `"failed"` needed
+no changes outside `application.ts` to surface correctly.
+
+**Deliberately not doing:** no automatic rollback of modules already
+initialized/started before the failure (no `initialize`/`start` symmetry
+with a defined "undo" — a module doesn't declare how to undo its own
+`initialize()`). A recovery path out of `"failed"` was deferred at first
+per `phase.txt`'s guidance to only add what's justified by a strong
+reason — see "Lifecycle recovery (`reset()`)" below for why one was
+added shortly after.
+
+New tests: `packages/core/test/lifecycle.test.js` — invalid transitions
+(`stop()` from `"created"`, `start()` while `"initializing"`/`"stopping"`,
+idempotent no-ops from `"running"`/`"stopped"`), failure semantics (a
+throw during `initialize()`/`start()`/`stop()` each land on `"failed"`,
+with the partial-progress event log asserted; the application then
+rejects further `start()`/`stop()` calls), and multi-module ordering
+(initialize/start in registration order, stop in reverse) — the last of
+these was previously only exercised with a single module.
+
+## Lifecycle recovery (`reset()`)
+
+Once `"failed"` shipped, the application had no way back to a usable
+state short of the caller constructing a brand new `NexoApplication` and
+re-registering every module — a real gap for anything long-running (a
+server process, a scheduler host) where a single module's transient
+`initialize()`/`start()`/`stop()` failure shouldn't require a full
+process restart. That's the "strong reason" the earlier section deferred
+on.
+
+`NexoApplication.reset()` is only valid from `"failed"` (any other state
+throws `NexoLifecycleError`, consistent with every other lifecycle
+guard). It does **not** attempt a rollback — since core doesn't know
+which modules completed `initialize()`/`start()` before the failure, it
+instead does the same best-effort cleanup a normal `stop()` would: call
+`stop()` on every registered module, in reverse registration order,
+tolerating each one throwing or being a no-op for a module that never
+actually started. Errors encountered during that cleanup are collected
+and **returned**, not thrown — `Promise<readonly Error[]>` — since a
+caller recovering from a failure needs to see every cleanup problem, not
+just the first, and a `reset()` that itself throws would leave the
+application back in `"failed"` with no way out. On success (with or
+without cleanup errors) the state becomes `"stopped"`, so `start()` can
+be called again immediately.
+
+**Deliberately not doing:** no automatic retry of `start()` after
+`reset()` (the caller decides whether/when to retry — Nexo doesn't
+assume the failure was transient), and no `addHistoryEntry()` call from
+`reset()` itself — same reasoning as `start()`/`stop()` not auditing
+themselves: `History` tracks AI-driven structural mutations made through
+`@nexo-alpha/tools`'s write interface, not core's own lifecycle
+operations. A tools-level wrapper that audits `reset()` calls can be
+added later if an operational use case needs it.
+
+New tests (`packages/core/test/lifecycle.test.js`): `reset()` rejected
+from every non-`"failed"` state; a failed application resets to
+`"stopped"` and can be started again (and can fail and be reset again);
+cleanup errors from a module's `stop()` during `reset()` are collected
+and returned rather than thrown.
+
+## Process-shelling verification ops (run_tests/run_typecheck/run_build)
+
+Closes the second half of PRD section 19's verification ops. The
+in-memory four (`validateConfiguration`, `validateArchitecture`,
+`inspectDependencies`, `checkApplicationHealth`) shipped earlier; the
+other four — `run_tests`, `run_typecheck`, `run_lint`, `run_build` —
+were explicitly deferred at the time because they need a project-root
+argument and command-detection, "ahead of the still-pending
+project-config-convention work." That convention (`nexo.config.json`,
+`packages/cli/src/config.ts`) has since shipped, so the stated reason to
+wait no longer applies.
+
+A new `@nexo-alpha/tools` factory, `createRunInterface(projectRoot)`
+(`packages/tools/src/run-interface.ts`), implements three of the four:
+`runTests()`, `runTypecheck()`, `runBuild()`. Each shells out
+(`node:child_process.spawn`, `shell: true`) to the target project's own
+`test`/`typecheck`/`build` npm script, detecting the package manager
+from the lockfile present in `projectRoot` (`pnpm-lock.yaml` -> pnpm,
+`yarn.lock` -> yarn, otherwise npm) — the same lockfile-sniffing
+approach used nowhere else in the codebase yet, but the only
+dependency-free way to pick a package manager without asking the caller
+to specify one. Before spawning anything, the target's `package.json`
+`scripts` are read and checked for the requested script name; a missing
+script returns a failed `RunResult` immediately (`exitCode: null`,
+descriptive `stderr`) rather than letting `npm run <missing>` produce
+its own, less useful "Missing script" error — same "explicit, bounded
+failure" principle used elsewhere (the Hapi adapter's auth-configuration
+check, the scheduler's up-front cron parse). `RunResult` never throws
+for a failing/missing script — `{ success, command, exitCode, stdout,
+stderr, durationMs }` — only a genuinely missing `package.json` in
+`projectRoot` rejects, since that's a caller error (wrong path), not a
+target-project failure the caller is asking to observe.
+
+**`run_lint()` is deliberately not implemented** — same reasoning as
+when the other three were first deferred: there is no lint tooling
+configured anywhere in this repo to use as a reference convention (no
+ESLint config in any package), so building it now would mean guessing
+at a convention rather than following one that already exists.
+
+**`projectRoot` is a caller-supplied argument, not discovered by
+`@nexo-alpha/tools` itself** — the package stays decoupled from the
+CLI's `nexo.config.json` convention; a caller that already knows the
+project root (the CLI, or an AI tool given an explicit path) passes it
+directly. This mirrors `createWriteInterface(app, grants)` taking its
+permission grants as an explicit argument rather than discovering them
+ambiently.
+
+**Deliberately not doing:** no CLI subcommand wiring (`nexo test`,
+`nexo build`, etc.) — same stance the write interface shipped with:
+"it's a library API at the same level as the read interface today." No
+streaming output (stdout/stderr are buffered and returned whole once the
+process exits, not surfaced incrementally) — a streaming variant is a
+different interface shape (callback or async-iterable) better designed
+against a real long-running-build use case than speculatively built now. No
+timeout/cancellation — a caller that needs to bound run time can layer
+`AbortController`/`Promise.race` externally; `NexoRunInterface` doesn't
+yet have a documented cancellation contract to guess at.
+
+New tests: `packages/tools/test/run-interface.test.js`, against two
+fixture projects (`packages/tools/test/fixtures/run-passing`,
+`run-failing`) with real `test`/`build` npm scripts — a passing script
+exit, a failing script exit with captured `stderr`, a missing script
+(`runTypecheck` against a fixture with no `typecheck` script), and a
+missing `package.json` rejecting. These spawn real child processes
+(`npm run <script>`), not mocked child-process calls, so they verify the
+actual detection/spawn/capture path end to end.
+
 ## Dependency direction rule
 
 `@nexo-alpha/core` must depend only on the Node.js runtime. It must never depend on:
@@ -433,13 +593,45 @@ design); a CLI command to display metrics.
 Later packages depend **on** core, never the reverse:
 
 ```text
+@nexo-alpha/context   --> @nexo-alpha/core
 @nexo-alpha/hapi      --> @nexo-alpha/core
-@nexo-alpha/cli       --> @nexo-alpha/core
-@nexo-alpha/tools     --> @nexo-alpha/core
 @nexo-alpha/scheduler --> @nexo-alpha/core
+@nexo-alpha/tools     --> @nexo-alpha/core, @nexo-alpha/context
+@nexo-alpha/cli       --> @nexo-alpha/core, @nexo-alpha/context, @nexo-alpha/tools
 ```
 
-## v0.14 boundary
+## v0.17 boundary
+
+In scope:
+- **Core Decoupling**: Extracted `NexoDecision`, `NexoConstraint`, `DevelopmentState`, and `NexoHistoryEntry` out of `@nexo-alpha/core` and into `@nexo-alpha/context` under the `createKnowledge()` container.
+- **Application Mutation Lifecycle Gating**: Enforced `assertModifiable()` on `NexoApplication` (`module`, `addApiToModule`, `updateApi`, `addServiceToModule`, `updateService`, `addJobToModule`, `updateJob`, `updateConfig`, `addModuleDependency`) to reject modifications when running.
+- **Lifecycle Events**: Core `NexoApplication` emits lifecycle events (`application.initializing`, `application.started`, `application.stopping`, `application.stopped`, `application.failed`, `application.reset`).
+- **Adapter Lifecycle Binding**: `@nexo-alpha/hapi` (`startHapiServer`) and `@nexo-alpha/scheduler` (`startJobScheduler`) automatically stop when `app.stop()` is invoked.
+- **Scheduler Domain Errors**: Added typed `NexoCronError` extending `NexoError`.
+- **API-to-Service Links & Verification**: Added optional `service?: string` to `NexoApi` and architecture validation in `@nexo-alpha/tools`.
+- **CLI Commands Expansion**: Added `nexo validate` and `nexo health` to `@nexo-alpha/cli`.
+- **Knowledge Serialization**: `@nexo-alpha/context/knowledge.ts` gained `knowledgeToJson(knowledge)`/`knowledgeFromJson(json)` plus a `SerializedKnowledge` type (`decisions`, `constraints`, `developmentState`, `history`, `generatedAt`, `schemaVersion`) so a knowledge journal can round-trip through a plain JSON string. Serialization is caller-driven — the functions don't touch the filesystem themselves. `nexo knowledge [app-module-path]` (added to `@nexo-alpha/cli`) is the first caller: it prints `knowledgeToJson()`'s output to stdout, the same way `nexo context` does for the full manifest, so a project can persist its decision journal with `nexo knowledge > .nexo/knowledge.json` and reload it into a fresh `createKnowledge()` with `knowledgeFromJson` in its own app module. Round-trip is lossy only by design: history entries are re-stamped with a fresh `timestamp` on `addHistoryEntry`, matching that method's existing contract, not a serialization bug.
+- **Registry-Derived Structure**: `@nexo-alpha/context/context.ts` gained `describeStructure(app)` / `hashStructure(structure)` and a new `ApplicationStructure` shape (`moduleCount`, `apiCount`, `serviceCount`, `jobCount`, `dependencyEdges` — sorted, so the hash doesn't depend on module registration order). This is the "what does the registry currently look like" half of knowledge, derived entirely from `NexoApplication`'s existing public surface — no source parsing. `buildContext()` now always includes `structure` and a `structureHash` in its output (no `knowledge` argument required), `createReadInterface()` exposes the same pair via `getStructure()`, and `nexo knowledge`'s JSON snapshot embeds both alongside the manual journal, so a saved snapshot carries a way to detect whether the application's registered structure has since changed (`structureHash` no longer matches a freshly computed one) — the first piece of the staleness-detection story the decisions/constraints/history journal alone couldn't provide.
+
+- **Source-Text Extraction (first slice)**: `@nexo-alpha/tools` gained `createSourceInterface(projectRoot)` (`source-interface.ts`), which walks a project's actual source tree (default extensions `.ts`/`.tsx`/`.js`/`.jsx`, skipping `node_modules`/`dist`/`build`/`coverage`/`.git`/`.turbo`/dotfiles) and, per file, extracts a best-effort list of top-level exported symbol names via regex — `export function/class/interface/type/enum/const/let/var`, `export { a, b as c }` lists, and bare `export default`. `sourceTreeHash()` hashes the result deterministically for the same staleness-detection purpose as `hashStructure()`. `nexo source [project-root]` (default: cwd) is the CLI surface — the one command that doesn't load a Nexo application at all, since it reads files directly rather than the registry.
+
+  This closes the gap the "not yet" note below used to describe, but only partially, on purpose: it is a regex scan, not a real parser — it can't resolve `export * from "./x"` re-exports to their underlying names, doesn't understand comments or string literals well enough to avoid rare false positives, and extracts no import graph, no call graph, and no cross-file symbol resolution. It answers "what does this file export," cheaply, not "how is this codebase's code actually connected." A real code graph (AST-based, import-resolved, possibly embeddings for semantic search) remains future, larger-scoped work.
+
+### v0.16 boundary (superseded)
+
+In scope: everything from v0.14, plus lifecycle failure semantics (the
+`"failed"` `ApplicationState`, `start()`/`stop()` failure handling),
+lifecycle recovery (`reset()`), the new `lifecycle.test.js` suite
+covering invalid transitions, failure semantics, multi-module ordering,
+and `reset()`, a GitHub Actions CI workflow
+(`.github/workflows/ci.yml`, running `pnpm install --frozen-lockfile` ->
+`build` -> `typecheck` -> `test` on every push/PR to `main` — previously
+nothing gated merges), and bringing the root `README.md` up to date with
+the actual package set and `@nexo-alpha` scope (it had been left at its
+original `@nexo/core`-only, v0.1-alpha description since the repository's
+first commit).
+
+### v0.14 boundary (superseded)
 
 In scope: everything from v0.13, plus observability (`api.called`/
 `api.error`/`job.ran`/`job.failed` events through `NexoEventBus`,
