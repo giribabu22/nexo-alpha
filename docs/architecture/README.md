@@ -1,4 +1,6 @@
-# Architecture Notes — v0.5
+# Architecture Notes — v0.6
+
+**npm scope note:** packages publish under `@nexo-alpha` (an npm Organization), not `@nexo` — the unscoped `@nexo` scope required an org that wasn't set up in time; `nexo-alpha` was used instead and is treated as the project's real published identity going forward. All package names below reflect this.
 
 ## Current model
 
@@ -49,15 +51,15 @@ a partial patch into the current snapshot — array fields are replaced
 wholesale by the caller, not appended to, since this models "where
 development currently stands," not an append-only log.
 
-These complete Phase 3 (Context) as scoped in `plan.txt`: `@nexo/context`'s
+These complete Phase 3 (Context) as scoped in `plan.txt`: `@nexo-alpha/context`'s
 `buildContext()` now also surfaces `decisions`, `constraints`, and
 `developmentState` in the manifest, using the same
 omit-rather-than-`undefined` discipline as module metadata.
 
 ## Context manifest
 
-`@nexo/context` is the first package built *on* `@nexo/core` rather than
-inside it. Its `buildContext(app)` reads only `@nexo/core`'s existing
+`@nexo-alpha/context` is the first package built *on* `@nexo-alpha/core` rather than
+inside it. Its `buildContext(app)` reads only `@nexo-alpha/core`'s existing
 public surface (identity, `getModules()`, `getDependents()`) and produces
 a plain, JSON-serializable `ApplicationContext`: application identity +
 per-module metadata (`purpose`, `status`, `dependencies`, `dependents`,
@@ -73,15 +75,15 @@ provider.
 
 ## AI/tooling read interface
 
-`@nexo/tools` is the second package built *on* `@nexo/core`/`@nexo/context`
-(`@nexo/tools → @nexo/context → @nexo/core`, plus `@nexo/tools → @nexo/core`
+`@nexo-alpha/tools` is the second package built *on* `@nexo-alpha/core`/`@nexo-alpha/context`
+(`@nexo-alpha/tools → @nexo-alpha/context → @nexo-alpha/core`, plus `@nexo-alpha/tools → @nexo-alpha/core`
 directly for types). `createReadInterface(app)` returns a `NexoReadInterface`
 — the structured, provider-neutral "Understand" capability set from PRD
 section 17: `getApplication`, `getModules`, `getModule`, `getApi`,
 `getService`, `getDependencies`, `getDependents`, `getConfiguration`,
 `getArchitecture`, `getDecisions`, `getConstraints`, `getCurrentWork`,
 `getStatus`. Every method is thin wiring over existing `NexoApplication`/
-`@nexo/context` calls — no new business logic. Lookups by name
+`@nexo-alpha/context` calls — no new business logic. Lookups by name
 (`getModule`, `getApi`, `getService`) return `undefined` when not found
 rather than throwing, since a tool probing an unfamiliar application
 should degrade gracefully.
@@ -104,9 +106,43 @@ just to fill this method.
 `getAllConfig()` was added to `NexoApplication` (alongside the existing
 `getConfig(key)`) so `getConfiguration()` has a full config bag to read.
 
+## CLI
+
+`@nexo-alpha/cli` is the human-facing counterpart to `@nexo-alpha/tools`
+— both read the same `buildContext()` manifest, `@nexo-alpha/tools` shaped
+for an AI tool's structured calls, `@nexo-alpha/cli` rendering it as
+readable terminal text. It depends on `@nexo-alpha/core` and
+`@nexo-alpha/context` directly (not `@nexo-alpha/tools`), since it needs
+the manifest, not the AI-shaped wrapper around it.
+
+**How it finds an application:** Nexo has no project scaffold or
+config-file convention yet, so the CLI takes an explicit path to a
+compiled JS module that exports a `NexoApplication` as `app` (or
+`default`) and dynamically `import()`s it — `nexo inspect ./dist/app.js`.
+A config-file convention (so `nexo inspect` alone works from a project
+root) can layer on top later without changing the render/command logic.
+
+Commands: `nexo inspect <app-path> [moduleName]` (application summary,
+or one module's full detail), `nexo status <app-path>` (development
+state), `nexo context <app-path>` (raw JSON manifest dump). All argument
+parsing is hand-rolled (`process.argv`) rather than a CLI-argument
+library, since there are no flags to parse — keeping `@nexo-alpha/cli`
+at zero runtime dependencies beyond the two workspace packages.
+
+The render (`render.ts`) and command (`commands.ts`) layers are pure
+functions returning strings — no direct `console.log`/`process.exit` —
+so they're testable without capturing stdout; only `cli.ts` (the actual
+bin entry) touches process-level I/O.
+
+`examples/hello-world` was split into `src/app.ts` (declares and exports
+`app`, no side effects) and `src/index.ts` (imports it, calls `start()`,
+logs — same runtime behavior as before) so the CLI has a side-effect-free
+target to inspect; importing `app.js` for inspection no longer
+accidentally starts the application or prints its lifecycle logs.
+
 ## Dependency direction rule
 
-`@nexo/core` must depend only on the Node.js runtime. It must never depend on:
+`@nexo-alpha/core` must depend only on the Node.js runtime. It must never depend on:
 
 - an AI provider or SDK
 - Hapi (or any HTTP framework)
@@ -117,23 +153,22 @@ just to fill this method.
 Later packages depend **on** core, never the reverse:
 
 ```text
-@nexo/hapi  --> @nexo/core
-@nexo/cli   --> @nexo/core
-@nexo/tools --> @nexo/core
+@nexo-alpha/hapi  --> @nexo-alpha/core
+@nexo-alpha/cli   --> @nexo-alpha/core
+@nexo-alpha/tools --> @nexo-alpha/core
 ```
 
-## v0.5 boundary
+## v0.6 boundary
 
-In scope: everything from v0.4, plus `@nexo/tools`'s read-only AI/tooling
-interface. This is Phase 4 (AI Interface) from `plan.txt`, read-side only.
+In scope: everything from v0.5, plus `@nexo-alpha/cli` (`inspect`/
+`status`/`context` commands over an explicit app-module path).
 
-Not yet: Hapi adapter, CLI, dependency injection, job
+Not yet: a project-level config convention (so the CLI can find an
+app without an explicit path), Hapi adapter, dependency injection, job
 scheduler/executor, config validation/env loading, write/mutation AI
 operations (`createModule`/`modifyApi`/etc. — Phase 5, "Safe Development
 Operations," needs permissions/validation/audit that don't exist),
 `get_history()` (no History data model yet), database, cloud,
 autonomous agent operations, and the "Components" concept from the PRD
 (undefined in the docs for a backend-first framework, so deferred
-rather than guessed at). Next up per `plan.txt`/`phase.txt` is the CLI
-(`nexo inspect`/`nexo status`) that will consume this same manifest for
-human developers.
+rather than guessed at).

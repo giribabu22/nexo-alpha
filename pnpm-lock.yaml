@@ -21,6 +21,15 @@ importers:
         specifier: workspace:*
         version: link:../../packages/core
 
+  packages/cli:
+    dependencies:
+      '@nexo-alpha/context':
+        specifier: workspace:*
+        version: link:../context
+      '@nexo-alpha/core':
+        specifier: workspace:*
+        version: link:../core
+
   packages/context:
     dependencies:
       '@nexo-alpha/core':

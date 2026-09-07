@@ -1,0 +1,39 @@
+{
+  "name": "@nexo-alpha/cli",
+  "version": "0.1.0",
+  "description": "Command-line interface for the Nexo framework",
+  "keywords": [
+    "nexo",
+    "cli",
+    "framework",
+    "ai-development",
+    "typescript"
+  ],
+  "author": "prem1999",
+  "license": "MIT",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "bin": {
+    "nexo": "./dist/cli.js"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "node --test",
+    "clean": "rm -rf dist"
+  },
+  "dependencies": {
+    "@nexo-alpha/core": "workspace:*",
+    "@nexo-alpha/context": "workspace:*"
+  }
+}
