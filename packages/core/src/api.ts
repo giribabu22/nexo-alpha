@@ -12,4 +12,6 @@ export interface NexoApi {
   readonly method: HttpMethod;
   readonly path: string;
   readonly description?: string;
+  readonly purpose?: string;
+  readonly dependencies?: readonly string[];
 }

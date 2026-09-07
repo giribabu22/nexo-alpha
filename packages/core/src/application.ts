@@ -1,10 +1,14 @@
 import type { NexoModule } from "./module.js";
+import type { NexoApi } from "./api.js";
+import type { NexoService } from "./service.js";
 import { NexoConfigurationError, NexoLifecycleError } from "./errors.js";
+import { NexoEventBus } from "./events.js";
 
 export interface ApplicationOptions {
   readonly name: string;
   readonly version?: string;
   readonly description?: string;
+  readonly config?: Record<string, unknown>;
 }
 
 export type ApplicationState =
@@ -18,8 +22,10 @@ export class NexoApplication {
   readonly name: string;
   readonly version: string;
   readonly description?: string | undefined;
+  readonly events: NexoEventBus = new NexoEventBus();
 
   private readonly modules = new Map<string, NexoModule>();
+  private readonly config: Readonly<Record<string, unknown>>;
 
   private _state: ApplicationState = "created";
 
@@ -27,6 +33,7 @@ export class NexoApplication {
     this.name = options.name;
     this.version = options.version ?? "0.1.0";
     this.description = options.description;
+    this.config = options.config ?? {};
   }
 
   get state(): ApplicationState {
@@ -51,6 +58,30 @@ export class NexoApplication {
 
   getModules(): readonly NexoModule[] {
     return [...this.modules.values()];
+  }
+
+  getConfig<T = unknown>(key: string): T | undefined {
+    return this.config[key] as T | undefined;
+  }
+
+  getDependencies(moduleName: string): readonly string[] {
+    return this.modules.get(moduleName)?.dependencies ?? [];
+  }
+
+  getDependents(moduleName: string): readonly string[] {
+    return [...this.modules.values()]
+      .filter((module) => module.dependencies?.includes(moduleName))
+      .map((module) => module.name);
+  }
+
+  getApis(): readonly NexoApi[] {
+    return [...this.modules.values()].flatMap((module) => module.apis ?? []);
+  }
+
+  getServices(): readonly NexoService[] {
+    return [...this.modules.values()].flatMap(
+      (module) => module.services ?? []
+    );
   }
 
   async start(): Promise<void> {

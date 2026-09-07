@@ -21,6 +21,14 @@ export type {
   HttpMethod
 } from "./api.js";
 
+export type {
+  NexoJob
+} from "./job.js";
+
+export {
+  NexoEventBus
+} from "./events.js";
+
 export {
   NexoError,
   NexoConfigurationError,
