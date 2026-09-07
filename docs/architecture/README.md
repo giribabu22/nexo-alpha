@@ -1,4 +1,4 @@
-# Architecture Notes — v0.7
+# Architecture Notes — v0.10
 
 **npm scope note:** packages publish under `@nexo-alpha` (an npm Organization), not `@nexo` — the unscoped `@nexo` scope required an org that wasn't set up in time; `nexo-alpha` was used instead and is treated as the project's real published identity going forward. All package names below reflect this.
 
@@ -93,18 +93,90 @@ this implementation uses camelCase to stay consistent with the rest of
 Nexo's API surface. The PRD's names are pseudocode-level, not a literal
 contract.
 
-**Read-only, by design:** matching `phase.txt`'s "read-only first"
-guidance, there are no `createModule()`/`modifyApi()`-style write
-operations here — those need permissions/validation/audit (Phase 5,
-"Safe Development Operations") that don't exist yet.
-
-**Known gap:** `get_history()` from PRD section 17 is not implemented —
-there is no History/changelog data model anywhere in Nexo yet. Left for
-a future milestone once such a model exists, rather than inventing one
-just to fill this method.
-
 `getAllConfig()` was added to `NexoApplication` (alongside the existing
 `getConfig(key)`) so `getConfiguration()` has a full config bag to read.
+
+## Safe write operations (Phase 5)
+
+Phase 5, "Safe Development Operations," closes the biggest structural
+gap from `phase.txt`: PRD section 18's write ops (`create_module`,
+`create_api`, `modify_api`, `create_service`, `modify_service`,
+`update_configuration`, `add_dependency`) now exist, gated by the
+pipeline PRD section 18 specifies — `Request → Permission Check →
+Validation → Operation → Audit`.
+
+The split follows the existing core/tools boundary:
+
+- **`@nexo-alpha/core`** gained raw, unguarded mutators on
+  `NexoApplication` — `addApiToModule`/`updateApi`,
+  `addServiceToModule`/`updateService`, `updateConfig`,
+  `addModuleDependency` — plus a `History` data model
+  (`NexoHistoryEntry`: `timestamp`, `operation`, `target?`, `actor?`,
+  `result: "success" | "denied" | "failed"`, `detail?`) with
+  `addHistoryEntry()`/`getHistory()`. This finally implements
+  `get_history()` from PRD section 17, previously an unfilled gap.
+  `create_module()` needed no new core method — the existing
+  `.module()` registration call already covers it. Core stays a dumb,
+  trusted model: it does not know what a "permission" is.
+- **`@nexo-alpha/tools`** gained `createWriteInterface(app, grants)`,
+  parallel to `createReadInterface`. Each of its seven methods runs
+  Permission Check (against a caller-supplied `PermissionGrants` —
+  `{ scopes: Set<"modify-source" | "modify-configuration"> }`, no
+  ambient/default-allow) → Validation → the matching core mutator →
+  an `addHistoryEntry()` audit call, for every outcome (denied, failed
+  validation, or success) — not just successes. Results are a plain
+  `{ success, data?, error? }` object, never a throw, so an agent loop
+  can branch on the outcome without try/catch. `getHistory()` was also
+  added to `NexoReadInterface` so the audit trail PRD section 17 asks
+  for is actually readable.
+
+**Still out of scope:** PRD section 18's `create_test()` and section 19's
+verification ops (`run_tests`, `run_typecheck`, `run_lint`, `run_build`,
+etc.) — running actual project tooling is a distinct concern from
+structural mutation and is left for the Phase 6/7 tooling work. No CLI
+subcommands or Hapi routes were added for the write interface either —
+it's a library API at the same level as the read interface today.
+
+## Verification capabilities (in-memory subset)
+
+PRD section 19 lists eight ops. Four of them are pure, in-memory checks
+over the `NexoApplication` model and are now implemented as a third
+`@nexo-alpha/tools` factory, `createVerificationInterface(app)`, parallel
+to the read/write interfaces: `validateConfiguration`,
+`validateArchitecture`, `inspectDependencies`, `checkApplicationHealth`
+(`packages/tools/src/verification-interface.ts`). No `@nexo-alpha/core`
+changes were needed — everything is built from existing
+`NexoApplication` methods (`getModules`, `getDependencies`,
+`getDependents`, `getAllConfig`, `getApis`, `getServices`, `state`).
+
+`validateArchitecture` walks the dependency graph with a standard
+visiting/done DFS to detect cycles, flags a module depending on itself
+as an error, and flags a dependency name that doesn't resolve to a
+registered module as a **warning** (not an error — the existing model
+already allows a dependency to name an external system like `"stripe"`,
+so this surfaces the fact without treating it as invalid). Once a cycle
+is found, its member nodes are marked `"done"` in the traversal state so
+the same cycle isn't reported once per node it passes through when the
+outer loop later visits them as a fresh starting point.
+`validateConfiguration` checks `getAllConfig()` for JSON-serialization
+hazards: a circular value is an error (`JSON.stringify` would throw), a
+function-valued key is a warning (it silently disappears under
+`JSON.stringify` rather than erroring, which could hide a real value
+from anything reading config as JSON, like `@nexo-alpha/context`'s
+manifest). These are read-only diagnostics and do not call
+`addHistoryEntry()` — auditing applies to state-changing operations, not
+to running a check.
+
+**Deliberately deferred, and why:** `run_tests`/`run_typecheck`/
+`run_lint`/`run_build` need to shell out to an **external target
+application's** own toolchain (the app being built with Nexo — same
+target the read/write interfaces and `@nexo-alpha/cli`'s
+`loadApplication` operate on), which needs an explicit project-root
+argument and command-detection. This repo also has **no lint tooling
+configured anywhere** (no ESLint config in any package) to call as a
+reference implementation. Building this now, ahead of the still-pending
+project-config-convention work, risks plumbing that gets thrown away
+once that convention exists.
 
 ## CLI
 
@@ -115,12 +187,13 @@ readable terminal text. It depends on `@nexo-alpha/core` and
 `@nexo-alpha/context` directly (not `@nexo-alpha/tools`), since it needs
 the manifest, not the AI-shaped wrapper around it.
 
-**How it finds an application:** Nexo has no project scaffold or
-config-file convention yet, so the CLI takes an explicit path to a
+**How it finds an application:** the CLI takes an explicit path to a
 compiled JS module that exports a `NexoApplication` as `app` (or
-`default`) and dynamically `import()`s it — `nexo inspect ./dist/app.js`.
-A config-file convention (so `nexo inspect` alone works from a project
-root) can layer on top later without changing the render/command logic.
+`default`) and dynamically `import()`s it — `nexo inspect ./dist/app.js`
+(`load-application.ts`) — or, if no path is given, discovers one via the
+`nexo.config.json` project config convention (below). Adding the
+convention required no changes to the render/command logic, as
+anticipated when the CLI first shipped.
 
 Commands: `nexo inspect <app-path> [moduleName]` (application summary,
 or one module's full detail), `nexo status <app-path>` (development
@@ -139,6 +212,34 @@ bin entry) touches process-level I/O.
 logs — same runtime behavior as before) so the CLI has a side-effect-free
 target to inspect; importing `app.js` for inspection no longer
 accidentally starts the application or prints its lifecycle logs.
+
+## Project config convention
+
+`packages/cli/src/config.ts` adds `nexo.config.json` as a project-root
+config file, closing the gap `docs/architecture/README.md` had flagged
+since the CLI first shipped. Shape: `{ "app": "./dist/app.js" }`.
+`findNexoConfig(startDir)` walks upward from `startDir` (`existsSync`
+per directory) until it finds the file or reaches the filesystem root;
+`resolveConfiguredAppPath(startDir)` reads and `JSON.parse`s it, then
+resolves `app` **relative to the config file's own directory** (not
+`process.cwd()`), so the same config works no matter which subdirectory
+`nexo` is invoked from. JSON rather than a JS config file, deliberately
+— discovery stays a plain read + parse with no dynamic-import/ESM-CJS
+interop concerns, consistent with Nexo's existing preference for plain
+declarative data (the application model, the context manifest) over
+executable config.
+
+Making the CLI's app-path argument optional created a real parsing
+ambiguity for `inspect`, which also takes an optional module name: is a
+single trailing argument a path or a module name? Resolved by only
+falling back to config when **no positional path-shaped argument is
+given at all**, and moving `inspect`'s module name behind a `--module`
+flag in that case — `nexo inspect ./dist/app.js payments` (explicit
+path + module, unchanged) vs. `nexo inspect --module payments` (config
++ module). This keeps every existing positional form in
+`cli.ts`/`test/cli-bin.test.js` working exactly as before; the new
+behavior only triggers when the first argument after the command is
+either absent or starts with `--`.
 
 ## Hapi adapter
 
@@ -189,19 +290,20 @@ Later packages depend **on** core, never the reverse:
 @nexo-alpha/tools --> @nexo-alpha/core
 ```
 
-## v0.7 boundary
+## v0.10 boundary
 
-In scope: everything from v0.6, plus `@nexo-alpha/hapi` — real HTTP
-routes wired from `NexoApi.handler`s.
+In scope: everything from v0.9, plus the `nexo.config.json` project
+config convention for `@nexo-alpha/cli` (app-path discovery without an
+explicit argument).
 
-Not yet: a project-level config convention (so the CLI/Hapi adapter can
-find an app without an explicit path), dependency injection, job
-scheduler/executor, config validation/env loading, write/mutation AI
-operations (`createModule`/`modifyApi`/etc. — Phase 5, "Safe Development
-Operations," needs permissions/validation/audit that don't exist),
-`get_history()` (no History data model yet), request validation/auth
+Not yet: the same config convention for the Hapi adapter (it still
+takes explicit `createHapiServer(app, options?)` options — could reuse
+`resolveConfiguredAppPath` later), dependency injection, job
+scheduler/executor, config validation/env loading, `create_test()` and
+the process-shelling verification ops (`run_tests`/`run_typecheck`/
+`run_lint`/`run_build` — need a project-root argument and, for lint,
+tooling this repo doesn't have configured yet), request validation/auth
 on Hapi routes (currently every handler-backed API is wired with no
-input validation or auth — that's Phase 5/PRD section 32 territory,
-not this milestone), database, cloud, autonomous agent operations, and
-the "Components" concept from the PRD (undefined in the docs for a
+input validation or auth), database, cloud, autonomous agent operations,
+and the "Components" concept from the PRD (undefined in the docs for a
 backend-first framework, so deferred rather than guessed at).
