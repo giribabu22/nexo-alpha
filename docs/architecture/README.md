@@ -637,10 +637,11 @@ with embeddings for semantic search" the previous boundary flagged as
   edges) and `SourceTree` (files/symbols/imports/calls) — into one
   `KnowledgeGraph` of typed nodes (`module`/`api`/`service`/`job`/`file`/
   `symbol`/`external`) and typed edges (`contains`/`exposes`/
-  `depends_on`/`imports`/`calls`). File and symbol nodes carry `evidence`
-  (`{file, line?}`) pointing back to their source; module/API/service/job
-  nodes don't, since no association exists yet between a declared
-  `NexoModule` and the file(s) implementing it. `buildKnowledgeGraph()`
+  `depends_on`/`imports`/`calls`/`implements`). File and symbol nodes
+  always carry `evidence` (`{file, line?}`) pointing back to their source;
+  module/API/service/job nodes themselves still don't, but see
+  "Module-to-File Association" below for how a module now links to the
+  file nodes that do. `buildKnowledgeGraph()`
   accepts an optional `summarize?(node)` hook — mirroring
   `NexoAuthenticator`/`NexoJobRunner`'s declare-the-shape-caller-supplies-
   the-behavior split — but never calls an AI provider itself; the
