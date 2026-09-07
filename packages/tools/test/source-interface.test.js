@@ -159,3 +159,35 @@ test("describeSourceTree records a call to a bare-package import as external, no
   assert.equal(edge.toExternal, "node:crypto");
   assert.equal(edge.to, undefined);
 });
+
+test("describeSourceTree resolves a constructor call through an imported binding to the exporting file's class", async () => {
+  const source = createSourceInterface(graphFixture);
+  const tree = await source.describeSourceTree();
+
+  assert.ok(
+    tree.callEdges.some(
+      (edge) =>
+        edge.from.file === "factory.ts" &&
+        edge.from.symbol === "createWidget" &&
+        edge.to?.file === "models.ts" &&
+        edge.to?.symbol === "Widget"
+    ),
+    "expected a factory.ts#createWidget -> models.ts#Widget call edge"
+  );
+});
+
+test("describeSourceTree resolves a constructor call to a local class", async () => {
+  const source = createSourceInterface(graphFixture);
+  const tree = await source.describeSourceTree();
+
+  assert.ok(
+    tree.callEdges.some(
+      (edge) =>
+        edge.from.file === "factory.ts" &&
+        edge.from.symbol === "createLocal" &&
+        edge.to?.file === "factory.ts" &&
+        edge.to?.symbol === "Local"
+    ),
+    "expected a factory.ts#createLocal -> factory.ts#Local call edge"
+  );
+});

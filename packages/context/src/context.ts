@@ -101,18 +101,21 @@ export interface CallSite {
 }
 
 /**
- * A first-slice call edge: a direct call (`foo()`), from inside a top-level
- * function declaration or a top-level `const`/`let` bound to a function or
- * arrow expression, to an identifier that resolves either to another
- * top-level symbol in the same file, another file within the same scanned
- * tree (via an import), or an unresolved external package. Exactly one of
- * `to`/`toExternal` is present.
+ * A first-slice call edge: a direct call (`foo()`) or constructor call
+ * (`new Foo()`), from inside a top-level function declaration or a
+ * top-level `const`/`let` bound to a function or arrow expression, to an
+ * identifier that resolves either to another top-level symbol in the same
+ * file, another file within the same scanned tree (via an import), or an
+ * unresolved external package. Exactly one of `to`/`toExternal` is present.
+ * A resolved constructor call's `to` points at the class's own symbol —
+ * there's no separate "constructor" symbol, since class members still
+ * aren't parsed at all.
  *
  * Deliberately out of scope, same "not a full static-analysis engine"
- * stance as {@link ImportEdge}: method calls (`obj.method()`), constructor
- * calls (`new X()`), calls inside class methods, and anything needing type
- * information. A callee that can't be resolved to a known local symbol or
- * import binding is simply not recorded, not guessed at.
+ * stance as {@link ImportEdge}: method calls (`obj.method()`), calls inside
+ * class methods, and anything needing type information. A callee that can't
+ * be resolved to a known local symbol or import binding is simply not
+ * recorded, not guessed at.
  */
 export interface CallEdge {
   readonly from: CallSite;

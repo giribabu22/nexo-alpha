@@ -5,7 +5,14 @@ import { dirname, join } from "node:path";
 
 import { createApplication } from "@nexo-alpha/core";
 import { buildContext } from "@nexo-alpha/context";
-import { buildKnowledgeGraph, createSourceInterface, searchKnowledgeGraph, traceCallers, traceDependents } from "../dist/index.js";
+import {
+  buildKnowledgeGraph,
+  createSourceInterface,
+  searchKnowledgeGraph,
+  traceCallers,
+  traceDependents,
+  traceImpact
+} from "../dist/index.js";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const graphFixture = join(here, "..", "fixtures", "graph-sample");
@@ -82,6 +89,35 @@ test("buildKnowledgeGraph carries file/symbol nodes and import/call edges from t
   );
 });
 
+test("buildKnowledgeGraph turns a bare package import into an edge to an external node, but not a relative import", async () => {
+  const graph = await buildKnowledgeGraph(await buildFixtureContext());
+
+  assert.ok(
+    graph.edges.some((e) => e.from === "file:index.ts" && e.to === "external:node:crypto" && e.kind === "imports")
+  );
+  assert.equal(graph.nodes.find((n) => n.id === "external:node:crypto")?.kind, "external");
+
+  assert.ok(
+    !graph.nodes.some((n) => n.kind === "external" && n.name.startsWith(".")),
+    "a relative import should never produce an external node"
+  );
+});
+
+test("buildKnowledgeGraph resolves constructor calls to the target class's own symbol node", async () => {
+  const graph = await buildKnowledgeGraph(await buildFixtureContext());
+
+  assert.ok(
+    graph.edges.some(
+      (e) => e.from === "symbol:factory.ts#createWidget" && e.to === "symbol:models.ts#Widget" && e.kind === "calls"
+    )
+  );
+  assert.ok(
+    graph.edges.some(
+      (e) => e.from === "symbol:factory.ts#createLocal" && e.to === "symbol:factory.ts#Local" && e.kind === "calls"
+    )
+  );
+});
+
 test("buildKnowledgeGraph links a module to its declared sourceFiles, skipping any path the scan didn't find", async () => {
   const graph = await buildKnowledgeGraph(await buildFixtureContext());
 
@@ -114,6 +150,54 @@ test("traceCallers returns only calls edges pointing at a node; traceDependents 
 
   const dependents = traceDependents(graph, "module:orders");
   assert.ok(dependents.some((e) => e.kind === "depends_on" && e.from === "module:billing"));
+});
+
+test("traceImpact walks dependents transitively in shortest-path order", async () => {
+  const graph = await buildKnowledgeGraph(await buildFixtureContext());
+
+  const result = traceImpact(graph, "symbol:service.ts#formatName");
+
+  assert.equal(result.direction, "dependents");
+  const greet = result.reached.find((hit) => hit.nodeId === "symbol:service.ts#greet");
+  const run = result.reached.find((hit) => hit.nodeId === "symbol:index.ts#run");
+  assert.equal(greet?.depth, 1);
+  assert.equal(run?.depth, 2);
+  assert.equal(greet?.via.from, "symbol:service.ts#greet");
+  assert.equal(run?.via.from, "symbol:index.ts#run");
+  assert.ok(!result.reached.some((hit) => hit.nodeId === "symbol:service.ts#formatName"), "origin should be excluded");
+});
+
+test("traceImpact terminates on a cycle without revisiting a node", async () => {
+  const graph = await buildKnowledgeGraph(await buildFixtureContext());
+
+  const result = traceImpact(graph, "symbol:cycle.ts#pingA", { edgeKinds: ["calls"] });
+
+  assert.deepEqual(
+    result.reached.map((hit) => hit.nodeId),
+    ["symbol:cycle.ts#pingB"]
+  );
+});
+
+test("traceImpact respects maxDepth", async () => {
+  const graph = await buildKnowledgeGraph(await buildFixtureContext());
+
+  const result = traceImpact(graph, "symbol:service.ts#formatName", { maxDepth: 1, edgeKinds: ["calls"] });
+
+  assert.deepEqual(
+    result.reached.map((hit) => hit.nodeId),
+    ["symbol:service.ts#greet"]
+  );
+});
+
+test("traceImpact respects edgeKinds and the dependencies direction", async () => {
+  const graph = await buildKnowledgeGraph(await buildFixtureContext());
+
+  const dependents = traceImpact(graph, "module:orders", { edgeKinds: ["depends_on"] });
+  assert.ok(dependents.reached.some((hit) => hit.nodeId === "module:billing"));
+
+  const dependencies = traceImpact(graph, "module:billing", { direction: "dependencies", edgeKinds: ["depends_on"] });
+  assert.ok(dependencies.reached.some((hit) => hit.nodeId === "module:orders"));
+  assert.ok(dependencies.reached.some((hit) => hit.nodeId === "external:stripe"));
 });
 
 test("buildKnowledgeGraph calls an optional summarize hook and leaves other nodes unsummarized", async () => {

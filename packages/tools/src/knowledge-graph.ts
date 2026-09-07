@@ -89,6 +89,11 @@ function descriptionField(description: string | undefined): { readonly descripti
  * scanned, an `"implements"` edge links it to the matching `file` node(s),
  * which do carry evidence. A declared path the scan didn't actually find is
  * left unlinked, not guessed at.
+ *
+ * Bare package imports (e.g. `"react"`, `"node:fs"`) become `"imports"`
+ * edges to an `external` node too, the same way an unresolved call target
+ * does — a file's dependency on a package it doesn't own is still a
+ * dependency worth representing in the graph.
  */
 export async function buildKnowledgeGraph(
   context: ApplicationContext,
@@ -188,6 +193,15 @@ export async function buildKnowledgeGraph(
       edges.push({ from: fileId(edge.from), to: fileId(edge.to), kind: "imports" });
     }
 
+    for (const file of context.sourceTree.files) {
+      for (const specifier of file.imports) {
+        if (specifier.startsWith(".")) continue; // already covered by importEdges above
+        const to = externalId(specifier);
+        addNode({ id: to, kind: "external", name: specifier });
+        edges.push({ from: fileId(file.path), to, kind: "imports" });
+      }
+    }
+
     for (const edge of context.sourceTree.callEdges) {
       const from = symbolId(edge.from.file, edge.from.symbol);
       if (edge.to !== undefined) {
@@ -250,4 +264,82 @@ export function traceCallers(graph: KnowledgeGraph, nodeId: string): readonly Kn
 /** Every edge that points at `nodeId`, of any kind — "what would be affected if this changed." */
 export function traceDependents(graph: KnowledgeGraph, nodeId: string): readonly KnowledgeGraphEdge[] {
   return graph.edges.filter((edge) => edge.to === nodeId);
+}
+
+/**
+ * `"dependents"` walks edges backward (what points at a node, transitively —
+ * change-impact/blast-radius analysis); `"dependencies"` walks them forward
+ * (what a node points at, transitively).
+ */
+export type TraversalDirection = "dependents" | "dependencies";
+
+export interface TraceImpactOptions {
+  /** Default: `"dependents"`. */
+  readonly direction?: TraversalDirection;
+  /** Maximum hops to traverse. Default: unlimited (cycle protection still applies). */
+  readonly maxDepth?: number;
+  /** Restrict traversal to these edge kinds. Default: all kinds, same stance as {@link traceDependents}. */
+  readonly edgeKinds?: readonly KnowledgeEdgeKind[];
+}
+
+export interface TraceImpactHit {
+  readonly nodeId: string;
+  /** Hop count from the origin (1 = directly connected). */
+  readonly depth: number;
+  /** The edge that first reached this node (shortest path, since traversal is BFS). */
+  readonly via: KnowledgeGraphEdge;
+}
+
+export interface TraceImpactResult {
+  readonly nodeId: string;
+  readonly direction: TraversalDirection;
+  /** Every node reachable from `nodeId` in `direction`, excluding `nodeId` itself, each at its shortest-path depth. */
+  readonly reached: readonly TraceImpactHit[];
+}
+
+/**
+ * Multi-hop traversal over the graph, breadth-first so each reached node is
+ * recorded at its shortest-path depth and a visited set gives cycle
+ * protection for free. This is what {@link traceDependents}/{@link traceCallers}
+ * can't answer on their own: "what is the full blast radius of changing this
+ * node," not just its immediate neighbors.
+ */
+export function traceImpact(
+  graph: KnowledgeGraph,
+  nodeId: string,
+  options: TraceImpactOptions = {}
+): TraceImpactResult {
+  const direction = options.direction ?? "dependents";
+  const { maxDepth, edgeKinds } = options;
+
+  const candidateEdges =
+    edgeKinds === undefined ? graph.edges : graph.edges.filter((edge) => edgeKinds.includes(edge.kind));
+
+  const visited = new Set<string>([nodeId]);
+  const reached: TraceImpactHit[] = [];
+  let frontier = [nodeId];
+  let depth = 0;
+
+  while (frontier.length > 0 && (maxDepth === undefined || depth < maxDepth)) {
+    depth += 1;
+    const nextFrontier: string[] = [];
+
+    for (const current of frontier) {
+      const neighbors =
+        direction === "dependents"
+          ? candidateEdges.filter((edge) => edge.to === current).map((edge) => ({ id: edge.from, via: edge }))
+          : candidateEdges.filter((edge) => edge.from === current).map((edge) => ({ id: edge.to, via: edge }));
+
+      for (const { id, via } of neighbors) {
+        if (visited.has(id)) continue;
+        visited.add(id);
+        reached.push({ nodeId: id, depth, via });
+        nextFrontier.push(id);
+      }
+    }
+
+    frontier = nextFrontier;
+  }
+
+  return { nodeId, direction, reached };
 }

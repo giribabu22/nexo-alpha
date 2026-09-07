@@ -71,7 +71,8 @@ export {
   buildKnowledgeGraph,
   searchKnowledgeGraph,
   traceCallers,
-  traceDependents
+  traceDependents,
+  traceImpact
 } from "./knowledge-graph.js";
 
 export type {
@@ -82,7 +83,11 @@ export type {
   KnowledgeEdgeKind,
   KnowledgeEvidence,
   KnowledgeNodeSummarizer,
-  BuildKnowledgeGraphOptions
+  BuildKnowledgeGraphOptions,
+  TraversalDirection,
+  TraceImpactOptions,
+  TraceImpactHit,
+  TraceImpactResult
 } from "./knowledge-graph.js";
 
 export {

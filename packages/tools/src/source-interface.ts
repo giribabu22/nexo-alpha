@@ -338,12 +338,23 @@ function extractImportBindings(sourceFile: ts.SourceFile): Map<string, ImportBin
   return bindings;
 }
 
-/** Direct calls (`foo()`) found anywhere within `body`, keyed by the callee identifier's text. */
+/**
+ * Direct calls (`foo()`) and constructor calls (`new Foo()`) found anywhere
+ * within `body`, keyed by the callee/class identifier's text. Both resolve
+ * through the same local-symbol/import-binding lookup in
+ * {@link extractCallEdges} — a class is already recorded as a `LocalSymbol`,
+ * so no extra resolution machinery is needed for `new X()`. Method calls
+ * (`obj.method()`) and calls through anything other than a bare identifier
+ * (`new (getCtor())()`, `new obj.Ctor()`) are still not captured — that
+ * would need type information this module deliberately doesn't use.
+ */
 function extractCallCallees(body: ts.Node): string[] {
   const callees: string[] = [];
 
   const visit = (node: ts.Node): void => {
     if (ts.isCallExpression(node) && ts.isIdentifier(node.expression)) {
+      callees.push(node.expression.text);
+    } else if (ts.isNewExpression(node) && node.expression !== undefined && ts.isIdentifier(node.expression)) {
       callees.push(node.expression.text);
     }
     ts.forEachChild(node, visit);
@@ -416,12 +427,15 @@ function scriptKindFor(path: string): ts.ScriptKind {
  * only — no `Program`/type-checker, so no cross-project module resolution
  * or type information is used). This is deliberately still not a full
  * static-analysis engine: no type-aware call resolution, no method calls
- * (`obj.method()`), no constructor calls (`new X()`), and import resolution
- * is limited to relative specifiers that land on another file this same
- * scan found — a bare package specifier (`"react"`, `"node:fs"`,
- * `"@nexo-alpha/core"`) is recorded per-file but never turned into a graph
- * edge, since resolving it would mean fully replicating Node's module
- * resolution algorithm across `node_modules`.
+ * (`obj.method()`), and import resolution is limited to relative specifiers
+ * that land on another file this same scan found — a bare package specifier
+ * (`"react"`, `"node:fs"`, `"@nexo-alpha/core"`) is recorded per-file but
+ * never resolved to a file path here, since that would mean fully
+ * replicating Node's module resolution algorithm across `node_modules`
+ * (`buildKnowledgeGraph`, one layer up, does represent it — as an edge to an
+ * opaque `external` node, not a resolved file). Constructor calls
+ * (`new X()`) through a bare identifier *are* resolved, the same way a bare
+ * function call is — see {@link extractCallCallees}.
  */
 export function createSourceInterface(
   projectRoot: string,
