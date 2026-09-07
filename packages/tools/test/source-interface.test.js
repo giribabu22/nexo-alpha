@@ -8,7 +8,7 @@ import { createSourceInterface } from "../dist/index.js";
 const here = dirname(fileURLToPath(import.meta.url));
 const sampleFixture = join(here, "fixtures", "source-sample");
 
-test("describeSourceTree finds source files and ignores node_modules and non-source files", async () => {
+test("describeSourceTree finds source files and ignores build output and non-source files", async () => {
   const source = createSourceInterface(sampleFixture);
   const tree = await source.describeSourceTree();
 
@@ -16,7 +16,7 @@ test("describeSourceTree finds source files and ignores node_modules and non-sou
 
   assert.equal(tree.fileCount, 2);
   assert.deepEqual(paths, ["nested/gadget.js", "widget.ts"]);
-  assert.ok(!paths.some((path) => path.includes("node_modules")));
+  assert.ok(!paths.some((path) => path.includes("build")));
   assert.ok(!paths.some((path) => path.endsWith(".md")));
 });
 
