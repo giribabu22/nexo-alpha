@@ -7,7 +7,7 @@ import type {
   NexoDecision,
   NexoJob,
   NexoService
-} from "@nexo/core";
+} from "@nexo-alpha/core";
 
 export interface ModuleContext {
   readonly name: string;

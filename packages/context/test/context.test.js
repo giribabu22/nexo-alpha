@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { createApplication } from "@nexo/core";
+import { createApplication } from "@nexo-alpha/core";
 import { buildContext, contextToJson } from "../dist/index.js";
 
 function buildFixtureApp() {

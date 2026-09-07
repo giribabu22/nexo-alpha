@@ -1,6 +1,6 @@
 import {
   createApplication
-} from "@nexo/core";
+} from "@nexo-alpha/core";
 
 const app = createApplication({
   name: "hello-world",

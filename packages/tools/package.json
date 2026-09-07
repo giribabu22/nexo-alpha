@@ -1,7 +1,15 @@
 {
-  "name": "@nexo/tools",
+  "name": "@nexo-alpha/tools",
   "version": "0.1.0",
   "description": "AI/tooling read interface for the Nexo framework",
+  "keywords": [
+    "nexo",
+    "ai-tools",
+    "ai-development",
+    "read-interface",
+    "typescript"
+  ],
+  "author": "prem1999",
   "license": "MIT",
   "type": "module",
   "main": "./dist/index.js",
@@ -22,7 +30,7 @@
     "clean": "rm -rf dist"
   },
   "dependencies": {
-    "@nexo/core": "workspace:*",
-    "@nexo/context": "workspace:*"
+    "@nexo-alpha/core": "workspace:*",
+    "@nexo-alpha/context": "workspace:*"
   }
 }

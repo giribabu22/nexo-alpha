@@ -1,7 +1,15 @@
 {
-  "name": "@nexo/context",
+  "name": "@nexo-alpha/context",
   "version": "0.1.0",
   "description": "Application context manifest for the Nexo framework",
+  "keywords": [
+    "nexo",
+    "application-context",
+    "manifest",
+    "ai-development",
+    "typescript"
+  ],
+  "author": "prem1999",
   "license": "MIT",
   "type": "module",
   "main": "./dist/index.js",
@@ -22,6 +30,6 @@
     "clean": "rm -rf dist"
   },
   "dependencies": {
-    "@nexo/core": "workspace:*"
+    "@nexo-alpha/core": "workspace:*"
   }
 }

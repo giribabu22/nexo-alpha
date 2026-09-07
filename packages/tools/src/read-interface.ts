@@ -6,12 +6,12 @@ import type {
   NexoConstraint,
   NexoDecision,
   NexoService
-} from "@nexo/core";
+} from "@nexo-alpha/core";
 import {
   buildContext,
   type ApplicationContext,
   type ModuleContext
-} from "@nexo/context";
+} from "@nexo-alpha/context";
 
 export interface ApplicationArchitecture {
   readonly modules: readonly ModuleContext[];

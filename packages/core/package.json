@@ -1,7 +1,16 @@
 {
-  "name": "@nexo/core",
-  "version": "0.1.0",
+  "name": "@nexo-alpha/core",
+  "version": "0.1.1",
   "description": "Core runtime for the Nexo application framework",
+  "keywords": [
+    "nexo",
+    "framework",
+    "application-framework",
+    "ai-development",
+    "typescript",
+    "nodejs"
+  ],
+  "author": "prem1999",
   "license": "MIT",
   "type": "module",
   "main": "./dist/index.js",
