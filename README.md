@@ -56,17 +56,17 @@ Nexo is built as a set of modular, composable packages published under the `@nex
 
 | Package | npm | Description |
 |---|---|---|
-| [`@nexo-alpha/core`](./packages/core/README.md) | `0.4.0` | Core runtime: applications, modules, services, declarative APIs, jobs, lifecycle, and event bus. |
-| [`@nexo-alpha/context`](./packages/context/README.md) | `0.4.0` | Application context manifest, knowledge journal (decisions, constraints, state, intents), and structure hashing. |
-| [`@nexo-alpha/decision`](./packages/decision/README.md) | `0.4.0` | Deterministic AI decision engine. Rule chains (`permission`, `state`, `constraint`, `confirmation`, `escalation`, `rateLimit`). |
-| [`@nexo-alpha/agent`](./packages/agent/README.md) | `0.4.0` | AI agent orchestration layer wiring `UNDERSTAND → KNOW → DECIDE → ACT → VERIFY`, tool registries, and autonomous workflows. |
-| [`@nexo-alpha/behavior`](./packages/behavior/README.md) | `0.4.0` | Typed bounded behavior layer: micro-decision primitives (`choice`, `boolean`, `score`), policies, and telemetry. |
-| [`@nexo-alpha/web`](./packages/web/README.md) | `0.4.0` | Web search, evidence extraction, and claim verification pipeline for AI research. |
-| [`@nexo-alpha/tools`](./packages/tools/README.md) | `0.4.0` | AI & developer introspection: read/write interfaces, verification, live metrics, source scanning, and knowledge graph. |
-| [`@nexo-alpha/scheduler`](./packages/scheduler/README.md) | `0.4.0` | Lightweight, dependency-free cron scheduler for `NexoJob`s. |
-| [`@nexo-alpha/hapi`](./packages/hapi/README.md) | `0.4.0` | HTTP adapter turning declared `NexoApi`s into running Hapi.js servers with auth, validation, and lifecycle hooks. |
-| [`@nexo-alpha/cli`](./packages/cli/README.md) | `0.4.0` | Terminal CLI for architecture inspection, dependency impact tracing, health checks, and knowledge graphs. |
-| [`create-nexo-app`](./packages/create-nexo-app/README.md) | `0.4.0` | Scaffolding CLI for generating starter templates. |
+| [`@nexo-alpha/core`](./packages/core/README.md) | `0.4.1` | Core runtime: applications, modules, services, declarative APIs, jobs, lifecycle, and event bus. |
+| [`@nexo-alpha/context`](./packages/context/README.md) | `0.4.1` | Application context manifest, knowledge journal (decisions, constraints, state, intents), and structure hashing. |
+| [`@nexo-alpha/decision`](./packages/decision/README.md) | `0.4.1` | Deterministic AI decision engine. Rule chains (`permission`, `state`, `constraint`, `confirmation`, `escalation`, `rateLimit`). |
+| [`@nexo-alpha/agent`](./packages/agent/README.md) | `0.4.1` | AI agent orchestration layer wiring `UNDERSTAND → KNOW → DECIDE → ACT → VERIFY`, tool registries, and autonomous workflows. |
+| [`@nexo-alpha/behavior`](./packages/behavior/README.md) | `0.4.1` | Typed bounded behavior layer: micro-decision primitives (`choice`, `boolean`, `score`), policies, and telemetry. |
+| [`@nexo-alpha/web`](./packages/web/README.md) | `0.4.1` | Web search, evidence extraction, and claim verification pipeline for AI research. |
+| [`@nexo-alpha/tools`](./packages/tools/README.md) | `0.4.1` | AI & developer introspection: read/write interfaces, verification, live metrics, source scanning, and knowledge graph. |
+| [`@nexo-alpha/scheduler`](./packages/scheduler/README.md) | `0.4.1` | Lightweight, dependency-free cron scheduler for `NexoJob`s. |
+| [`@nexo-alpha/hapi`](./packages/hapi/README.md) | `0.4.1` | HTTP adapter turning declared `NexoApi`s into running Hapi.js servers with auth, validation, and lifecycle hooks. |
+| [`@nexo-alpha/cli`](./packages/cli/README.md) | `0.4.1` | Terminal CLI for architecture inspection, dependency impact tracing, health checks, and knowledge graphs. |
+| [`create-nexo-app`](./packages/create-nexo-app/README.md) | `0.4.1` | Scaffolding CLI for generating starter templates. |
 
 ---
 

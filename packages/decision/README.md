@@ -319,7 +319,7 @@ NEXO ALPHA: UNDERSTAND → KNOW → DECIDE → ACT → VERIFY
 
 ## Status
 
-**0.4.0.** Core engine, 6 built-in rule factories, and audit log are complete and integrated with [`@nexo-alpha/agent`](../agent/README.md) to form the DECIDE safety boundary in the 5-layer intelligence stack (`UNDERSTAND → KNOW → DECIDE → ACT → VERIFY`).
+**0.4.1.** Core engine, 6 built-in rule factories, and audit log are complete and integrated with [`@nexo-alpha/agent`](../agent/README.md) to form the DECIDE safety boundary in the 5-layer intelligence stack (`UNDERSTAND → KNOW → DECIDE → ACT → VERIFY`).
 
 ## License
 

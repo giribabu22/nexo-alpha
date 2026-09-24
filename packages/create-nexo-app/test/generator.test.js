@@ -37,7 +37,7 @@ test("creates fullstack-react project files with customized project name and pro
     // Check backend files
     const backendPkg = JSON.parse(await fs.readFile(path.join(appDir, "backend", "package.json"), "utf8"));
     assert.equal(backendPkg.name, "super-app-backend");
-    assert.equal(backendPkg.dependencies["@nexo-alpha/tools"], "^0.4.0");
+    assert.equal(backendPkg.dependencies["@nexo-alpha/tools"], "^0.4.1");
     assert.ok(backendPkg.dependencies["@nexo-alpha/behavior"]);
     assert.ok(backendPkg.dependencies["@nexo-alpha/agent"]);
     assert.equal(backendPkg.scripts.graph, "nexo graph --source-root src --out .nexo/knowledge-graph.json");
@@ -80,7 +80,7 @@ test("creates backend-api project files with customized project name", async () 
     assert.equal(pkg.name, "order-service");
     assert.ok(pkg.dependencies["@nexo-alpha/core"]);
     assert.ok(pkg.dependencies["@nexo-alpha/hapi"]);
-    assert.equal(pkg.dependencies["@nexo-alpha/tools"], "^0.4.0");
+    assert.equal(pkg.dependencies["@nexo-alpha/tools"], "^0.4.1");
     assert.ok(pkg.dependencies["@nexo-alpha/behavior"]);
     assert.ok(pkg.dependencies["@nexo-alpha/agent"]);
     assert.equal(pkg.scripts.graph, "nexo graph --source-root src --out .nexo/knowledge-graph.json");
