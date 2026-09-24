@@ -59,6 +59,22 @@ test("creates fullstack-react project files with customized project name and pro
 
     const indexHtml = await fs.readFile(path.join(appDir, "frontend", "index.html"), "utf8");
     assert.match(indexHtml, /super-app — Powered by Nexo/);
+
+    const knowledgeInspector = await fs.readFile(
+      path.join(appDir, "frontend", "src", "components", "KnowledgeInspector.tsx"),
+      "utf8"
+    );
+    assert.match(knowledgeInspector, /Nexo Knowledge Journal/);
+
+    const systemModule = await fs.readFile(
+      path.join(appDir, "backend", "src", "modules", "system", "index.ts"),
+      "utf8"
+    );
+    assert.match(systemModule, /\/api\/knowledge/);
+
+    const appTsx = await fs.readFile(path.join(appDir, "frontend", "src", "App.tsx"), "utf8");
+    assert.match(appTsx, /KnowledgeInspector/);
+    assert.match(appTsx, /tab-knowledge-btn/);
   } finally {
     await fs.rm(tempDir, { recursive: true, force: true });
   }

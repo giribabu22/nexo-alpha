@@ -235,16 +235,76 @@ export const app = createApplication({
 
 export const knowledge = createKnowledge();
 
+// 1. Architectural Decisions (ADRs)
 knowledge.addDecision({
   title: "Fullstack Architecture",
   reason: "Separation of pure Nexo backend business logic and React frontend layer.",
   status: "accepted"
 });
 
+knowledge.addDecision({
+  title: "Client-Server Contract",
+  reason: "Communicate via typed REST API endpoints under /api with unified JSON envelopes.",
+  status: "accepted"
+});
+
+// 2. Constraints & Invariants
+knowledge.addConstraint({
+  description: "Frontend must interact with backend purely through documented REST endpoints under /api",
+  reason: "Ensures headless decoupling and clear boundaries between client and server."
+});
+
+knowledge.addConstraint({
+  description: "No secret keys, tokens, or backend credentials may be bundled into client assets",
+  reason: "Prevents leaking sensitive infrastructure and credential data into browser bundles."
+});
+
+// 3. Component & Entity Intents (Explains the 'why' of UI components)
+knowledge.addIntent({
+  entityKind: "component",
+  entityName: "Header",
+  purpose: "Brand banner displaying application metadata and gradient typography.",
+  evidence: { file: "frontend/src/components/Header.tsx", line: 3 }
+});
+
+knowledge.addIntent({
+  entityKind: "component",
+  entityName: "ServerStatus",
+  purpose: "Real-time heartbeat monitor displaying backend health, active modules, and uptime.",
+  evidence: { file: "frontend/src/components/ServerStatus.tsx", line: 3 }
+});
+
+knowledge.addIntent({
+  entityKind: "component",
+  entityName: "TodoApp",
+  purpose: "Interactive fullstack task management demonstrating reactive state and Nexo API calls.",
+  evidence: { file: "frontend/src/components/TodoApp.tsx", line: 3 }
+});
+
+knowledge.addIntent({
+  entityKind: "component",
+  entityName: "KnowledgeInspector",
+  purpose: "Live browser introspection of Nexo architectural decisions, invariants, and component intents.",
+  evidence: { file: "frontend/src/components/KnowledgeInspector.tsx", line: 3 }
+});
+
+// 4. Development Work State
+knowledge.setDevelopmentState({
+  completed: [
+    "Core application scaffold",
+    "Nexo backend Hapi server integration",
+    "React + Vite frontend workspace",
+    "Live Nexo Knowledge & Architecture Inspector"
+  ],
+  inProgress: [
+    "Custom business module implementation"
+  ]
+});
+
 // Each module lives in its own folder under src/modules — see that folder
 // for the actual app.module({...}) registration and any services it needs.
+registerSystemModule(app, knowledge);
 registerTodosModule(app);
-registerSystemModule(app);
 `
       },
       {
@@ -304,6 +364,8 @@ export function registerTodosModule(app: NexoApplication): void {
   app.module({
     name: "todos",
     description: "Todo and Task management module",
+    dependencies: ["system"],
+    externalDependencies: [],
     services: [todoService],
 
     apis: [
@@ -345,8 +407,9 @@ export function registerTodosModule(app: NexoApplication): void {
       {
         path: "backend/src/modules/system/index.ts",
         content: `import type { NexoApplication } from "@nexo-alpha/core";
+import type { ApplicationKnowledge } from "@nexo-alpha/context";
 
-export function registerSystemModule(app: NexoApplication): void {
+export function registerSystemModule(app: NexoApplication, knowledge?: ApplicationKnowledge): void {
   app.module({
     name: "system",
     description: "System health and runtime info",
@@ -362,7 +425,26 @@ export function registerSystemModule(app: NexoApplication): void {
           framework: "Nexo",
           uptimeSeconds: Math.floor(process.uptime()),
           timestamp: new Date().toISOString(),
-          modules: app.getModules().map((m) => m.name)
+          modules: app.getModules().map((m) => m.name),
+          moduleGraph: app.getModules().map((m) => ({
+            name: m.name,
+            description: m.description,
+            dependencies: app.getDependencies(m.name),
+            dependents: app.getDependents(m.name),
+            externalDependencies: m.externalDependencies ?? []
+          }))
+        })
+      },
+      {
+        name: "getKnowledge",
+        method: "GET",
+        path: "/api/knowledge",
+        description: "Return architecture decisions, constraints, and component intents",
+        handler: async () => ({
+          decisions: knowledge?.getDecisions() ?? [],
+          constraints: knowledge?.getConstraints() ?? [],
+          intents: knowledge?.getIntents() ?? [],
+          developmentState: knowledge?.getDevelopmentState() ?? null
         })
       }
     ]
@@ -582,13 +664,204 @@ body {
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
 }
+
+/* Tab Navigation */
+.tab-bar {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 24px;
+  background: rgba(15, 23, 42, 0.6);
+  padding: 6px;
+  border-radius: 16px;
+  border: 1px solid var(--border-color);
+  backdrop-filter: blur(12px);
+}
+
+.tab-btn {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 12px 18px;
+  border-radius: 12px;
+  border: none;
+  background: transparent;
+  color: var(--text-secondary);
+  font-family: inherit;
+  font-weight: 600;
+  font-size: 0.95rem;
+  cursor: pointer;
+  transition: all 0.25s ease;
+}
+
+.tab-btn:hover {
+  color: var(--text-primary);
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.tab-btn.active {
+  background: linear-gradient(135deg, rgba(56, 189, 248, 0.2), rgba(129, 140, 248, 0.2));
+  color: var(--text-primary);
+  border: 1px solid rgba(56, 189, 248, 0.35);
+  box-shadow: 0 4px 12px rgba(56, 189, 248, 0.15);
+}
+
+.tab-counter {
+  font-size: 0.75rem;
+  padding: 2px 8px;
+  border-radius: 10px;
+  background: rgba(56, 189, 248, 0.25);
+  color: var(--accent-primary);
+  font-weight: 700;
+}
+
+/* Knowledge Inspector Elements */
+.badge-live-sync {
+  font-size: 0.8rem;
+  color: var(--success);
+  background: rgba(34, 197, 94, 0.15);
+  border: 1px solid rgba(34, 197, 94, 0.3);
+  padding: 4px 12px;
+  border-radius: 999px;
+  font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.k-stats-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 12px;
+  margin-top: 16px;
+}
+
+@media (max-width: 640px) {
+  .k-stats-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+.k-stat-box {
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid var(--border-color);
+  border-radius: 14px;
+  padding: 14px;
+  text-align: center;
+}
+
+.k-stat-val {
+  font-size: 1.6rem;
+  font-weight: 800;
+  color: var(--accent-primary);
+}
+
+.k-stat-label {
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-top: 4px;
+}
+
+.knowledge-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.k-card {
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid var(--border-color);
+  border-radius: 14px;
+  padding: 16px 20px;
+  transition: all 0.2s ease;
+}
+
+.k-card:hover {
+  background: rgba(255, 255, 255, 0.06);
+  border-color: rgba(56, 189, 248, 0.3);
+}
+
+.k-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.k-badge {
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  padding: 3px 8px;
+  border-radius: 999px;
+}
+
+.badge-accepted {
+  background: rgba(34, 197, 94, 0.15);
+  color: var(--success);
+  border: 1px solid rgba(34, 197, 94, 0.3);
+}
+
+.badge-constraint {
+  background: rgba(245, 158, 11, 0.15);
+  color: #fbbf24;
+  border: 1px solid rgba(245, 158, 11, 0.3);
+}
+
+.badge-intent {
+  background: rgba(129, 140, 248, 0.15);
+  color: var(--accent-secondary);
+  border: 1px solid rgba(129, 140, 248, 0.3);
+}
+
+.k-evidence {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-family: monospace;
+  font-size: 0.8rem;
+  color: var(--accent-primary);
+  background: rgba(56, 189, 248, 0.1);
+  border: 1px solid rgba(56, 189, 248, 0.2);
+  padding: 4px 10px;
+  border-radius: 6px;
+  margin-top: 10px;
+}
+
+.k-state-list {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.k-state-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 0.95rem;
+  color: var(--text-primary);
+}
+
+.pulse-indicator {
+  color: var(--accent-primary);
+  animation: pulse 1.5s infinite;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.4; transform: scale(0.85); }
+}
 `
       },
       {
         path: "frontend/src/components/Header.tsx",
-        content: `import React from 'react';
-
-export function Header({ projectName }: { projectName: string }) {
+        content: `export function Header({ projectName }: { projectName: string }) {
   return (
     <header style={{ textAlign: "center", marginBottom: "40px", animation: "slideUp 0.6s both" }}>
       <h1 className="gradient-text" style={{ fontSize: "3rem", fontWeight: 800, marginBottom: "8px", letterSpacing: "-0.02em" }}>
@@ -604,9 +877,7 @@ export function Header({ projectName }: { projectName: string }) {
       },
       {
         path: "frontend/src/components/ServerStatus.tsx",
-        content: `import React from 'react';
-
-export function ServerStatus({ health }: { health: any }) {
+        content: `export function ServerStatus({ health }: { health: any }) {
   const isOk = health?.status === "ok";
   
   return (
@@ -621,8 +892,39 @@ export function ServerStatus({ health }: { health: any }) {
         <span style={{ color: "var(--text-secondary)" }}>{health ? "Connected & Online" : "Connecting..."}</span>
       </div>
       {health && (
-        <div style={{ display: "flex", gap: "16px", fontSize: "0.9rem", color: "var(--text-secondary)" }}>
-          <span>Modules: <strong style={{ color: "var(--text-primary)" }}>{health.modules.join(", ")}</strong></span>
+        <div style={{ display: "flex", gap: "16px", alignItems: "center", fontSize: "0.9rem", color: "var(--text-secondary)" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+            <span>Modules:</span>
+            {health.moduleGraph ? (
+              health.moduleGraph.map((m: any) => (
+                <span
+                  key={m.name}
+                  style={{
+                    padding: "2px 8px",
+                    borderRadius: "6px",
+                    background: "rgba(255, 255, 255, 0.06)",
+                    border: "1px solid rgba(255, 255, 255, 0.1)",
+                    fontSize: "0.85rem",
+                    color: "var(--text-primary)"
+                  }}
+                  title={
+                    \`\${m.name}\\n\` +
+                    (m.dependencies?.length ? \`• Depends on: \${m.dependencies.join(", ")}\\n\` : "") +
+                    (m.dependents?.length ? \`• Dependents: \${m.dependents.join(", ")}\` : "• Dependents: none")
+                  }
+                >
+                  {m.name}
+                  {m.dependents && m.dependents.length > 0 && (
+                    <span style={{ marginLeft: "5px", color: "var(--accent-primary)", fontSize: "0.75rem" }}>
+                      ({m.dependents.length} dep{m.dependents.length > 1 ? "s" : ""})
+                    </span>
+                  )}
+                </span>
+              ))
+            ) : (
+              <strong style={{ color: "var(--text-primary)" }}>{health.modules?.join(", ")}</strong>
+            )}
+          </div>
           <span>Uptime: <strong style={{ color: "var(--text-primary)" }}>{health.uptimeSeconds}s</strong></span>
         </div>
       )}
@@ -726,16 +1028,290 @@ export function TodoApp({ todos, onAdd, onToggle, loading }: any) {
 `
       },
       {
+        path: "frontend/src/components/KnowledgeInspector.tsx",
+        content: `import React from 'react';
+
+export function KnowledgeInspector({ 
+  knowledge, 
+  moduleGraph, 
+  loading 
+}: { 
+  knowledge: any; 
+  moduleGraph?: any[]; 
+  loading: boolean 
+}) {
+  if (loading) {
+    return (
+      <div className="glass-panel" style={{ textAlign: "center", padding: "40px 20px" }}>
+        <p style={{ color: "var(--text-secondary)" }}>Connecting to Nexo Application Context & Knowledge Journal...</p>
+      </div>
+    );
+  }
+
+  if (!knowledge) {
+    return (
+      <div className="glass-panel" style={{ textAlign: "center", padding: "40px 20px" }}>
+        <p style={{ color: "var(--danger)" }}>Unable to load Nexo Knowledge. Ensure the backend is running.</p>
+      </div>
+    );
+  }
+
+  const decisions = knowledge.decisions || [];
+  const constraints = knowledge.constraints || [];
+  const intents = knowledge.intents || [];
+  const state = knowledge.developmentState;
+
+  return (
+    <div className="glass-panel" style={{ animation: "slideUp 0.6s both" }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "20px", flexWrap: "wrap", gap: "10px" }}>
+        <div>
+          <h2 style={{ fontSize: "1.5rem", fontWeight: 700, margin: 0 }}>Nexo Knowledge Journal</h2>
+          <p style={{ color: "var(--text-secondary)", fontSize: "0.9rem", marginTop: "4px" }}>
+            Live introspection of application decisions, constraints, component intents, and module dependency graph
+          </p>
+        </div>
+        <span className="badge-live-sync">● Live Sync</span>
+      </div>
+
+      {/* Metrics Row */}
+      <div className="k-stats-grid">
+        <div className="k-stat-box">
+          <div className="k-stat-val">{decisions.length}</div>
+          <div className="k-stat-label">Decisions (ADRs)</div>
+        </div>
+        <div className="k-stat-box">
+          <div className="k-stat-val">{constraints.length}</div>
+          <div className="k-stat-label">Invariants</div>
+        </div>
+        <div className="k-stat-box">
+          <div className="k-stat-val">{intents.length}</div>
+          <div className="k-stat-label">Component Intents</div>
+        </div>
+        <div className="k-stat-box">
+          <div className="k-stat-val">{moduleGraph?.length || 0}</div>
+          <div className="k-stat-label">Active Modules</div>
+        </div>
+      </div>
+
+      {/* Module Graph Section */}
+      {moduleGraph && moduleGraph.length > 0 && (
+        <div style={{ marginTop: "28px" }}>
+          <h3 style={{ fontSize: "1.1rem", fontWeight: 600, marginBottom: "12px", display: "flex", alignItems: "center", gap: "8px" }}>
+            <span>🔗</span> Module Dependency & Dependents Graph
+          </h3>
+          <div className="knowledge-grid">
+            {moduleGraph.map((mod: any) => (
+              <div key={mod.name} className="k-card">
+                <div className="k-header">
+                  <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                    <code style={{ fontSize: "1.05rem", color: "var(--accent-primary)", fontWeight: 700 }}>
+                      {mod.name}
+                    </code>
+                    <span className="k-badge badge-accepted">module</span>
+                  </div>
+                  <span style={{ fontSize: "0.8rem", color: "var(--text-secondary)" }}>
+                    {mod.dependents?.length || 0} dependent{mod.dependents?.length === 1 ? "" : "s"}
+                  </span>
+                </div>
+                {mod.description && (
+                  <p style={{ color: "var(--text-secondary)", fontSize: "0.9rem", margin: "6px 0 10px 0" }}>
+                    {mod.description}
+                  </p>
+                )}
+                <div style={{ display: "flex", flexDirection: "column", gap: "8px", fontSize: "0.85rem", marginTop: "10px" }}>
+                  <div>
+                    <span style={{ color: "var(--text-secondary)" }}>Depends on (upstream): </span>
+                    {mod.dependencies?.length > 0 ? (
+                      mod.dependencies.map((d: string) => (
+                        <span key={d} className="k-badge badge-intent" style={{ marginRight: "4px" }}>{d}</span>
+                      ))
+                    ) : (
+                      <span style={{ color: "var(--text-secondary)", fontStyle: "italic" }}>None (Root module)</span>
+                    )}
+                  </div>
+                  <div>
+                    <span style={{ color: "var(--text-secondary)" }}>Dependents (downstream): </span>
+                    {mod.dependents?.length > 0 ? (
+                      mod.dependents.map((dep: string) => (
+                        <span key={dep} className="k-badge badge-constraint" style={{ marginRight: "4px" }}>{dep}</span>
+                      ))
+                    ) : (
+                      <span style={{ color: "var(--text-secondary)", fontStyle: "italic" }}>None (Leaf module)</span>
+                    )}
+                  </div>
+                  {mod.externalDependencies && mod.externalDependencies.length > 0 && (
+                    <div>
+                      <span style={{ color: "var(--text-secondary)" }}>NPM Packages: </span>
+                      {mod.externalDependencies.map((pkg: string) => (
+                        <span key={pkg} className="k-badge badge-accepted" style={{ marginRight: "4px" }}>{pkg}</span>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Decisions Section */}
+      <div style={{ marginTop: "28px" }}>
+        <h3 style={{ fontSize: "1.1rem", fontWeight: 600, marginBottom: "12px", display: "flex", alignItems: "center", gap: "8px" }}>
+          <span>🏛️</span> Architectural Decisions
+        </h3>
+        <div className="knowledge-grid">
+          {decisions.map((d: any, idx: number) => (
+            <div key={d.id || idx} className="k-card">
+              <div className="k-header">
+                <strong style={{ fontSize: "1.05rem" }}>{d.title}</strong>
+                <span className="k-badge badge-accepted">{d.status || "accepted"}</span>
+              </div>
+              <p style={{ color: "var(--text-secondary)", fontSize: "0.95rem", lineHeight: 1.5, margin: "6px 0 0 0" }}>
+                {d.reason}
+              </p>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Constraints Section */}
+      <div style={{ marginTop: "28px" }}>
+        <h3 style={{ fontSize: "1.1rem", fontWeight: 600, marginBottom: "12px", display: "flex", alignItems: "center", gap: "8px" }}>
+          <span>🛡️</span> System Constraints & Invariants
+        </h3>
+        <div className="knowledge-grid">
+          {constraints.map((c: any, idx: number) => (
+            <div key={idx} className="k-card">
+              <div className="k-header">
+                <span style={{ fontWeight: 600, fontSize: "0.98rem" }}>{c.description}</span>
+                <span className="k-badge badge-constraint">invariant</span>
+              </div>
+              {c.reason && (
+                <p style={{ color: "var(--text-secondary)", fontSize: "0.9rem", margin: "6px 0 0 0" }}>
+                  <strong>Reason:</strong> {c.reason}
+                </p>
+              )}
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Intents Section */}
+      <div style={{ marginTop: "28px" }}>
+        <h3 style={{ fontSize: "1.1rem", fontWeight: 600, marginBottom: "12px", display: "flex", alignItems: "center", gap: "8px" }}>
+          <span>🎯</span> Component & Entity Intents (AI-Era Context)
+        </h3>
+        <div className="knowledge-grid">
+          {intents.map((item: any, idx: number) => (
+            <div key={idx} className="k-card">
+              <div className="k-header">
+                <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                  <code style={{ fontSize: "1rem", color: "var(--accent-primary)", fontWeight: 700 }}>
+                    &lt;{item.entityName} /&gt;
+                  </code>
+                  <span className="k-badge badge-intent">{item.entityKind}</span>
+                </div>
+              </div>
+              <p style={{ color: "var(--text-primary)", fontSize: "0.95rem", margin: "6px 0 0 0" }}>
+                {item.purpose}
+              </p>
+              {item.evidence && (
+                <div className="k-evidence">
+                  <span>📍 {item.evidence.file}{item.evidence.line ? ":" + item.evidence.line : ""}</span>
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Development State */}
+      {state && (
+        <div style={{ marginTop: "28px" }}>
+          <h3 style={{ fontSize: "1.1rem", fontWeight: 600, marginBottom: "12px", display: "flex", alignItems: "center", gap: "8px" }}>
+            <span>🚀</span> Development State
+          </h3>
+          <div className="k-card">
+            <div style={{ marginBottom: "12px" }}>
+              <span style={{ fontSize: "0.85rem", color: "var(--text-secondary)", textTransform: "uppercase", letterSpacing: "0.05em" }}>
+                Completed Work
+              </span>
+              <ul className="k-state-list" style={{ marginTop: "8px" }}>
+                {state.completed?.map((item: string, idx: number) => (
+                  <li key={idx} className="k-state-item">
+                    <span style={{ color: "var(--success)" }}>✓</span> {item}
+                  </li>
+                ))}
+              </ul>
+            </div>
+            {state.inProgress?.length > 0 && (
+              <div style={{ marginTop: "16px" }}>
+                <span style={{ fontSize: "0.85rem", color: "var(--text-secondary)", textTransform: "uppercase", letterSpacing: "0.05em" }}>
+                  In Progress
+                </span>
+                <ul className="k-state-list" style={{ marginTop: "8px" }}>
+                  {state.inProgress?.map((item: string, idx: number) => (
+                    <li key={idx} className="k-state-item">
+                      <span className="pulse-indicator">●</span> {item}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+`
+      },
+      {
         path: "frontend/src/App.tsx",
-        content: `import React, { useEffect, useState } from "react";
+        content: `import { useEffect, useState } from "react";
 import { Header } from "./components/Header";
 import { ServerStatus } from "./components/ServerStatus";
 import { TodoApp } from "./components/TodoApp";
+import { KnowledgeInspector } from "./components/KnowledgeInspector";
+
+interface Todo {
+  id: number;
+  text: string;
+  completed: boolean;
+  createdAt: string;
+}
+
+interface ModuleInfo {
+  name: string;
+  description?: string;
+  dependencies: string[];
+  dependents: string[];
+  externalDependencies?: string[];
+}
+
+interface HealthData {
+  status: string;
+  framework: string;
+  uptimeSeconds: number;
+  timestamp: string;
+  modules: string[];
+  moduleGraph?: ModuleInfo[];
+}
+
+interface KnowledgeData {
+  decisions: Array<{ title: string; reason?: string; status?: string }>;
+  constraints: Array<{ description: string; reason?: string }>;
+  intents: Array<{ entityKind: string; entityName: string; purpose: string; evidence?: { file: string; line?: number } }>;
+  developmentState: { completed?: string[]; inProgress?: string[] } | null;
+}
 
 export function App() {
-  const [todos, setTodos] = useState([]);
-  const [health, setHealth] = useState(null);
+  const [activeTab, setActiveTab] = useState<"demo" | "knowledge">("demo");
+  const [todos, setTodos] = useState<Todo[]>([]);
+  const [health, setHealth] = useState<HealthData | null>(null);
+  const [knowledge, setKnowledge] = useState<KnowledgeData | null>(null);
   const [loading, setLoading] = useState(true);
+  const [knowledgeLoading, setKnowledgeLoading] = useState(true);
 
   const fetchHealth = async () => {
     try {
@@ -743,6 +1319,17 @@ export function App() {
       if (res.ok) setHealth(await res.json());
     } catch (e) {
       console.error("Health check failed", e);
+    }
+  };
+
+  const fetchKnowledge = async () => {
+    try {
+      const res = await fetch("/api/knowledge");
+      if (res.ok) setKnowledge(await res.json());
+    } catch (e) {
+      console.error("Knowledge fetch failed", e);
+    } finally {
+      setKnowledgeLoading(false);
     }
   };
 
@@ -759,8 +1346,12 @@ export function App() {
 
   useEffect(() => {
     fetchHealth();
+    fetchKnowledge();
     fetchTodos();
-    const interval = setInterval(fetchHealth, 5000);
+    const interval = setInterval(() => {
+      fetchHealth();
+      fetchKnowledge();
+    }, 5000);
     return () => clearInterval(interval);
   }, []);
 
@@ -770,14 +1361,17 @@ export function App() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ text })
     });
-    if (res.ok) setTodos((prev) => [...prev, await res.json()] as any);
+    if (res.ok) {
+      const newTodo = (await res.json()) as Todo;
+      setTodos((prev) => [...prev, newTodo]);
+    }
   };
 
   const handleToggle = async (id: number) => {
     const res = await fetch(\`/api/todos/\${id}/toggle\`, { method: "POST" });
     if (res.ok) {
-      const updated = await res.json();
-      setTodos((prev) => prev.map((t: any) => (t.id === id ? updated : t)) as any);
+      const updated = (await res.json()) as Todo;
+      setTodos((prev) => prev.map((t) => (t.id === id ? updated : t)));
     }
   };
 
@@ -785,7 +1379,34 @@ export function App() {
     <>
       <Header projectName="${projectName}" />
       <ServerStatus health={health} />
-      <TodoApp todos={todos} onAdd={handleAdd} onToggle={handleToggle} loading={loading} />
+      
+      <div className="tab-bar">
+        <button
+          id="tab-demo-btn"
+          className={\`tab-btn \${activeTab === "demo" ? "active" : ""}\`}
+          onClick={() => setActiveTab("demo")}
+        >
+          <span>📋</span> Interactive Demo
+        </button>
+        <button
+          id="tab-knowledge-btn"
+          className={\`tab-btn \${activeTab === "knowledge" ? "active" : ""}\`}
+          onClick={() => setActiveTab("knowledge")}
+        >
+          <span>🧠</span> Nexo Knowledge & Architecture
+          {knowledge && (
+            <span className="tab-counter">
+              {(knowledge.decisions?.length || 0) + (knowledge.intents?.length || 0)}
+            </span>
+          )}
+        </button>
+      </div>
+
+      {activeTab === "demo" ? (
+        <TodoApp todos={todos} onAdd={handleAdd} onToggle={handleToggle} loading={loading} />
+      ) : (
+        <KnowledgeInspector knowledge={knowledge} moduleGraph={health?.moduleGraph} loading={knowledgeLoading} />
+      )}
     </>
   );
 }

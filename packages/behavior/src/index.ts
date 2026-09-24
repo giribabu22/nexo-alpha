@@ -18,3 +18,7 @@ export * from './policies/index.js';
 
 // Telemetry & Measurement
 export * from './telemetry/index.js';
+
+// DSC (Deterministic State & Computation) Optimization Layer
+export * from './dsc/index.js';
+

@@ -130,7 +130,11 @@ my-fullstack-app/
 In the `fullstack-react` template, the frontend is a **React 18** application built with **Vite**. 
 It is configured to work harmoniously with the Nexo backend:
 - **Vite Proxy**: `vite.config.ts` automatically proxies `/api` requests to the Nexo/Hapi.js backend running on port 4000.
-- **React Components**: The frontend calls backend APIs directly (e.g., `fetch('/api/todos')`) while development servers run concurrently.
+- **`@nexo-alpha/frontend` SDK & Hooks**: You can use the official `@nexo-alpha/frontend` package providing:
+  - `createNexoClient()`: Typed HTTP client for calling Nexo backend APIs (`getHealth()`, `getKnowledge()`, `getModules()`, and custom paths).
+  - Reactive React Hooks: `useNexoHealth()`, `useNexoKnowledge()`, `useNexoModuleGraph()`, and `useNexoApi()`.
+  - Reusable UI Components: `<NexoServerStatus />`, `<NexoKnowledgeInspector />`, and `<NexoModuleGraph />`.
+- **Nexo Knowledge Inspector**: Exposes real-time Architectural Decisions (ADRs), system invariants/constraints, component intents, development progress, and inter-module dependencies and dependents.
 
 ### Hapi.js Backend Integration
 

@@ -185,16 +185,69 @@ export const app = createApplication({
 
 export const knowledge = createKnowledge();
 
+// 1. Architectural Decisions (ADRs)
 knowledge.addDecision({
   title: "Service Architecture",
   reason: "Modular domain structure with pure Nexo service and API definitions.",
   status: "accepted"
 });
 
+knowledge.addDecision({
+  title: "Decoupled Runtime Protocol",
+  reason: "Nexo core remains HTTP-agnostic; network adapters (Hapi) bind to module APIs at startup.",
+  status: "accepted"
+});
+
+// 2. Constraints & Invariants
+knowledge.addConstraint({
+  description: "Business domain logic must be encapsulated in Nexo Services, not inside route handlers",
+  reason: "Ensures services are independently testable and portable across CLI, HTTP, and background jobs."
+});
+
+knowledge.addConstraint({
+  description: "All endpoints must expose structured JSON with status codes",
+  reason: "Maintains consistent contract consumption for frontend and external clients."
+});
+
+// 3. Entity Intents
+knowledge.addIntent({
+  entityKind: "service",
+  entityName: "StorageService",
+  purpose: "In-memory key-value data storage and cache service.",
+  evidence: { file: "src/modules/greeting/service.ts", line: 5 }
+});
+
+knowledge.addIntent({
+  entityKind: "module",
+  entityName: "greeting",
+  purpose: "Greeting domain providing parameterized hello endpoints backed by StorageService.",
+  evidence: { file: "src/modules/greeting/index.ts", line: 4 }
+});
+
+knowledge.addIntent({
+  entityKind: "module",
+  entityName: "health",
+  purpose: "System operational health checks and live architecture knowledge introspection.",
+  evidence: { file: "src/modules/health/index.ts", line: 4 }
+});
+
+// 4. Development Work State
+knowledge.setDevelopmentState({
+  completed: [
+    "Core application initialized",
+    "Modular architecture configured",
+    "Hapi network adapter integrated",
+    "Application knowledge journal configured"
+  ],
+  inProgress: [
+    "External database persistence"
+  ]
+});
+
 // Each module lives in its own folder under src/modules — see that folder
 // for the actual app.module({...}) registration and any services it needs.
 registerGreetingModule(app);
-registerHealthModule(app);
+registerHealthModule(app, knowledge);
 `
       },
       {
@@ -260,11 +313,12 @@ export function registerGreetingModule(app: NexoApplication): void {
       {
         path: "src/modules/health/index.ts",
         content: `import type { NexoApplication } from "@nexo-alpha/core";
+import type { ApplicationKnowledge } from "@nexo-alpha/context";
 
-export function registerHealthModule(app: NexoApplication): void {
+export function registerHealthModule(app: NexoApplication, knowledge?: ApplicationKnowledge): void {
   app.module({
     name: "health",
-    description: "System health checks",
+    description: "System health checks and knowledge introspection",
 
     apis: [
       {
@@ -277,6 +331,18 @@ export function registerHealthModule(app: NexoApplication): void {
           app: app.name,
           version: app.version,
           uptime: process.uptime()
+        })
+      },
+      {
+        name: "getKnowledge",
+        method: "GET",
+        path: "/knowledge",
+        description: "Application knowledge journal, architectural decisions, and invariants",
+        handler: async () => ({
+          decisions: knowledge?.getDecisions() ?? [],
+          constraints: knowledge?.getConstraints() ?? [],
+          intents: knowledge?.getIntents() ?? [],
+          developmentState: knowledge?.getDevelopmentState() ?? null
         })
       }
     ]
