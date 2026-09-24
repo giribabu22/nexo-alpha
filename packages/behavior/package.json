@@ -1,6 +1,6 @@
 {
   "name": "@nexo-alpha/behavior",
-  "version": "0.4.1",
+  "version": "0.5.0",
   "description": "Typed bounded behavior layer and decision primitives for the Nexo framework",
   "keywords": [
     "nexo",

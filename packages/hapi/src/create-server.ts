@@ -1,10 +1,12 @@
-import Hapi from "@hapi/hapi";
+﻿import Hapi from "@hapi/hapi";
 import {
   NexoEvent,
   type NexoApi,
   type NexoApplication,
   type NexoAuthenticator,
-  type NexoRequestContext
+  type NexoRequestContext,
+  type DscInterceptorLike,
+  DSC_INTERCEPTOR
 } from "@nexo-alpha/core";
 
 export interface CreateHapiServerOptions {
@@ -13,6 +15,12 @@ export interface CreateHapiServerOptions {
   readonly authenticate?: NexoAuthenticator;
   readonly bindLifecycle?: boolean;
   readonly cors?: boolean;
+  /**
+   * When true (default), automatically resolves the DscInterceptor from the
+   * app container (if installed via installDscPlugin) and wraps every route
+   * handler with DSC timing + payload-size tracking.
+   */
+  readonly dscInstrument?: boolean;
 }
 
 export function toHapiPath(path: string): string {
@@ -35,6 +43,16 @@ export async function createHapiServer(
     ...(options.cors ? { routes: { cors: true } } : {})
   });
 
+  // --- DSC: resolve interceptor from DI container if available ---
+  let interceptor: DscInterceptorLike | undefined;
+  if (options.dscInstrument !== false) {
+    try {
+      interceptor = app.container.resolve<DscInterceptorLike>(DSC_INTERCEPTOR);
+    } catch {
+      // Not installed — run uninstrumented
+    }
+  }
+
   const apis = app.getApis();
 
   for (const api of apis) {
@@ -46,17 +64,19 @@ export async function createHapiServer(
   }
 
   for (const api of apis) {
-    if (api.handler === undefined) {
-      continue;
-    }
+    if (api.handler === undefined) continue;
+    // Hapi generates HEAD responses from GET automatically
+    if (api.method === "HEAD") continue;
 
-    if (api.method === "HEAD") {
-      // Hapi generates HEAD responses from GET routes automatically and
-      // does not accept HEAD as an explicit route method.
-      continue;
-    }
-
-    const handler = api.handler;
+    // Wrap the handler with DSC timing + payload tracking if interceptor present
+    const rawHandler = api.handler;
+    const trackedHandler = interceptor
+      ? interceptor.instrument(
+          `hapi:${api.method}:${api.path}`,
+          rawHandler,
+          { stage: "execute", trackPayloadSize: true }
+        )
+      : rawHandler;
 
     server.route({
       method: api.method,
@@ -72,7 +92,6 @@ export async function createHapiServer(
             statusCode,
             durationMs: Date.now() - startedAt
           });
-
           return body === undefined
             ? h.response().code(statusCode)
             : h.response(body as Hapi.ResponseValue).code(statusCode);
@@ -86,37 +105,22 @@ export async function createHapiServer(
         };
 
         if (api.auth?.required) {
-          // Guaranteed defined: createHapiServer already rejected before
-          // registering any routes if an auth-required API had no
-          // "authenticate" option configured.
-          const authResult = await (options.authenticate as NexoAuthenticator)(
-            context
-          );
-
-          if (!authResult.authenticated) {
-            return respond(401, { error: "Unauthorized" });
-          }
-
+          const authResult = await (options.authenticate as NexoAuthenticator)(context);
+          if (!authResult.authenticated) return respond(401, { error: "Unauthorized" });
           const missing = missingScopes(api, authResult.scopes);
-          if (missing.length > 0) {
-            return respond(403, { error: "Forbidden", missingScopes: missing });
-          }
+          if (missing.length > 0) return respond(403, { error: "Forbidden", missingScopes: missing });
         }
 
         if (api.validate) {
           const outcome = await api.validate(context);
-
           if (!outcome.valid) {
-            return respond(400, {
-              error: "Validation failed",
-              errors: outcome.errors ?? []
-            });
+            return respond(400, { error: "Validation failed", errors: outcome.errors ?? [] });
           }
         }
 
         let result: unknown;
         try {
-          result = await handler(context);
+          result = await trackedHandler(context);
         } catch (error) {
           app.events.emit(NexoEvent.API_ERROR, {
             api: api.name,
@@ -145,11 +149,7 @@ export async function startHapiServer(
 
   if (options.bindLifecycle !== false) {
     const onStopping = async () => {
-      try {
-        await server.stop();
-      } catch {
-        // Best effort if already stopped
-      }
+      try { await server.stop(); } catch { /* best effort */ }
     };
     app.events.on(NexoEvent.APPLICATION_STOPPING, onStopping);
   }

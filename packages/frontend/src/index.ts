@@ -133,7 +133,14 @@ export {
   type NexoModuleGraphProps
 } from "./components/NexoModuleGraph.js";
 
+export {
+  NexoDscDashboard,
+  NexoDscDashboardComp,
+  type NexoDscDashboardProps
+} from "./components/NexoDscDashboard.js";
+
 // DSA (Data Structures & Algorithms) Optimization Layer
+// --- Core Structures ---
 export {
   NexoLruCache
 } from "./dsa/lru.js";
@@ -147,6 +154,34 @@ export {
   NexoElementGraph,
   type ElementNode
 } from "./dsa/graph.js";
+
+// --- New DSA: O(1) Ring-Buffer Queue for BFS ---
+export {
+  ArrayDeque
+} from "./dsa/queue.js";
+
+// --- New DSA: O(log n) Min-Heap for priority rendering ---
+export {
+  MinHeap,
+  createDepthHeap
+} from "./dsa/heap.js";
+
+// --- New DSA: Probabilistic Bloom Filter for cache pre-check ---
+export {
+  NexoBloomFilter
+} from "./dsa/bloom.js";
+
+// --- New DSA: Bounded Ring Buffer for telemetry ---
+export {
+  RingBuffer
+} from "./dsa/ring-buffer.js";
+
+// --- New DSA: Topological Sort for dependency ordering ---
+export {
+  topoSort,
+  type TopoNode,
+  type TopoSortResult
+} from "./dsa/topo-sort.js";
 
 export {
   NexoElement,

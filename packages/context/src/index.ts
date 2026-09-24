@@ -39,3 +39,15 @@ export type {
   NexoIntent,
   NexoIntentEvidence
 } from "./knowledge.js";
+
+// DSC-accelerated context builders
+export {
+  buildContextWithDsc,
+  contextToJsonWithDsc,
+  buildContextSnapshotWithDsc
+} from "./dsc-context.js";
+
+export type {
+  DscContextOptions,
+  DscContextSnapshot
+} from "./dsc-context.js";

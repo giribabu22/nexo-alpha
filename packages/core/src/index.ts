@@ -107,3 +107,33 @@ export type {
   NexoDecision,
   NexoConstraint
 } from "./knowledge.js";
+
+// DSC (Deterministic State & Computation) integration layer
+export {
+  installDscPlugin,
+  resolveDscOrchestrator,
+  resolveDscInterceptor,
+  DSC_ORCHESTRATOR,
+  DSC_INTERCEPTOR,
+  DSC_COLLECTOR
+} from "./dsc-plugin.js";
+
+export type {
+  DscOrchestratorLike,
+  DscInterceptorLike,
+  DscCollectorLike,
+  DscPluginOptions,
+  InstalledDscPlugin
+} from "./dsc-plugin.js";
+
+// DSA (Data Structures & Algorithms) core utilities
+export {
+  topoSort,
+  memoize,
+  CountingMap
+} from "./dsa.js";
+
+export type {
+  TopoNode,
+  TopoSortResult
+} from "./dsa.js";

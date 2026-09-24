@@ -73,7 +73,7 @@ export const NavbarComp = nexoComp({
               <span style={{ fontWeight: 800, fontSize: "1.15rem", letterSpacing: "-0.01em" }}>
                 Nexo Fullstack Studio
               </span>
-              <NexoBadge variant="purple" size="sm">v0.4.1</NexoBadge>
+              <NexoBadge variant="purple" size="sm">v0.5.0</NexoBadge>
             </div>
             <p style={{ margin: 0, fontSize: "0.75rem", color: "var(--nexo-text-secondary, #94a3b8)" }}>
               React In Background • NexoComp UI Architecture • DSC Optimization

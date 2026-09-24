@@ -38,6 +38,7 @@ import type {
   NexoDecision,
   NexoConstraint
 } from "./knowledge.js";
+import { topoSort } from "./dsa.js";
 
 export interface ApplicationOptions {
   readonly name: string;
@@ -584,10 +585,28 @@ export class NexoApplication {
     this._state = "initializing";
     this.events.emit(NexoEvent.APPLICATION_INITIALIZING, { state: this._state });
 
+    // --- DSA: Topological sort for dependency-ordered module init ---
+    // Modules whose dependencies all initialized first, preventing partial
+    // startup where a dependant tries to call a service not yet online.
+    let initOrder: readonly NexoModule[];
+    try {
+      const moduleList = [...this.modules.values()];
+      const nodes = moduleList.map((m) => ({
+        id: m.name,
+        deps: m.dependencies ?? []
+      }));
+      const { sorted } = topoSort(nodes);
+      initOrder = sorted.map((n) => this.modules.get(n.id)!).filter(Boolean);
+    } catch {
+      // Cycle detected — fall back to registration order so existing apps
+      // with circular mocks in tests don't blow up.
+      initOrder = [...this.modules.values()];
+    }
+
     try {
       await this.lifecycle.run("beforeInit", this);
 
-      for (const module of this.modules.values()) {
+      for (const module of initOrder) {
         await module.initialize?.();
       }
 
@@ -595,7 +614,7 @@ export class NexoApplication {
 
       await this.lifecycle.run("beforeStart", this);
 
-      for (const module of this.modules.values()) {
+      for (const module of initOrder) {
         await module.start?.();
         if (module.services) {
           for (const service of module.services) {

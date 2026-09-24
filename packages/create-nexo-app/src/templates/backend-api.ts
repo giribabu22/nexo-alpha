@@ -116,16 +116,16 @@ npx nexo freshness --source-root src
               graph: "nexo graph --source-root src --out .nexo/knowledge-graph.json"
             },
             dependencies: {
-              "@nexo-alpha/core": "^0.4.1",
-              "@nexo-alpha/context": "^0.4.1",
-              "@nexo-alpha/decision": "^0.4.1",
-              "@nexo-alpha/behavior": "^0.4.1",
-              "@nexo-alpha/agent": "^0.4.1",
-              "@nexo-alpha/web": "^0.4.1",
-              "@nexo-alpha/hapi": "^0.4.1",
-              "@nexo-alpha/scheduler": "^0.4.1",
-              "@nexo-alpha/tools": "^0.4.1",
-              "@nexo-alpha/cli": "^0.4.1"
+              "@nexo-alpha/core": "^0.5.0",
+              "@nexo-alpha/context": "^0.5.0",
+              "@nexo-alpha/decision": "^0.5.0",
+              "@nexo-alpha/behavior": "^0.5.0",
+              "@nexo-alpha/agent": "^0.5.0",
+              "@nexo-alpha/web": "^0.5.0",
+              "@nexo-alpha/hapi": "^0.5.0",
+              "@nexo-alpha/scheduler": "^0.5.0",
+              "@nexo-alpha/tools": "^0.5.0",
+              "@nexo-alpha/cli": "^0.5.0"
             },
             devDependencies: {
               "@types/node": "^20.11.0",

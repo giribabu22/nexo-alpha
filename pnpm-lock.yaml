@@ -38,12 +38,21 @@ importers:
 
   examples/fullstack-react:
     dependencies:
+      '@nexo-alpha/agent':
+        specifier: workspace:*
+        version: link:../../packages/agent
+      '@nexo-alpha/behavior':
+        specifier: workspace:*
+        version: link:../../packages/behavior
       '@nexo-alpha/context':
         specifier: workspace:*
         version: link:../../packages/context
       '@nexo-alpha/core':
         specifier: workspace:*
         version: link:../../packages/core
+      '@nexo-alpha/frontend':
+        specifier: workspace:*
+        version: link:../../packages/frontend
       '@nexo-alpha/hapi':
         specifier: workspace:*
         version: link:../../packages/hapi
@@ -53,6 +62,25 @@ importers:
       '@nexo-alpha/tools':
         specifier: workspace:*
         version: link:../../packages/tools
+    devDependencies:
+      '@types/node':
+        specifier: ^20.0.0
+        version: 20.19.43
+      '@types/react':
+        specifier: ^18.3.5
+        version: 18.3.31
+      '@types/react-dom':
+        specifier: ^18.3.0
+        version: 18.3.7(@types/react@18.3.31)
+      react:
+        specifier: ^18.3.1
+        version: 18.3.1
+      react-dom:
+        specifier: ^18.3.1
+        version: 18.3.1(react@18.3.1)
+      typescript:
+        specifier: ^5.0.0
+        version: 5.9.3
 
   examples/hello-world:
     dependencies:

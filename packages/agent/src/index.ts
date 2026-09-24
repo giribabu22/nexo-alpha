@@ -84,3 +84,12 @@ export type {
   ExecutionRecord,
   ExecutionStatus
 } from "./audit.js";
+
+// ---- DSC Agent (instrumented + deduplicated) --------------------------------
+export {
+  createDscAgent
+} from "./dsc-agent.js";
+
+export type {
+  DscAgentOptions
+} from "./dsc-agent.js";

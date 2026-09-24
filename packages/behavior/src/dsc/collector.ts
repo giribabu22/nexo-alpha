@@ -1,20 +1,83 @@
-import type {
+﻿import type {
   DscMetricRecord,
   DscAggregateMetrics,
   DscStage,
   DscExecutionStatus
 } from "./types.js";
 
+// ---------------------------------------------------------------------------
+// DSA: Ring Buffer — bounded O(1) push, bounded memory
+// ---------------------------------------------------------------------------
+
+class RingBuffer<T> {
+  private readonly buf: (T | undefined)[];
+  private head = 0;
+  private tail = 0;
+  private _size = 0;
+  readonly capacity: number;
+
+  constructor(capacity: number) {
+    this.capacity = capacity;
+    this.buf = new Array(capacity);
+  }
+
+  get size(): number { return this._size; }
+
+  /** O(1) push. Overwrites oldest entry when full. */
+  push(item: T): void {
+    if (this._size === this.capacity) {
+      this.head = (this.head + 1) % this.capacity;
+    } else {
+      this._size++;
+    }
+    this.buf[this.tail] = item;
+    this.tail = (this.tail + 1) % this.capacity;
+  }
+
+  /** O(n) — returns all items oldest → newest. */
+  toArray(): T[] {
+    const result: T[] = [];
+    for (let i = 0; i < this._size; i++) {
+      result.push(this.buf[(this.head + i) % this.capacity] as T);
+    }
+    return result;
+  }
+
+  clear(): void {
+    this.buf.fill(undefined);
+    this.head = 0;
+    this.tail = 0;
+    this._size = 0;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// DscCollector
+// ---------------------------------------------------------------------------
+
+/**
+ * DscCollector — bounded metrics collector backed by a RingBuffer.
+ *
+ * Upgrade over the previous unbounded Array:
+ *  - Hard cap at `maxRecords` (default 4096) prevents memory leaks in
+ *    long-running processes.
+ *  - O(1) push via RingBuffer (no array re-allocation).
+ *  - Oldest records are silently evicted when capacity is reached.
+ */
 export class DscCollector {
-  private records: DscMetricRecord[] = [];
-  private listeners: Set<(record: DscMetricRecord) => void> = new Set();
+  private readonly ring: RingBuffer<DscMetricRecord>;
+  private readonly listeners: Set<(record: DscMetricRecord) => void> = new Set();
+
+  constructor(maxRecords = 4096) {
+    this.ring = new RingBuffer<DscMetricRecord>(maxRecords);
+  }
 
   record(entry: Omit<DscMetricRecord, "timestamp">): void {
     const record: DscMetricRecord = {
       ...entry,
       timestamp: new Date().toISOString()
     };
-    this.records.push(record);
+    this.ring.push(record);
     for (const listener of this.listeners) {
       try {
         listener(record);
@@ -25,10 +88,12 @@ export class DscCollector {
   }
 
   getRecords(): readonly DscMetricRecord[] {
-    return [...this.records];
+    return this.ring.toArray();
   }
 
   getMetrics(): DscAggregateMetrics {
+    const records = this.ring.toArray();
+
     const initialStages: Record<DscStage, number> = {
       plan: 0,
       resolve: 0,
@@ -57,7 +122,7 @@ export class DscCollector {
     let cacheMisses = 0;
     let deduplicatedOps = 0;
 
-    for (const r of this.records) {
+    for (const r of records) {
       totalDurationMs += r.durationMs;
       initialStages[r.stage] = (initialStages[r.stage] ?? 0) + r.durationMs;
       initialStatuses[r.status] = (initialStatuses[r.status] ?? 0) + 1;
@@ -70,18 +135,13 @@ export class DscCollector {
       if (r.toolCalls) totalToolCalls += r.toolCalls;
       if (r.duplicatedToolCalls) duplicatedToolCalls += r.duplicatedToolCalls;
 
-      if (r.cacheHit === true) {
-        cacheHits++;
-      } else if (r.cacheHit === false) {
-        cacheMisses++;
-      }
+      if (r.cacheHit === true) cacheHits++;
+      else if (r.cacheHit === false) cacheMisses++;
 
-      if (r.deduplicated) {
-        deduplicatedOps++;
-      }
+      if (r.deduplicated) deduplicatedOps++;
     }
 
-    const totalOperations = this.records.length;
+    const totalOperations = records.length;
     const totalCacheEvents = cacheHits + cacheMisses;
     const cacheHitRate = totalCacheEvents > 0 ? cacheHits / totalCacheEvents : 0;
     const averageDurationMs = totalOperations > 0 ? totalDurationMs / totalOperations : 0;
@@ -108,16 +168,14 @@ export class DscCollector {
 
   subscribe(listener: (record: DscMetricRecord) => void): () => void {
     this.listeners.add(listener);
-    return () => {
-      this.listeners.delete(listener);
-    };
+    return () => { this.listeners.delete(listener); };
   }
 
   clear(): void {
-    this.records = [];
+    this.ring.clear();
   }
 }
 
-export function createDscCollector(): DscCollector {
-  return new DscCollector();
+export function createDscCollector(maxRecords = 4096): DscCollector {
+  return new DscCollector(maxRecords);
 }

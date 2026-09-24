@@ -1,6 +1,6 @@
 {
   "name": "@nexo-alpha/frontend",
-  "version": "0.4.1",
+  "version": "0.5.0",
   "description": "Client SDK, React hooks, and live introspection UI components for Nexo applications",
   "keywords": [
     "nexo",

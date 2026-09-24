@@ -10,19 +10,77 @@ import {
   EscalatePolicyOptions, EscalatePolicyResult
 } from '../types/policies.js';
 import { choice, boolean, score } from '../primitives/index.js';
+import {
+  ContextCompressor,
+  createContextCompressor,
+  type CompressOptions
+} from '../token/context-compressor.js';
+import {
+  PromptCache,
+  createPromptCache,
+  type PromptCacheOptions
+} from '../token/prompt-cache.js';
+import {
+  TokenBudgetGuard,
+  createTokenBudgetGuard,
+  type TokenBudgetOptions
+} from '../token/token-budget.js';
+import {
+  SelectiveContextInjector,
+  createSelectiveInjector,
+  type CallType,
+  type InjectionProfile
+} from '../token/selective-injector.js';
+
+export interface TokenOptimizationConfig {
+  /** Context state compression (delta diffing). Default: enabled with 'delta' strategy. */
+  readonly compress?: CompressOptions | false;
+  /** Prompt LRU cache settings. Default: 256-entry, 5-min TTL. */
+  readonly promptCache?: PromptCacheOptions | false;
+  /** Token budget guard (prunes oversized payloads). Default: 4000-token max. */
+  readonly budget?: TokenBudgetOptions | false;
+  /** Custom injection profiles per call type. */
+  readonly injectionProfiles?: Partial<Record<CallType, InjectionProfile>>;
+}
 
 export interface BehaviorEngineConfig {
   provider?: BehaviorProvider | undefined;
   telemetry?: TelemetryTracker | undefined;
+  /** Phase 5 token-optimization settings. Pass false to disable individual features. */
+  tokenOptimization?: TokenOptimizationConfig | undefined;
 }
 
 export class BehaviorEngine {
   private provider: BehaviorProvider;
   private telemetry: TelemetryTracker;
+  private readonly compressor: ContextCompressor | null;
+  private readonly promptCache: PromptCache | null;
+  private readonly budgetGuard: TokenBudgetGuard | null;
+  private readonly injector: SelectiveContextInjector;
 
   constructor(config: BehaviorEngineConfig = {}) {
     this.provider = config.provider ?? new LocalBehaviorProvider();
     this.telemetry = config.telemetry ?? createTelemetryTracker();
+
+    const tok = config.tokenOptimization;
+
+    this.compressor = tok?.compress === false
+      ? null
+      : createContextCompressor(typeof tok?.compress === 'object' ? tok.compress : {});
+
+    this.promptCache = tok?.promptCache === false
+      ? null
+      : createPromptCache(
+          typeof tok?.promptCache === 'object'
+            ? { ...tok.promptCache, providerName: this.provider.name }
+            : { providerName: this.provider.name }
+        );
+
+    this.budgetGuard = tok?.budget === false
+      ? null
+      : createTokenBudgetGuard(typeof tok?.budget === 'object' ? tok.budget : {});
+
+    this.injector = createSelectiveInjector(tok?.injectionProfiles);
   }
 
   public setProvider(provider: BehaviorProvider): void {
@@ -42,22 +100,86 @@ export class BehaviorEngine {
   }
 
   public async decide<TState = unknown, TQuestions extends QuestionMap = QuestionMap>(
-    request: DecisionRequest<TState>
+    request: DecisionRequest<TState>,
+    callType: CallType | string = 'custom'
   ): Promise<DecisionResponse> {
     const startMs = Date.now();
-    const response = await this.provider.evaluate(request);
-    const durationMs = Date.now() - startMs;
+    let tokensSaved = 0;
 
+    // --- Phase 5: Token Optimization Pipeline ---
+
+    // 1. Selective injection: strip irrelevant fields for this call type
+    let state: unknown = request.state;
+    if (state !== null && typeof state === 'object') {
+      const injected = this.injector.inject(
+        state as Record<string, unknown>,
+        callType
+      );
+      state = injected.payload;
+      tokensSaved += injected.tokensSaved;
+    }
+
+    // 2. Context compression: delta-diff since last call
+    let compressedState: unknown = state;
+    if (this.compressor && state !== null && typeof state === 'object') {
+      const compressed = this.compressor.compress(state as Record<string, unknown>);
+      if (compressed.mode === 'skipped') {
+        // State unchanged — serve from prompt cache or skip provider entirely
+        const cacheKey = this.promptCache?.keyFor({ ...request, state });
+        const cached = cacheKey ? this.promptCache?.get(cacheKey) : undefined;
+        if (cached) {
+          const durationMs = Date.now() - startMs;
+          const questionCount = Object.keys(request.questions).length;
+          const saved = this.estimateSaved(request.state) + tokensSaved;
+          this.telemetry.record({
+            providerName: this.provider.name,
+            questionCount,
+            durationMs,
+            promptTokens: 0,
+            completionTokens: 0,
+            estimatedCostUsd: 0,
+            savedTokens: saved
+          });
+          return cached;
+        }
+      }
+      compressedState = compressed.payload;
+      tokensSaved += compressed.tokensSaved;
+    }
+
+    // 3. Token budget guard: prune if over budget
+    if (this.budgetGuard && compressedState !== null && typeof compressedState === 'object') {
+      const budgeted = this.budgetGuard.enforce(compressedState as Record<string, unknown>);
+      compressedState = budgeted.payload;
+      if (!budgeted.withinBudget) {
+        tokensSaved += (this.estimateSaved(request.state) - budgeted.estimatedTokens);
+      }
+    }
+
+    const optimisedRequest: DecisionRequest<unknown> = {
+      ...request,
+      state: compressedState
+    };
+
+    // 4. Prompt cache: skip provider call for identical requests
+    const { response, cacheHit } = this.promptCache
+      ? await this.promptCache.getOrEvaluate(
+          optimisedRequest,
+          (req) => this.provider.evaluate(req as DecisionRequest<TState>)
+        )
+      : { response: await this.provider.evaluate(optimisedRequest as DecisionRequest<TState>), cacheHit: false };
+
+    const durationMs = Date.now() - startMs;
     const questionCount = Object.keys(request.questions).length;
-    // Estimated saved tokens: bounded micro-decisions save ~250 tokens per question over raw LLM reasoning
-    const savedTokens = response.metrics?.savedGenerativeTokens ?? (questionCount * 250);
+    const savedGenerativeTokens = response.metrics?.savedGenerativeTokens ?? (questionCount * 250);
+    const totalSaved = savedGenerativeTokens + tokensSaved + (cacheHit ? this.estimateSaved(request.state) : 0);
 
     const metrics = response.metrics ?? {
       durationMs,
-      promptTokens: 0,
-      completionTokens: 0,
+      promptTokens: cacheHit ? 0 : 0,
+      completionTokens: cacheHit ? 0 : 0,
       estimatedCostUsd: 0,
-      savedGenerativeTokens: savedTokens
+      savedGenerativeTokens: totalSaved
     };
 
     this.telemetry.record({
@@ -67,13 +189,15 @@ export class BehaviorEngine {
       promptTokens: metrics.promptTokens ?? 0,
       completionTokens: metrics.completionTokens ?? 0,
       estimatedCostUsd: metrics.estimatedCostUsd ?? 0,
-      savedTokens
+      savedTokens: totalSaved
     });
 
-    return {
-      ...response,
-      metrics
-    };
+    return { ...response, metrics };
+  }
+
+  /** Rough token estimate for a state object. */
+  private estimateSaved(state: unknown): number {
+    try { return Math.ceil(JSON.stringify(state).length / 4); } catch { return 0; }
   }
 
   // =========================================================================
@@ -86,7 +210,7 @@ export class BehaviorEngine {
       questions: {
         target: choice(options.candidates, 'Selected candidate route')
       }
-    });
+    }, 'route');
 
     const res = response.results['target'];
     if (!res) {
@@ -111,7 +235,7 @@ export class BehaviorEngine {
         matches: boolean(options.expected, 'Does actual output satisfy expected outcome?'),
         quality: score({ description: 'Quality and correctness score' })
       }
-    });
+    }, 'verify');
 
     const matches = response.results['matches'];
     const quality = response.results['quality'];
@@ -158,7 +282,7 @@ export class BehaviorEngine {
         shouldRetry: boolean('Is this error transient and safely retryable?'),
         strategy: choice(['backoff', 'immediate', 'fallback'], 'Optimal retry strategy')
       }
-    });
+    }, 'retry');
 
     const shouldRetryRes = response.results['shouldRetry'];
     const strategyRes = response.results['strategy'];
@@ -184,7 +308,7 @@ export class BehaviorEngine {
           'Current goal resolution status'
         )
       }
-    });
+    }, 'complete');
 
     const res = response.results['status'];
     if (!res) {
@@ -206,7 +330,7 @@ export class BehaviorEngine {
         confidenceScore: score({ description: 'Decision confidence score' }),
         needsHuman: boolean('Does this decision require human-in-the-loop review?')
       }
-    });
+    }, 'escalate');
 
     const scoreRes = response.results['confidenceScore'];
     const humanRes = response.results['needsHuman'];
