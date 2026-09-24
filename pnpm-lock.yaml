@@ -15,6 +15,27 @@ importers:
         specifier: ^5.0.0
         version: 5.9.3
 
+  examples/behavior-agent:
+    dependencies:
+      '@nexo-alpha/agent':
+        specifier: workspace:*
+        version: link:../../packages/agent
+      '@nexo-alpha/behavior':
+        specifier: workspace:*
+        version: link:../../packages/behavior
+      '@nexo-alpha/context':
+        specifier: workspace:*
+        version: link:../../packages/context
+      '@nexo-alpha/core':
+        specifier: workspace:*
+        version: link:../../packages/core
+      '@nexo-alpha/decision':
+        specifier: workspace:*
+        version: link:../../packages/decision
+      '@nexo-alpha/web':
+        specifier: workspace:*
+        version: link:../../packages/web
+
   examples/fullstack-react:
     dependencies:
       '@nexo-alpha/context':
@@ -44,6 +65,40 @@ importers:
       '@nexo-alpha/hapi':
         specifier: workspace:*
         version: link:../../packages/hapi
+
+  packages/agent:
+    dependencies:
+      '@nexo-alpha/behavior':
+        specifier: workspace:*
+        version: link:../behavior
+      '@nexo-alpha/context':
+        specifier: workspace:*
+        version: link:../context
+      '@nexo-alpha/core':
+        specifier: workspace:*
+        version: link:../core
+      '@nexo-alpha/decision':
+        specifier: workspace:*
+        version: link:../decision
+      '@nexo-alpha/web':
+        specifier: workspace:*
+        version: link:../web
+    devDependencies:
+      '@types/node':
+        specifier: ^20.0.0
+        version: 20.19.43
+      typescript:
+        specifier: ^5.0.0
+        version: 5.9.3
+
+  packages/behavior:
+    devDependencies:
+      '@types/node':
+        specifier: ^20.0.0
+        version: 20.19.43
+      typescript:
+        specifier: ^5.0.0
+        version: 5.9.3
 
   packages/cli:
     dependencies:
@@ -87,6 +142,22 @@ importers:
         version: 5.9.3
 
   packages/create-nexo-app:
+    devDependencies:
+      '@types/node':
+        specifier: ^20.0.0
+        version: 20.19.43
+      typescript:
+        specifier: ^5.0.0
+        version: 5.9.3
+
+  packages/decision:
+    dependencies:
+      '@nexo-alpha/context':
+        specifier: workspace:*
+        version: link:../context
+      '@nexo-alpha/core':
+        specifier: workspace:*
+        version: link:../core
     devDependencies:
       '@types/node':
         specifier: ^20.0.0
@@ -139,6 +210,25 @@ importers:
       '@types/node':
         specifier: ^20.0.0
         version: 20.19.43
+
+  packages/web:
+    dependencies:
+      '@nexo-alpha/behavior':
+        specifier: workspace:*
+        version: link:../behavior
+      '@nexo-alpha/context':
+        specifier: workspace:*
+        version: link:../context
+      '@nexo-alpha/core':
+        specifier: workspace:*
+        version: link:../core
+    devDependencies:
+      '@types/node':
+        specifier: ^20.0.0
+        version: 20.19.43
+      typescript:
+        specifier: ^5.0.0
+        version: 5.9.3
 
 packages:
 

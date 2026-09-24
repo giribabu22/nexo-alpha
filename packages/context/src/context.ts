@@ -10,7 +10,8 @@ import {
   type ApplicationKnowledge,
   type DevelopmentState,
   type NexoConstraint,
-  type NexoDecision
+  type NexoDecision,
+  type NexoIntent
 } from "./knowledge.js";
 
 export interface ModuleContext {
@@ -170,6 +171,14 @@ export interface ApplicationContext {
   readonly modules: readonly ModuleContext[];
   readonly decisions: readonly NexoDecision[];
   readonly constraints: readonly NexoConstraint[];
+  /**
+   * Per-entity "why does this exist" records (see {@link NexoIntent}) —
+   * modules, APIs, services, jobs, files, and entities with no structural
+   * counterpart in `@nexo-alpha/core` at all (`"component"`, `"function"`).
+   * Empty when no `knowledge` was supplied to {@link buildContext}, same as
+   * `decisions`/`constraints`.
+   */
+  readonly intents: readonly NexoIntent[];
   readonly developmentState: DevelopmentState;
   readonly structure: ApplicationStructure;
   /**
@@ -340,6 +349,7 @@ export function buildContext(
     modules,
     decisions: knowledge?.getDecisions() ?? [],
     constraints: knowledge?.getConstraints() ?? [],
+    intents: knowledge?.getIntents() ?? [],
     developmentState: knowledge?.getDevelopmentState() ?? EMPTY_DEVELOPMENT_STATE,
     structure,
     structureHash: hashStructure(structure),

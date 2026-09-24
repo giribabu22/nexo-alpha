@@ -115,7 +115,13 @@ test("knowledgeToJson and knowledgeFromJson round-trip cleanly", () => {
     .addDecision({ title: "Use Postgres", status: "accepted" })
     .addConstraint({ description: "No plain passwords" })
     .setDevelopmentState({ currentObjective: "Auth module", completed: ["Hash utility"] })
-    .addHistoryEntry({ operation: "create_module", target: "auth", result: "success" });
+    .addHistoryEntry({ operation: "create_module", target: "auth", result: "success" })
+    .addIntent({
+      entityKind: "component",
+      entityName: "LoginForm",
+      purpose: "Collects credentials and starts a session.",
+      evidence: { file: "src/frontend/LoginForm.tsx", line: 8 }
+    });
 
   const json = knowledgeToJson(original);
   const loaded = knowledgeFromJson(json);
@@ -125,6 +131,78 @@ test("knowledgeToJson and knowledgeFromJson round-trip cleanly", () => {
   assert.deepEqual(loaded.getDevelopmentState(), original.getDevelopmentState());
   assert.equal(loaded.getHistory().length, 1);
   assert.equal(loaded.getHistory()[0].operation, "create_module");
+  assert.deepEqual(loaded.getIntents(), original.getIntents());
+});
+
+test("knowledgeFromJson loads a version-1 snapshot with no intents field as an empty list", () => {
+  const legacySnapshot = JSON.stringify({
+    decisions: [{ title: "Use Postgres" }],
+    constraints: [],
+    developmentState: { completed: [], inProgress: [], blocked: [], knownIssues: [] },
+    history: [],
+    generatedAt: new Date().toISOString(),
+    schemaVersion: 1
+  });
+
+  const loaded = knowledgeFromJson(legacySnapshot);
+
+  assert.deepEqual(loaded.getIntents(), []);
+  assert.equal(loaded.getDecisions().length, 1);
+});
+
+test("addIntent and getIntents accumulate in order", () => {
+  const knowledge = createKnowledge();
+
+  knowledge.addIntent({
+    entityKind: "api",
+    entityName: "retry",
+    purpose: "Retry transient payment failures."
+  });
+  knowledge.addIntent({
+    entityKind: "component",
+    entityName: "CheckoutForm",
+    purpose: "Collects payment details and submits a checkout."
+  });
+
+  assert.deepEqual(
+    knowledge.getIntents().map((intent) => intent.entityName),
+    ["retry", "CheckoutForm"]
+  );
+});
+
+test("getIntent returns undefined when nothing was recorded for that entity", () => {
+  const knowledge = createKnowledge();
+  assert.equal(knowledge.getIntent("component", "Missing"), undefined);
+});
+
+test("getIntent returns the most recently recorded intent for an entity", () => {
+  const knowledge = createKnowledge();
+
+  knowledge.addIntent({ entityKind: "function", entityName: "processPayment", purpose: "First pass." });
+  knowledge.addIntent({ entityKind: "function", entityName: "processPayment", purpose: "Revised." });
+  // A same-named entity of a different kind must not be confused with it.
+  knowledge.addIntent({ entityKind: "component", entityName: "processPayment", purpose: "Unrelated component." });
+
+  const intent = knowledge.getIntent("function", "processPayment");
+  assert.equal(intent.purpose, "Revised.");
+});
+
+test("addIntent preserves businessReason, dependencies, and evidence", () => {
+  const knowledge = createKnowledge();
+
+  knowledge.addIntent({
+    entityKind: "component",
+    entityName: "CheckoutForm",
+    purpose: "Collects payment details and submits a checkout.",
+    businessReason: "Customers need a single-page checkout to reduce drop-off.",
+    dependencies: ["payments.retry"],
+    evidence: { file: "src/frontend/CheckoutForm.tsx", line: 12 }
+  });
+
+  const [intent] = knowledge.getIntents();
+  assert.equal(intent.businessReason, "Customers need a single-page checkout to reduce drop-off.");
+  assert.deepEqual(intent.dependencies, ["payments.retry"]);
+  assert.deepEqual(intent.evidence, { file: "src/frontend/CheckoutForm.tsx", line: 12 });
 });
 
 test("knowledgeToJson stamps a schema version and a generation timestamp", () => {

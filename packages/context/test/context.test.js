@@ -118,6 +118,24 @@ test("buildContext surfaces decisions, constraints, and development state", () =
   assert.deepEqual(context.developmentState.knownIssues, []);
 });
 
+test("buildContext surfaces intents, and defaults to empty when no knowledge is supplied", () => {
+  const { app, knowledge } = buildFixture();
+
+  knowledge.addIntent({
+    entityKind: "component",
+    entityName: "CheckoutForm",
+    purpose: "Collects payment details and submits a checkout.",
+    evidence: { file: "src/frontend/CheckoutForm.tsx", line: 12 }
+  });
+
+  const context = buildContext(app, knowledge);
+  assert.equal(context.intents.length, 1);
+  assert.equal(context.intents[0].entityName, "CheckoutForm");
+
+  const contextWithoutKnowledge = buildContext(app);
+  assert.deepEqual(contextWithoutKnowledge.intents, []);
+});
+
 test("buildContext includes a structure rollup derived from the app registry", () => {
   const { app, knowledge } = buildFixture();
   const context = buildContext(app, knowledge);

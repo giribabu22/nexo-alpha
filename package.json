@@ -1,7 +1,7 @@
 {
   "name": "nexo",
   "private": true,
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Application framework and environment for the AI era",
   "license": "MIT",
   "packageManager": "pnpm@10.0.0",

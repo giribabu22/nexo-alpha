@@ -1,0 +1,42 @@
+{
+  "name": "@nexo-alpha/behavior",
+  "version": "0.1.0",
+  "description": "Typed bounded behavior layer and decision primitives for the Nexo framework",
+  "keywords": [
+    "nexo",
+    "behavior",
+    "decision",
+    "choice",
+    "score",
+    "boolean",
+    "ai-native",
+    "typescript"
+  ],
+  "author": "prem1999",
+  "license": "MIT",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "node --test",
+    "clean": "rm -rf dist"
+  },
+  "devDependencies": {
+    "typescript": "^5.0.0",
+    "@types/node": "^20.0.0"
+  }
+}

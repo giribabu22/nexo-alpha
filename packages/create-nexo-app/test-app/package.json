@@ -1,0 +1,21 @@
+{
+  "name": "test-app",
+  "version": "0.1.0",
+  "private": true,
+  "workspaces": [
+    "backend",
+    "frontend"
+  ],
+  "scripts": {
+    "dev": "concurrently --kill-others \"npm run dev:backend\" \"npm run dev:frontend\"",
+    "dev:backend": "npm --workspace=backend run dev",
+    "dev:frontend": "npm --workspace=frontend run dev",
+    "build": "npm --workspace=backend run build && npm --workspace=frontend run build",
+    "start": "npm --workspace=backend start",
+    "inspect": "nexo inspect"
+  },
+  "devDependencies": {
+    "@nexo-alpha/cli": "^0.3.0",
+    "concurrently": "^9.1.0"
+  }
+}

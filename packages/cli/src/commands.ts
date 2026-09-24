@@ -20,7 +20,7 @@ import {
   type KnowledgeNodeSummarizer,
   type TraversalDirection
 } from "@nexo-alpha/tools";
-import { hashSourceTreeFiles } from "@nexo-alpha/context";
+import { hashSourceTreeFiles, type IntentEntityKind } from "@nexo-alpha/context";
 import {
   renderApplicationSummary,
   renderDevelopmentState,
@@ -117,6 +117,30 @@ export function knowledge(app: NexoApplication, appKnowledge: ApplicationKnowled
   const { structure, structureHash } = buildContext(app, appKnowledge);
 
   return JSON.stringify({ ...journal, structure, structureHash }, null, 2);
+}
+
+/**
+ * Renders recorded intents ("why does this entity exist" — see `NexoIntent`
+ * in `@nexo-alpha/context`) as JSON. With no `entityKind`/`entityName`
+ * given, renders every recorded intent, across every entity kind including
+ * `"component"`/`"function"`, which have no structural counterpart anywhere
+ * else in Nexo. With both given, looks up just that one entity's
+ * most-recently-recorded intent (`null` if none was recorded) — the same
+ * lookup `NexoReadInterface.getIntent()` performs.
+ */
+export function intents(
+  app: NexoApplication,
+  knowledge: ApplicationKnowledge | undefined,
+  entityKind?: IntentEntityKind,
+  entityName?: string
+): string {
+  const readInterface = createReadInterface(app, knowledge);
+
+  if (entityKind !== undefined && entityName !== undefined) {
+    return JSON.stringify(readInterface.getIntent(entityKind, entityName) ?? null, null, 2);
+  }
+
+  return JSON.stringify(readInterface.getIntents(), null, 2);
 }
 
 /**

@@ -230,6 +230,32 @@ test("recordConstraint requires modify-knowledge and persists to knowledge", () 
   assert.equal(knowledge.getConstraints()[0].type, "architectural");
 });
 
+test("recordIntent requires modify-knowledge and persists to knowledge", () => {
+  const { app, knowledge } = buildFixture();
+
+  const denied = createWriteInterface(app, knowledge, sourceGrant()).recordIntent({
+    entityKind: "component",
+    entityName: "CheckoutForm",
+    purpose: "Collects payment details and submits a checkout."
+  });
+  assert.equal(denied.success, false);
+  assert.match(denied.error, /Permission required/);
+  assert.equal(knowledge.getHistory().at(-1).operation, "record_intent");
+  assert.equal(knowledge.getHistory().at(-1).target, "component:CheckoutForm");
+
+  const writes = createWriteInterface(app, knowledge, knowledgeGrant());
+  const result = writes.recordIntent({
+    entityKind: "component",
+    entityName: "CheckoutForm",
+    purpose: "Collects payment details and submits a checkout."
+  });
+
+  assert.equal(result.success, true);
+  assert.equal(knowledge.getIntents().length, 1);
+  assert.equal(knowledge.getIntent("component", "CheckoutForm").purpose, "Collects payment details and submits a checkout.");
+  assert.equal(knowledge.getHistory().at(-1).result, "success");
+});
+
 test("updateDevelopmentState requires modify-knowledge and persists to knowledge", () => {
   const { app, knowledge } = buildFixture();
 

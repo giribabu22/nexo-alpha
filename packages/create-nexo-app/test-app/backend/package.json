@@ -1,0 +1,29 @@
+{
+  "name": "test-app-backend",
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "typecheck": "tsc --noEmit",
+    "graph": "nexo graph --source-root src --out .nexo/knowledge-graph.json"
+  },
+  "dependencies": {
+    "@nexo-alpha/core": "workspace:*",
+    "@nexo-alpha/context": "workspace:*",
+    "@nexo-alpha/decision": "workspace:*",
+    "@nexo-alpha/behavior": "workspace:*",
+    "@nexo-alpha/agent": "workspace:*",
+    "@nexo-alpha/web": "workspace:*",
+    "@nexo-alpha/hapi": "workspace:*",
+    "@nexo-alpha/scheduler": "workspace:*",
+    "@nexo-alpha/tools": "workspace:*",
+    "@nexo-alpha/cli": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.4.0"
+  }
+}

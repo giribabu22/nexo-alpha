@@ -1,0 +1,19 @@
+{
+  "name": "@nexo/example-behavior-agent",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "start": "node dist/index.js",
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@nexo-alpha/core": "workspace:*",
+    "@nexo-alpha/context": "workspace:*",
+    "@nexo-alpha/decision": "workspace:*",
+    "@nexo-alpha/behavior": "workspace:*",
+    "@nexo-alpha/agent": "workspace:*",
+    "@nexo-alpha/web": "workspace:*"
+  }
+}

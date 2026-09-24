@@ -4,6 +4,7 @@ import { loadApplication } from "./load-application.js";
 import { loadSummarizer } from "./load-summarizer.js";
 import { resolveConfiguredAppPath } from "./config.js";
 import type { KnowledgeEdgeKind, TraversalDirection } from "@nexo-alpha/tools";
+import type { IntentEntityKind } from "@nexo-alpha/context";
 import {
   context,
   freshness,
@@ -11,6 +12,7 @@ import {
   health,
   impact,
   inspect,
+  intents,
   knowledge as renderKnowledge,
   search,
   sourceTree,
@@ -26,6 +28,7 @@ const USAGE = `Usage:
   nexo status [app-module-path]
   nexo context [app-module-path] [--source-root <path>]
   nexo knowledge [app-module-path]
+  nexo intents [app-module-path] [--entity-kind <kind> --entity-name <name>]
   nexo source [project-root]
   nexo graph [app-module-path] [--source-root <path>] [--out <path>] [--force] [--summarize <path>]
   nexo freshness --source-root <path> [--out <path>]
@@ -69,6 +72,15 @@ every other command, it doesn't load an application at all, so there's no
 app-module-path argument; --source-root is required (there's nothing to
 diff against without it), and it errors if no graph has been saved at
 --out yet.
+
+"nexo intents" renders recorded intents ("why does this entity exist" —
+NexoIntent in @nexo-alpha/context) as JSON: every recorded intent by
+default, or with both --entity-kind and --entity-name given, just that
+one entity's most-recently-recorded intent ("null" if none was recorded).
+Entity kinds include "component" and "function", which have no
+structural counterpart anywhere else in Nexo. Recording an intent is a
+library operation (NexoWriteInterface.recordIntent() in @nexo-alpha/tools),
+same as every other write op — there is no "nexo record-intent" command.
 
 "nexo search"/"nexo trace"/"nexo impact" query that same graph live (built
 fresh each call, not read from a saved --out file) — case-insensitive
@@ -190,6 +202,8 @@ async function main(): Promise<void> {
   const outPath = resolve(process.cwd(), outFlag ?? ".nexo/knowledge-graph.json");
   const force = rest.includes("--force");
   const summarizeFlag = extractFlagValue(rest, "--summarize");
+  const entityKindFlag = extractFlagValue(rest, "--entity-kind") as IntentEntityKind | undefined;
+  const entityNameFlag = extractFlagValue(rest, "--entity-name");
 
   if (appPath === undefined) {
     console.error(
@@ -213,6 +227,9 @@ async function main(): Promise<void> {
       return;
     case "knowledge":
       console.log(renderKnowledge(app, knowledge));
+      return;
+    case "intents":
+      console.log(intents(app, knowledge, entityKindFlag, entityNameFlag));
       return;
     case "graph": {
       const summarize = summarizeFlag !== undefined ? await loadSummarizer(summarizeFlag) : undefined;

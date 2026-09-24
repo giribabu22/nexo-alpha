@@ -18,6 +18,8 @@ export type {
 
 export type {
   NexoApi,
+  NexoApiSchema,
+  NexoFieldSchema,
   HttpMethod,
   NexoRequestContext,
   NexoApiHandler,

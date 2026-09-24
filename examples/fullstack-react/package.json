@@ -1,7 +1,7 @@
 {
   "name": "@nexo/example-fullstack-react",
   "private": true,
-  "version": "0.1.0",
+  "version": "0.1.1",
   "type": "module",
   "scripts": {
     "dev:backend": "node dist/index.js",

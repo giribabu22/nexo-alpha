@@ -10,10 +10,12 @@ import {
   type ApplicationKnowledge,
   type ApplicationStructure,
   type DevelopmentState,
+  type IntentEntityKind,
   type ModuleContext,
   type NexoConstraint,
   type NexoDecision,
   type NexoHistoryEntry,
+  type NexoIntent,
   type SourceTree
 } from "@nexo-alpha/context";
 import {
@@ -67,6 +69,10 @@ export interface NexoReadInterface {
   getStructure(): { readonly structure: ApplicationStructure; readonly structureHash: string };
   getDecisions(): readonly NexoDecision[];
   getConstraints(): readonly NexoConstraint[];
+  /** Every recorded "why does this exist" record. See `NexoIntent` in `@nexo-alpha/context`. */
+  getIntents(): readonly NexoIntent[];
+  /** The most recently recorded intent for one entity, or `undefined` if none was recorded. */
+  getIntent(entityKind: IntentEntityKind, entityName: string): NexoIntent | undefined;
   getCurrentWork(): DevelopmentState;
   getStatus(): ApplicationStatus;
   getHistory(): readonly NexoHistoryEntry[];
@@ -156,6 +162,14 @@ export function createReadInterface(
 
     getConstraints() {
       return knowledge?.getConstraints() ?? [];
+    },
+
+    getIntents() {
+      return knowledge?.getIntents() ?? [];
+    },
+
+    getIntent(entityKind, entityName) {
+      return knowledge?.getIntent(entityKind, entityName);
     },
 
     getCurrentWork() {

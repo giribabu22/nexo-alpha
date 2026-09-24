@@ -10,7 +10,8 @@ import {
   type ApplicationKnowledge,
   type DevelopmentState,
   type NexoConstraint,
-  type NexoDecision
+  type NexoDecision,
+  type NexoIntent
 } from "@nexo-alpha/context";
 
 export type PermissionScope =
@@ -72,6 +73,11 @@ export interface NexoWriteInterface {
     constraint: NexoConstraint,
     actor?: string
   ): WriteOperationResult<NexoConstraint>;
+  /** Records why one named entity (module, API, service, job, file, component, or function) exists. See `NexoIntent` in `@nexo-alpha/context`. */
+  recordIntent(
+    intent: NexoIntent,
+    actor?: string
+  ): WriteOperationResult<NexoIntent>;
   updateDevelopmentState(
     patch: Partial<DevelopmentState>,
     actor?: string
@@ -356,6 +362,18 @@ export function createWriteInterface(
 
       knowledge.addConstraint(constraint);
       return succeeded(operation, target, actor, constraint);
+    },
+
+    recordIntent(intent, actor) {
+      const operation = "record_intent";
+      const target = `${intent.entityKind}:${intent.entityName}`;
+
+      if (!hasPermission(grants, "modify-knowledge")) {
+        return denied(operation, target, "modify-knowledge", actor);
+      }
+
+      knowledge.addIntent(intent);
+      return succeeded(operation, target, actor, intent);
     },
 
     updateDevelopmentState(patch, actor) {

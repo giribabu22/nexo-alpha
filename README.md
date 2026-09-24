@@ -47,20 +47,20 @@ Each command runs across every workspace package (`pnpm -r`).
 - `packages/context` — `@nexo-alpha/context`, builds a plain,
   JSON-serializable `ApplicationContext` manifest from a `NexoApplication`,
   and defines `createKnowledge()` — the human-authored decisions,
-  constraints, development state, and history journal, kept separate from
-  the structural model in `packages/core`.
-- `packages/tools` — `@nexo-alpha/tools`, the AI/tooling interface: a
-  read-only query interface, a permission-gated write interface for
-  structural mutations, a verification interface (config/architecture
-  validation, dependency graph, health), and a metrics collector.
+  constraints, development state, and history journal.
+- `packages/decision` — `@nexo-alpha/decision`, the deterministic Decision Engine:
+  rule evaluation chain (`permission`, `state`, `constraint`, `confirmation`, `escalation`, `rateLimit`)
+  producing structured outcomes (`APPROVE`, `REJECT`, `ASK_USER`, `ESCALATE`, `DEFER`) and audit logs.
+- `packages/agent` — `@nexo-alpha/agent`, the AI-native application orchestration layer:
+  wires the intelligence stack (`UNDERSTAND → KNOW → DECIDE → ACT → VERIFY`), `ToolRegistry`,
+  `VerifierRegistry`, `ExecutionAuditLog`, `NexoAgent` (`execute()` & `run()`), and `NexoWorkflow`
+  (Phase 6 multi-step autonomous workflow engine with safety boundaries and human resumption).
+- `packages/tools` — `@nexo-alpha/tools`, the AI/tooling interface: source-interface code scanning,
+  read-only query interface, permission-gated write interface, verification interface, and metrics collector.
 - `packages/hapi` — `@nexo-alpha/hapi`, an HTTP adapter that turns
-  handler-backed `NexoApi` declarations into a running `@hapi/hapi` server,
-  with request auth and validation hooks.
-- `packages/scheduler` — `@nexo-alpha/scheduler`, a cron-based executor for
-  `NexoJob`s declared on modules.
-- `packages/cli` — `@nexo-alpha/cli` (`nexo` binary), a human-facing
-  counterpart to `@nexo-alpha/tools`: `nexo inspect`, `nexo status`,
-  `nexo context`.
+  handler-backed `NexoApi` declarations into a running `@hapi/hapi` server.
+- `packages/scheduler` — `@nexo-alpha/scheduler`, a cron-based executor for `NexoJob`s.
+- `packages/cli` — `@nexo-alpha/cli` (`nexo` binary), developer CLI for inspecting applications.
 
 ## Examples
 

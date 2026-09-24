@@ -141,6 +141,24 @@ test("getDecisions, getConstraints, getCurrentWork, and getStatus expose knowled
   assert.equal(status.developmentState.currentObjective, "Implement payment recovery");
 });
 
+test("getIntents and getIntent expose recorded intents, with no knowledge supplied defaulting to empty/undefined", () => {
+  const { app, knowledge } = buildFixture();
+  knowledge.addIntent({
+    entityKind: "component",
+    entityName: "CheckoutForm",
+    purpose: "Collects payment details and submits a checkout."
+  });
+
+  const tools = createReadInterface(app, knowledge);
+  assert.equal(tools.getIntents().length, 1);
+  assert.equal(tools.getIntent("component", "CheckoutForm").purpose, "Collects payment details and submits a checkout.");
+  assert.equal(tools.getIntent("component", "missing"), undefined);
+
+  const toolsWithoutKnowledge = createReadInterface(app);
+  assert.deepEqual(toolsWithoutKnowledge.getIntents(), []);
+  assert.equal(toolsWithoutKnowledge.getIntent("component", "CheckoutForm"), undefined);
+});
+
 test("getHistory returns audit entries recorded on knowledge", () => {
   const { app, knowledge } = buildFixture();
   knowledge.addHistoryEntry({ operation: "create_module", target: "shipping", result: "success" });

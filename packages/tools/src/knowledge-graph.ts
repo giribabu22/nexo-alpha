@@ -1,7 +1,16 @@
 import { createHash } from "node:crypto";
 import type { ApplicationContext } from "@nexo-alpha/context";
 
-export type KnowledgeNodeKind = "module" | "api" | "service" | "job" | "file" | "symbol" | "external";
+export type KnowledgeNodeKind =
+  | "module"
+  | "api"
+  | "service"
+  | "job"
+  | "file"
+  | "symbol"
+  | "external"
+  | "component"
+  | "function";
 export type KnowledgeEdgeKind = "contains" | "exposes" | "depends_on" | "imports" | "calls" | "implements";
 
 /** Where a node's information came from — every node in the graph carries one. */
@@ -243,6 +252,40 @@ export async function buildKnowledgeGraph(
         addNode({ id: to, kind: "external", name: edge.toExternal });
         edges.push({ from, to, kind: "calls", ...confidence });
       }
+    }
+  }
+
+  // Intent enrichment — runs last, after every structural/source node exists,
+  // so a "module"/"api"/"service"/"job"/"file" intent can attach to its
+  // matching node by name (a best-effort match, same heuristic stance as the
+  // `obj.method()` call edges above — api/service/job names aren't globally
+  // unique, so this attaches to the first node of that kind/name found).
+  // `"component"`/`"function"` intents have no structural node to attach to
+  // at all (Nexo's core application model has no frontend/component
+  // concept), so they get a first-class node of their own instead.
+  for (const intent of context.intents) {
+    const evidenceField = intent.evidence !== undefined ? { evidence: intent.evidence } : {};
+
+    if (intent.entityKind === "component" || intent.entityKind === "function") {
+      addNode({
+        id: `${intent.entityKind}:${intent.entityName}`,
+        kind: intent.entityKind,
+        name: intent.entityName,
+        description: intent.purpose,
+        ...evidenceField
+      });
+      continue;
+    }
+
+    const match = [...nodes.values()].find(
+      (node) => node.kind === intent.entityKind && node.name === intent.entityName
+    );
+    if (match !== undefined) {
+      nodes.set(match.id, {
+        ...match,
+        ...(match.description === undefined ? { description: intent.purpose } : {}),
+        ...(match.evidence === undefined ? evidenceField : {})
+      });
     }
   }
 

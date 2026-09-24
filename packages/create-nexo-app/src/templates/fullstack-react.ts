@@ -132,7 +132,7 @@ npx nexo freshness --source-root src
               inspect: "nexo inspect"
             },
             devDependencies: {
-              "@nexo-alpha/cli": "^0.3.0",
+              "@nexo-alpha/cli": "^0.3.1",
               concurrently: "^9.1.0"
             }
           },
@@ -166,12 +166,16 @@ npx nexo freshness --source-root src
               graph: "nexo graph --source-root src --out .nexo/knowledge-graph.json"
             },
             dependencies: {
-              "@nexo-alpha/core": "^0.2.0",
-              "@nexo-alpha/context": "^0.3.0",
-              "@nexo-alpha/hapi": "^0.2.0",
-              "@nexo-alpha/scheduler": "^0.2.0",
-              "@nexo-alpha/tools": "^0.3.0",
-              "@nexo-alpha/cli": "^0.3.0"
+              "@nexo-alpha/core": "^0.3.1",
+              "@nexo-alpha/context": "^0.3.2",
+              "@nexo-alpha/decision": "^0.1.0",
+              "@nexo-alpha/behavior": "^0.1.0",
+              "@nexo-alpha/agent": "^0.1.0",
+              "@nexo-alpha/web": "^0.1.0",
+              "@nexo-alpha/hapi": "^0.3.1",
+              "@nexo-alpha/scheduler": "^0.3.1",
+              "@nexo-alpha/tools": "^0.3.2",
+              "@nexo-alpha/cli": "^0.3.2"
             },
             devDependencies: {
               "@types/node": "^20.11.0",
@@ -376,7 +380,8 @@ async function main() {
 
   const PORT = Number(process.env.PORT) || 4000;
   const server = await startHapiServer(app, {
-    port: PORT
+    port: PORT,
+    cors: true
   });
 
   console.log(\`✨ Nexo Backend ready at \${server.info.uri}\`);
@@ -513,60 +518,238 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
       },
       {
         path: "frontend/src/index.css",
-        content: `* {
+        content: `@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
+
+:root {
+  --bg-color: #0f172a;
+  --surface-color: rgba(30, 41, 59, 0.7);
+  --border-color: rgba(255, 255, 255, 0.1);
+  --text-primary: #f8fafc;
+  --text-secondary: #94a3b8;
+  --accent-primary: #38bdf8;
+  --accent-secondary: #818cf8;
+  --success: #22c55e;
+  --danger: #ef4444;
+}
+
+* {
   box-sizing: border-box;
   margin: 0;
   padding: 0;
 }
 
 body {
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-  background-color: #0f172a;
-  color: #f8fafc;
+  font-family: 'Inter', -apple-system, sans-serif;
+  background-color: var(--bg-color);
+  background-image: 
+    radial-gradient(at 0% 0%, rgba(56, 189, 248, 0.15) 0px, transparent 50%),
+    radial-gradient(at 100% 100%, rgba(129, 140, 248, 0.15) 0px, transparent 50%);
+  color: var(--text-primary);
   min-height: 100vh;
+  display: flex;
+  justify-content: center;
+  padding: 40px 20px;
+}
+
+#root {
+  width: 100%;
+  max-width: 800px;
+}
+
+/* Glassmorphism panel */
+.glass-panel {
+  background: var(--surface-color);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid var(--border-color);
+  border-radius: 24px;
+  padding: 32px;
+  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+  margin-bottom: 24px;
+  animation: slideUp 0.6s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.glass-panel:nth-child(2) { animation-delay: 0.1s; }
+.glass-panel:nth-child(3) { animation-delay: 0.2s; }
+
+@keyframes slideUp {
+  from { opacity: 0; transform: translateY(20px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.gradient-text {
+  background: linear-gradient(135deg, var(--accent-primary), var(--accent-secondary));
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+`
+      },
+      {
+        path: "frontend/src/components/Header.tsx",
+        content: `import React from 'react';
+
+export function Header({ projectName }: { projectName: string }) {
+  return (
+    <header style={{ textAlign: "center", marginBottom: "40px", animation: "slideUp 0.6s both" }}>
+      <h1 className="gradient-text" style={{ fontSize: "3rem", fontWeight: 800, marginBottom: "8px", letterSpacing: "-0.02em" }}>
+        {projectName}
+      </h1>
+      <p style={{ color: "var(--text-secondary)", fontSize: "1.1rem" }}>
+        Premium Fullstack Architecture powered by Nexo
+      </p>
+    </header>
+  );
+}
+`
+      },
+      {
+        path: "frontend/src/components/ServerStatus.tsx",
+        content: `import React from 'react';
+
+export function ServerStatus({ health }: { health: any }) {
+  const isOk = health?.status === "ok";
+  
+  return (
+    <div className="glass-panel" style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+      <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+        <div style={{ 
+          width: "12px", height: "12px", borderRadius: "50%", 
+          background: isOk ? "var(--success)" : "var(--danger)",
+          boxShadow: \`0 0 10px \${isOk ? "var(--success)" : "var(--danger)"}\`
+        }} />
+        <strong style={{ fontSize: "1.1rem" }}>Backend Status:</strong> 
+        <span style={{ color: "var(--text-secondary)" }}>{health ? "Connected & Online" : "Connecting..."}</span>
+      </div>
+      {health && (
+        <div style={{ display: "flex", gap: "16px", fontSize: "0.9rem", color: "var(--text-secondary)" }}>
+          <span>Modules: <strong style={{ color: "var(--text-primary)" }}>{health.modules.join(", ")}</strong></span>
+          <span>Uptime: <strong style={{ color: "var(--text-primary)" }}>{health.uptimeSeconds}s</strong></span>
+        </div>
+      )}
+    </div>
+  );
+}
+`
+      },
+      {
+        path: "frontend/src/components/TodoApp.tsx",
+        content: `import React, { useState } from 'react';
+
+export function TodoApp({ todos, onAdd, onToggle, loading }: any) {
+  const [text, setText] = useState("");
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (text.trim()) {
+      onAdd(text);
+      setText("");
+    }
+  };
+
+  return (
+    <div className="glass-panel">
+      <h2 style={{ fontSize: "1.5rem", marginBottom: "24px", fontWeight: 700 }}>Interactive Demo</h2>
+      
+      <form onSubmit={handleSubmit} style={{ display: "flex", gap: "12px", marginBottom: "32px" }}>
+        <input
+          type="text"
+          value={text}
+          onChange={(e) => setText(e.target.value)}
+          placeholder="What's your next task?"
+          style={{ 
+            flex: 1, padding: "14px 20px", borderRadius: "12px", 
+            border: "1px solid var(--border-color)", background: "rgba(0,0,0,0.2)", 
+            color: "var(--text-primary)", fontSize: "1rem", outline: "none",
+            transition: "all 0.2s ease"
+          }}
+          onFocus={(e) => e.target.style.borderColor = "var(--accent-primary)"}
+          onBlur={(e) => e.target.style.borderColor = "var(--border-color)"}
+        />
+        <button
+          type="submit"
+          style={{ 
+            padding: "14px 28px", borderRadius: "12px", 
+            background: "linear-gradient(135deg, var(--accent-primary), var(--accent-secondary))", 
+            color: "#fff", border: "none", fontWeight: 600, fontSize: "1rem", cursor: "pointer",
+            transition: "transform 0.2s ease",
+            boxShadow: "0 4px 14px rgba(56, 189, 248, 0.4)"
+          }}
+          onMouseOver={(e) => e.currentTarget.style.transform = "translateY(-2px)"}
+          onMouseOut={(e) => e.currentTarget.style.transform = "translateY(0)"}
+        >
+          Add
+        </button>
+      </form>
+
+      {loading ? (
+        <div style={{ textAlign: "center", color: "var(--text-secondary)", padding: "20px" }}>Loading tasks...</div>
+      ) : (
+        <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
+          {todos.map((todo: any) => (
+            <div
+              key={todo.id}
+              onClick={() => onToggle(todo.id)}
+              style={{
+                display: "flex", alignItems: "center", padding: "16px 20px",
+                borderRadius: "12px", background: "rgba(255,255,255,0.03)",
+                border: "1px solid var(--border-color)", cursor: "pointer",
+                transition: "all 0.2s ease",
+                transform: "translateY(0)"
+              }}
+              onMouseOver={(e) => { e.currentTarget.style.background = "rgba(255,255,255,0.06)"; e.currentTarget.style.transform = "translateX(4px)"; }}
+              onMouseOut={(e) => { e.currentTarget.style.background = "rgba(255,255,255,0.03)"; e.currentTarget.style.transform = "translateX(0)"; }}
+            >
+              <div style={{ 
+                width: "24px", height: "24px", borderRadius: "50%", 
+                border: \`2px solid \${todo.completed ? "var(--success)" : "var(--border-color)"}\`,
+                background: todo.completed ? "var(--success)" : "transparent",
+                marginRight: "16px", display: "flex", alignItems: "center", justifyContent: "center",
+                transition: "all 0.2s ease"
+              }}>
+                {todo.completed && <span style={{ color: "#fff", fontSize: "14px" }}>✓</span>}
+              </div>
+              <span style={{ 
+                fontSize: "1.1rem", 
+                color: todo.completed ? "var(--text-secondary)" : "var(--text-primary)",
+                textDecoration: todo.completed ? "line-through" : "none",
+                transition: "all 0.2s ease"
+              }}>
+                {todo.text}
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
 }
 `
       },
       {
         path: "frontend/src/App.tsx",
         content: `import React, { useEffect, useState } from "react";
-
-interface Todo {
-  id: number;
-  text: string;
-  completed: boolean;
-}
-
-interface HealthData {
-  status: string;
-  framework: string;
-  uptimeSeconds: number;
-  modules: string[];
-}
+import { Header } from "./components/Header";
+import { ServerStatus } from "./components/ServerStatus";
+import { TodoApp } from "./components/TodoApp";
 
 export function App() {
-  const [todos, setTodos] = useState<Todo[]>([]);
-  const [health, setHealth] = useState<HealthData | null>(null);
-  const [newText, setNewText] = useState("");
+  const [todos, setTodos] = useState([]);
+  const [health, setHealth] = useState(null);
   const [loading, setLoading] = useState(true);
 
   const fetchHealth = async () => {
     try {
       const res = await fetch("/api/health");
-      if (res.ok) {
-        setHealth(await res.json());
-      }
+      if (res.ok) setHealth(await res.json());
     } catch (e) {
-      console.error("Backend health check failed", e);
+      console.error("Health check failed", e);
     }
   };
 
   const fetchTodos = async () => {
     try {
       const res = await fetch("/api/todos");
-      if (res.ok) {
-        setTodos(await res.json());
-      }
+      if (res.ok) setTodos(await res.json());
     } catch (e) {
       console.error("Failed to load todos", e);
     } finally {
@@ -581,116 +764,29 @@ export function App() {
     return () => clearInterval(interval);
   }, []);
 
-  const handleAddTodo = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!newText.trim()) return;
-
-    try {
-      const res = await fetch("/api/todos", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ text: newText })
-      });
-      if (res.ok) {
-        const created = await res.json();
-        setTodos((prev) => [...prev, created]);
-        setNewText("");
-      }
-    } catch (e) {
-      console.error("Error adding todo", e);
-    }
+  const handleAdd = async (text: string) => {
+    const res = await fetch("/api/todos", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ text })
+    });
+    if (res.ok) setTodos((prev) => [...prev, await res.json()] as any);
   };
 
   const handleToggle = async (id: number) => {
-    try {
-      const res = await fetch(\`/api/todos/\${id}/toggle\`, { method: "POST" });
-      if (res.ok) {
-        const updated = await res.json();
-        setTodos((prev) => prev.map((t) => (t.id === id ? updated : t)));
-      }
-    } catch (e) {
-      console.error("Error toggling todo", e);
+    const res = await fetch(\`/api/todos/\${id}/toggle\`, { method: "POST" });
+    if (res.ok) {
+      const updated = await res.json();
+      setTodos((prev) => prev.map((t: any) => (t.id === id ? updated : t)) as any);
     }
   };
 
   return (
-    <div style={{ maxWidth: "720px", margin: "40px auto", padding: "0 20px" }}>
-      <header style={{ marginBottom: "32px", textAlign: "center" }}>
-        <h1 style={{ fontSize: "2.4rem", fontWeight: "800", background: "linear-gradient(135deg, #38bdf8, #818cf8)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent" }}>
-          ${projectName}
-        </h1>
-        <p style={{ color: "#94a3b8", marginTop: "8px" }}>
-          Nexo Backend + React Frontend Full-stack Application
-        </p>
-      </header>
-
-      {/* Backend Status Card */}
-      <div style={{ background: "#1e293b", border: "1px solid #334155", borderRadius: "12px", padding: "16px 20px", marginBottom: "24px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-        <div>
-          <span style={{ display: "inline-block", width: "10px", height: "10px", borderRadius: "50%", background: health?.status === "ok" ? "#22c55e" : "#ef4444", marginRight: "8px" }} />
-          <strong style={{ color: "#e2e8f0" }}>Backend Status:</strong> {health ? "Connected & Online" : "Connecting..."}
-        </div>
-        {health && (
-          <div style={{ fontSize: "0.85rem", color: "#94a3b8" }}>
-            Modules: <strong>{health.modules.join(", ")}</strong> | Uptime: <strong>{health.uptimeSeconds}s</strong>
-          </div>
-        )}
-      </div>
-
-      {/* Todo Section */}
-      <div style={{ background: "#1e293b", border: "1px solid #334155", borderRadius: "12px", padding: "24px" }}>
-        <h2 style={{ fontSize: "1.25rem", marginBottom: "16px", color: "#f1f5f9" }}>Tasks & API Demo</h2>
-
-        <form onSubmit={handleAddTodo} style={{ display: "flex", gap: "8px", marginBottom: "20px" }}>
-          <input
-            type="text"
-            value={newText}
-            onChange={(e) => setNewText(e.target.value)}
-            placeholder="Add a new task..."
-            style={{ flex: 1, padding: "10px 14px", borderRadius: "8px", border: "1px solid #475569", background: "#0f172a", color: "#fff", outline: "none" }}
-          />
-          <button
-            type="submit"
-            style={{ padding: "10px 20px", borderRadius: "8px", background: "#3b82f6", color: "#fff", border: "none", fontWeight: 600, cursor: "pointer" }}
-          >
-            Add Task
-          </button>
-        </form>
-
-        {loading ? (
-          <p style={{ color: "#94a3b8" }}>Loading tasks from Nexo API...</p>
-        ) : (
-          <ul style={{ listStyle: "none", padding: 0 }}>
-            {todos.map((todo) => (
-              <li
-                key={todo.id}
-                onClick={() => handleToggle(todo.id)}
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  padding: "12px 14px",
-                  borderRadius: "8px",
-                  marginBottom: "8px",
-                  background: "#0f172a",
-                  cursor: "pointer",
-                  border: "1px solid #334155"
-                }}
-              >
-                <input
-                  type="checkbox"
-                  checked={todo.completed}
-                  onChange={() => {}}
-                  style={{ marginRight: "12px", cursor: "pointer" }}
-                />
-                <span style={{ textDecoration: todo.completed ? "line-through" : "none", color: todo.completed ? "#64748b" : "#f8fafc" }}>
-                  {todo.text}
-                </span>
-              </li>
-            ))}
-          </ul>
-        )}
-      </div>
-    </div>
+    <>
+      <Header projectName="${projectName}" />
+      <ServerStatus health={health} />
+      <TodoApp todos={todos} onAdd={handleAdd} onToggle={handleToggle} loading={loading} />
+    </>
   );
 }
 `

@@ -20,6 +20,10 @@ npx create-nexo-app quick-start --template minimal
 - `-t, --template <name>`: Template choice (`fullstack-react`, `backend-api`, `minimal`). Default is `fullstack-react`.
 - `-h, --help`: Display help and available options.
 
+## Documentation
+
+For a comprehensive guide on architecture, project structure, and usage, please see the [User Guide](./USER_GUIDE.md).
+
 ## License
 
 MIT

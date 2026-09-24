@@ -14,6 +14,7 @@ import {
   health,
   impact,
   inspect,
+  intents,
   knowledge,
   search,
   status,
@@ -115,6 +116,47 @@ test("knowledge throws a clear error when the app exports no knowledge journal",
     () => knowledge(app, undefined),
     /does not export a knowledge journal/
   );
+});
+
+test("intents with no filter lists every recorded intent", () => {
+  const { app, knowledge: journal } = buildFixture();
+  journal.addIntent({
+    entityKind: "component",
+    entityName: "CheckoutForm",
+    purpose: "Collects payment details and submits a checkout."
+  });
+  journal.addIntent({
+    entityKind: "module",
+    entityName: "payments",
+    purpose: "Handle customer payments end to end."
+  });
+
+  const parsed = JSON.parse(intents(app, journal));
+
+  assert.equal(parsed.length, 2);
+  assert.deepEqual(
+    parsed.map((intent) => intent.entityName),
+    ["CheckoutForm", "payments"]
+  );
+});
+
+test("intents with entityKind/entityName filters to that one entity's most recent intent", () => {
+  const { app, knowledge: journal } = buildFixture();
+  journal.addIntent({ entityKind: "function", entityName: "processPayment", purpose: "First pass." });
+  journal.addIntent({ entityKind: "function", entityName: "processPayment", purpose: "Revised." });
+
+  const output = intents(app, journal, "function", "processPayment");
+  assert.equal(JSON.parse(output).purpose, "Revised.");
+});
+
+test("intents returns null for an entity with no recorded intent", () => {
+  const { app, knowledge: journal } = buildFixture();
+  assert.equal(intents(app, journal, "component", "Missing"), "null");
+});
+
+test("intents returns an empty list when the app exports no knowledge journal", () => {
+  const { app } = buildFixture();
+  assert.deepEqual(JSON.parse(intents(app, undefined)), []);
 });
 
 test("validate renders validation results", () => {

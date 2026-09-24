@@ -12,6 +12,7 @@ export interface CreateHapiServerOptions {
   readonly host?: string;
   readonly authenticate?: NexoAuthenticator;
   readonly bindLifecycle?: boolean;
+  readonly cors?: boolean;
 }
 
 export function toHapiPath(path: string): string {
@@ -30,7 +31,8 @@ export async function createHapiServer(
 ): Promise<Hapi.Server> {
   const server = Hapi.server({
     port: options.port ?? 3000,
-    host: options.host ?? "localhost"
+    host: options.host ?? "localhost",
+    ...(options.cors ? { routes: { cors: true } } : {})
   });
 
   const apis = app.getApis();

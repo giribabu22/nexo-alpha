@@ -1,0 +1,47 @@
+{
+  "name": "@nexo-alpha/agent",
+  "version": "0.1.0",
+  "description": "AI agent orchestration layer for the Nexo Alpha framework — wires UNDERSTAND → KNOW → DECIDE → ACT → VERIFY into a single runtime",
+  "keywords": [
+    "nexo",
+    "agent",
+    "ai-native",
+    "orchestration",
+    "ai-development",
+    "typescript"
+  ],
+  "author": "prem1999",
+  "license": "MIT",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "node --test",
+    "clean": "rm -rf dist"
+  },
+  "dependencies": {
+    "@nexo-alpha/core": "workspace:*",
+    "@nexo-alpha/context": "workspace:*",
+    "@nexo-alpha/decision": "workspace:*",
+    "@nexo-alpha/behavior": "workspace:*",
+    "@nexo-alpha/web": "workspace:*"
+  },
+  "devDependencies": {
+    "typescript": "^5.0.0",
+    "@types/node": "^20.0.0"
+  }
+}

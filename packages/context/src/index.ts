@@ -32,7 +32,10 @@ export type {
   ApplicationKnowledge,
   SerializedKnowledge,
   DevelopmentState,
+  IntentEntityKind,
   NexoConstraint,
   NexoDecision,
-  NexoHistoryEntry
+  NexoHistoryEntry,
+  NexoIntent,
+  NexoIntentEvidence
 } from "./knowledge.js";

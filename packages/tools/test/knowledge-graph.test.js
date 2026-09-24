@@ -4,7 +4,7 @@ import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 
 import { createApplication } from "@nexo-alpha/core";
-import { buildContext } from "@nexo-alpha/context";
+import { buildContext, createKnowledge } from "@nexo-alpha/context";
 import {
   buildKnowledgeGraph,
   createSourceInterface,
@@ -258,6 +258,68 @@ test("buildKnowledgeGraph stamps summaryHash alongside summary, and omits it whe
 
   const api = graph.nodes.find((n) => n.id === "api:billing.createInvoice");
   assert.ok(!("summaryHash" in api), "unsummarized node should omit summaryHash entirely");
+});
+
+function buildIntentFixtureContext() {
+  const app = createApplication({ name: "shop", version: "0.1.0" });
+
+  app.module({
+    name: "billing",
+    description: "Handle invoicing",
+    apis: [{ name: "createInvoice", method: "POST", path: "/invoices" }]
+  });
+
+  const knowledge = createKnowledge();
+  knowledge.addIntent({
+    entityKind: "api",
+    entityName: "createInvoice",
+    purpose: "Create a new invoice for a customer.",
+    evidence: { file: "src/billing/create-invoice.ts", line: 9 }
+  });
+  // A description already on the module (from `description` above) must not be clobbered by intent purpose.
+  knowledge.addIntent({
+    entityKind: "module",
+    entityName: "billing",
+    purpose: "This should not overwrite the existing description."
+  });
+  knowledge.addIntent({
+    entityKind: "component",
+    entityName: "InvoiceForm",
+    purpose: "Collects invoice line items and submits them for billing.",
+    businessReason: "Customers want to self-serve invoice creation.",
+    dependencies: ["billing.createInvoice"],
+    evidence: { file: "src/frontend/InvoiceForm.tsx", line: 20 }
+  });
+
+  return buildContext(app, knowledge);
+}
+
+test("buildKnowledgeGraph enriches an existing structural node's description/evidence from a matching intent", async () => {
+  const graph = await buildKnowledgeGraph(buildIntentFixtureContext());
+
+  const api = graph.nodes.find((n) => n.id === "api:billing.createInvoice");
+  assert.equal(api.description, "Create a new invoice for a customer.");
+  assert.deepEqual(api.evidence, { file: "src/billing/create-invoice.ts", line: 9 });
+});
+
+test("buildKnowledgeGraph never overwrites a node's existing description with an intent's purpose", async () => {
+  const graph = await buildKnowledgeGraph(buildIntentFixtureContext());
+
+  const module = graph.nodes.find((n) => n.id === "module:billing");
+  assert.equal(module.description, "Handle invoicing");
+});
+
+test("buildKnowledgeGraph gives a component intent its own first-class node, findable by search", async () => {
+  const graph = await buildKnowledgeGraph(buildIntentFixtureContext());
+
+  const component = graph.nodes.find((n) => n.id === "component:InvoiceForm");
+  assert.ok(component, "expected a component:InvoiceForm node");
+  assert.equal(component.kind, "component");
+  assert.equal(component.description, "Collects invoice line items and submits them for billing.");
+  assert.deepEqual(component.evidence, { file: "src/frontend/InvoiceForm.tsx", line: 20 });
+
+  const hits = searchKnowledgeGraph(graph, "invoice line items");
+  assert.ok(hits.some((n) => n.id === "component:InvoiceForm"));
 });
 
 test("hashKnowledgeGraphNodeContent ignores id/summary/summaryHash but is sensitive to description and evidence", () => {
