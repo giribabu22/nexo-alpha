@@ -1,9 +1,43 @@
 import type { NexoModule } from "./module.js";
-import type { NexoApi } from "./api.js";
+import type {
+  NexoApi,
+  NexoRequestContext,
+  NexoAuthenticator,
+  NexoAuthResult
+} from "./api.js";
 import type { NexoService } from "./service.js";
 import type { NexoJob } from "./job.js";
-import { NexoConfigurationError, NexoLifecycleError } from "./errors.js";
+import {
+  NexoConfigurationError,
+  NexoLifecycleError,
+  NexoPluginError,
+  NexoValidationError,
+  NexoAuthenticationError
+} from "./errors.js";
 import { NexoEvent, NexoEventBus } from "./events.js";
+import {
+  NexoContainer,
+  type ServiceToken,
+  type ServiceFactory,
+  type BindOptions
+} from "./container.js";
+import {
+  NexoMiddlewarePipeline,
+  type NexoMiddleware
+} from "./middleware.js";
+import type {
+  NexoPlugin,
+  InstalledPluginRecord
+} from "./plugin.js";
+import {
+  LifecycleRegistry,
+  type LifecyclePhase,
+  type LifecycleHook
+} from "./lifecycle.js";
+import type {
+  NexoDecision,
+  NexoConstraint
+} from "./knowledge.js";
 
 export interface ApplicationOptions {
   readonly name: string;
@@ -25,10 +59,17 @@ export class NexoApplication {
   readonly version: string;
   readonly description?: string | undefined;
   readonly events: NexoEventBus = new NexoEventBus();
+  readonly container: NexoContainer = new NexoContainer();
 
   private readonly modules = new Map<string, NexoModule>();
-  private config: Readonly<Record<string, unknown>>;
+  private readonly plugins = new Map<string, InstalledPluginRecord>();
+  private readonly lifecycle = new LifecycleRegistry();
+  private readonly middleware = new NexoMiddlewarePipeline<NexoRequestContext, unknown>();
+  private readonly decisions: NexoDecision[] = [];
+  private readonly constraints: NexoConstraint[] = [];
 
+  private config: Readonly<Record<string, unknown>>;
+  private authenticator?: NexoAuthenticator;
   private _state: ApplicationState = "created";
 
   constructor(options: ApplicationOptions) {
@@ -50,6 +91,10 @@ export class NexoApplication {
     }
   }
 
+  /* -------------------------------------------------------------------------- */
+  /* Modules                                                                    */
+  /* -------------------------------------------------------------------------- */
+
   module(module: NexoModule): this {
     this.assertModifiable();
 
@@ -70,14 +115,6 @@ export class NexoApplication {
 
   getModules(): readonly NexoModule[] {
     return [...this.modules.values()];
-  }
-
-  getConfig<T = unknown>(key: string): T | undefined {
-    return this.config[key] as T | undefined;
-  }
-
-  getAllConfig(): Readonly<Record<string, unknown>> {
-    return this.config;
   }
 
   getDependencies(moduleName: string): readonly string[] {
@@ -249,12 +286,6 @@ export class NexoApplication {
     return updated;
   }
 
-  updateConfig(patch: Record<string, unknown>): Readonly<Record<string, unknown>> {
-    this.assertModifiable();
-    this.config = { ...this.config, ...patch };
-    return this.config;
-  }
-
   addModuleDependency(moduleName: string, dependencyName: string): readonly string[] {
     this.assertModifiable();
     const module = this.requireModule(moduleName);
@@ -284,6 +315,260 @@ export class NexoApplication {
     return dependencies;
   }
 
+  /* -------------------------------------------------------------------------- */
+  /* Configuration                                                              */
+  /* -------------------------------------------------------------------------- */
+
+  getConfig<T = unknown>(key: string): T | undefined {
+    return this.config[key] as T | undefined;
+  }
+
+  getAllConfig(): Readonly<Record<string, unknown>> {
+    return this.config;
+  }
+
+  updateConfig(patch: Record<string, unknown>): Readonly<Record<string, unknown>> {
+    this.assertModifiable();
+    this.config = { ...this.config, ...patch };
+    return this.config;
+  }
+
+  /* -------------------------------------------------------------------------- */
+  /* Dependency Injection / Container                                           */
+  /* -------------------------------------------------------------------------- */
+
+  provide<T>(
+    token: ServiceToken<T>,
+    valueOrFactory: T | ServiceFactory<T>,
+    options?: BindOptions
+  ): this {
+    if (typeof valueOrFactory === "function") {
+      this.container.bind(token, valueOrFactory as ServiceFactory<T>, options);
+    } else {
+      this.container.bindValue(token, valueOrFactory);
+    }
+    return this;
+  }
+
+  resolve<T>(token: ServiceToken<T>): T {
+    return this.container.resolve(token);
+  }
+
+  /* -------------------------------------------------------------------------- */
+  /* Middleware                                                                 */
+  /* -------------------------------------------------------------------------- */
+
+  useMiddleware(
+    ...middlewares: NexoMiddleware<NexoRequestContext, unknown>[]
+  ): this {
+    this.middleware.use(...middlewares);
+    return this;
+  }
+
+  getMiddleware(): readonly NexoMiddleware<NexoRequestContext, unknown>[] {
+    return this.middleware.getMiddlewares();
+  }
+
+  /* -------------------------------------------------------------------------- */
+  /* Plugins                                                                    */
+  /* -------------------------------------------------------------------------- */
+
+  async use<TOptions = unknown>(
+    plugin: NexoPlugin<TOptions>,
+    options?: TOptions
+  ): Promise<this> {
+    this.assertModifiable();
+
+    if (this.plugins.has(plugin.name)) {
+      throw new NexoPluginError(
+        `Nexo plugin "${plugin.name}" is already installed.`
+      );
+    }
+
+    if (plugin.dependencies && plugin.dependencies.length > 0) {
+      for (const dep of plugin.dependencies) {
+        if (!this.plugins.has(dep)) {
+          throw new NexoPluginError(
+            `Plugin "${plugin.name}" requires dependency plugin "${dep}", which is not installed.`
+          );
+        }
+      }
+    }
+
+    await plugin.install(this, options);
+
+    this.plugins.set(plugin.name, {
+      plugin,
+      options,
+      installedAt: new Date()
+    });
+
+    this.events.emit(NexoEvent.PLUGIN_INSTALLED, {
+      plugin: plugin.name,
+      version: plugin.version
+    });
+
+    return this;
+  }
+
+  hasPlugin(name: string): boolean {
+    return this.plugins.has(name);
+  }
+
+  getPlugin(name: string): NexoPlugin | undefined {
+    return this.plugins.get(name)?.plugin;
+  }
+
+  getPlugins(): readonly NexoPlugin[] {
+    return [...this.plugins.values()].map((r) => r.plugin);
+  }
+
+  /* -------------------------------------------------------------------------- */
+  /* Lifecycle Hooks                                                            */
+  /* -------------------------------------------------------------------------- */
+
+  hook(phase: LifecyclePhase, fn: LifecycleHook): this {
+    this.assertModifiable();
+    this.lifecycle.add(phase, fn);
+    return this;
+  }
+
+  onBeforeInit(fn: LifecycleHook): this {
+    return this.hook("beforeInit", fn);
+  }
+
+  onAfterInit(fn: LifecycleHook): this {
+    return this.hook("afterInit", fn);
+  }
+
+  onBeforeStart(fn: LifecycleHook): this {
+    return this.hook("beforeStart", fn);
+  }
+
+  onAfterStart(fn: LifecycleHook): this {
+    return this.hook("afterStart", fn);
+  }
+
+  onBeforeStop(fn: LifecycleHook): this {
+    return this.hook("beforeStop", fn);
+  }
+
+  onAfterStop(fn: LifecycleHook): this {
+    return this.hook("afterStop", fn);
+  }
+
+  /* -------------------------------------------------------------------------- */
+  /* Decisions & Constraints                                                    */
+  /* -------------------------------------------------------------------------- */
+
+  addDecision(decision: NexoDecision): this {
+    this.decisions.push(decision);
+    return this;
+  }
+
+  getDecisions(): readonly NexoDecision[] {
+    return [...this.decisions];
+  }
+
+  addConstraint(constraint: NexoConstraint): this {
+    this.constraints.push(constraint);
+    return this;
+  }
+
+  getConstraints(): readonly NexoConstraint[] {
+    return [...this.constraints];
+  }
+
+  /* -------------------------------------------------------------------------- */
+  /* API Dispatch & Authentication                                              */
+  /* -------------------------------------------------------------------------- */
+
+  setAuthenticator(authenticator: NexoAuthenticator): this {
+    this.authenticator = authenticator;
+    return this;
+  }
+
+  async dispatch(
+    apiName: string,
+    request: NexoRequestContext
+  ): Promise<unknown> {
+    const api = this.getApis().find((item) => item.name === apiName);
+    if (!api) {
+      throw new NexoConfigurationError(`API "${apiName}" is not registered.`);
+    }
+
+    const startTime = Date.now();
+
+    try {
+      // 1. Authentication
+      if (api.auth?.required) {
+        if (!this.authenticator) {
+          throw new NexoAuthenticationError(
+            `Authentication is required for API "${apiName}", but no authenticator is configured.`
+          );
+        }
+        const authResult: NexoAuthResult = await this.authenticator(request);
+        if (!authResult.authenticated) {
+          throw new NexoAuthenticationError(
+            `Authentication failed for API "${apiName}".`
+          );
+        }
+        if (api.auth.scopes && api.auth.scopes.length > 0) {
+          const userScopes = authResult.scopes ?? [];
+          const missing = api.auth.scopes.filter((s) => !userScopes.includes(s));
+          if (missing.length > 0) {
+            throw new NexoAuthenticationError(
+              `Missing required scope(s): ${missing.join(", ")}`
+            );
+          }
+        }
+      }
+
+      // 2. Validation
+      if (api.validate) {
+        const validation = await api.validate(request);
+        if (!validation.valid) {
+          throw new NexoValidationError(
+            `Request validation failed for API "${apiName}".`,
+            validation.errors ?? []
+          );
+        }
+      }
+
+      // 3. Middleware & Handler Execution
+      const result = await this.middleware.execute(request, async (ctx) => {
+        if (!api.handler) {
+          return undefined;
+        }
+        return await api.handler(ctx);
+      });
+
+      const durationMs = Date.now() - startTime;
+      this.events.emit(NexoEvent.API_CALLED, {
+        api: api.name,
+        method: api.method,
+        path: api.path,
+        statusCode: 200,
+        durationMs
+      });
+
+      return result;
+    } catch (error) {
+      const durationMs = Date.now() - startTime;
+      this.events.emit(NexoEvent.API_ERROR, {
+        api: api.name,
+        method: api.method,
+        path: api.path,
+        durationMs,
+        error: error instanceof Error ? error.message : String(error)
+      });
+      throw error;
+    }
+  }
+
+  /* -------------------------------------------------------------------------- */
+  /* Lifecycle Transitions                                                      */
+  /* -------------------------------------------------------------------------- */
 
   async start(): Promise<void> {
     if (this._state === "running") {
@@ -300,13 +585,26 @@ export class NexoApplication {
     this.events.emit(NexoEvent.APPLICATION_INITIALIZING, { state: this._state });
 
     try {
+      await this.lifecycle.run("beforeInit", this);
+
       for (const module of this.modules.values()) {
         await module.initialize?.();
       }
 
+      await this.lifecycle.run("afterInit", this);
+
+      await this.lifecycle.run("beforeStart", this);
+
       for (const module of this.modules.values()) {
         await module.start?.();
+        if (module.services) {
+          for (const service of module.services) {
+            await service.onStart?.();
+          }
+        }
       }
+
+      await this.lifecycle.run("afterStart", this);
     } catch (error) {
       this._state = "failed";
       this.events.emit(NexoEvent.APPLICATION_FAILED, {
@@ -337,9 +635,18 @@ export class NexoApplication {
     const modules = [...this.modules.values()].reverse();
 
     try {
+      await this.lifecycle.run("beforeStop", this);
+
       for (const module of modules) {
+        if (module.services) {
+          for (const service of [...module.services].reverse()) {
+            await service.onStop?.();
+          }
+        }
         await module.stop?.();
       }
+
+      await this.lifecycle.run("afterStop", this);
     } catch (error) {
       this._state = "failed";
       this.events.emit(NexoEvent.APPLICATION_FAILED, {
@@ -353,19 +660,6 @@ export class NexoApplication {
     this.events.emit(NexoEvent.APPLICATION_STOPPED, { state: this._state });
   }
 
-  /**
-   * Recovers a "failed" application back to "stopped" so it can be
-   * started again. Only valid from the "failed" state.
-   *
-   * This is a best-effort cleanup, not a rollback: reset() does not know
-   * which modules successfully completed initialize()/start() before the
-   * failure, so it calls stop() on every registered module (in reverse
-   * registration order, same as a normal stop()) and tolerates each one
-   * failing or being a no-op for a module that never started. Errors are
-   * collected and returned rather than thrown, since a caller recovering
-   * from a failure needs to see every cleanup problem, not just the
-   * first one.
-   */
   async reset(): Promise<readonly Error[]> {
     if (this._state !== "failed") {
       throw new NexoLifecycleError(
@@ -378,6 +672,17 @@ export class NexoApplication {
 
     for (const module of modules) {
       try {
+        if (module.services) {
+          for (const service of [...module.services].reverse()) {
+            try {
+              await service.onStop?.();
+            } catch (serviceErr) {
+              errors.push(
+                serviceErr instanceof Error ? serviceErr : new Error(String(serviceErr))
+              );
+            }
+          }
+        }
         await module.stop?.();
       } catch (error) {
         errors.push(error instanceof Error ? error : new Error(String(error)));

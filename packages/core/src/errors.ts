@@ -22,3 +22,34 @@ export class NexoLifecycleError extends NexoError {
     this.name = "NexoLifecycleError";
   }
 }
+
+export class NexoResolutionError extends NexoError {
+  constructor(message: string) {
+    super("NEXO_RESOLUTION_ERROR", message);
+    this.name = "NexoResolutionError";
+  }
+}
+
+export class NexoPluginError extends NexoError {
+  constructor(message: string) {
+    super("NEXO_PLUGIN_ERROR", message);
+    this.name = "NexoPluginError";
+  }
+}
+
+export class NexoValidationError extends NexoError {
+  readonly errors: readonly string[];
+
+  constructor(message: string, errors: readonly string[] = []) {
+    super("NEXO_VALIDATION_ERROR", message);
+    this.name = "NexoValidationError";
+    this.errors = errors;
+  }
+}
+
+export class NexoAuthenticationError extends NexoError {
+  constructor(message: string) {
+    super("NEXO_AUTHENTICATION_ERROR", message);
+    this.name = "NexoAuthenticationError";
+  }
+}

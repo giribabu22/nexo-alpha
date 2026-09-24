@@ -12,8 +12,12 @@ export type {
   NexoModule
 } from "./module.js";
 
-export type {
+export {
   NexoService
+} from "./service.js";
+
+export type {
+  NexoServiceDefinition
 } from "./service.js";
 
 export type {
@@ -50,7 +54,11 @@ export type {
 export {
   NexoError,
   NexoConfigurationError,
-  NexoLifecycleError
+  NexoLifecycleError,
+  NexoResolutionError,
+  NexoPluginError,
+  NexoValidationError,
+  NexoAuthenticationError
 } from "./errors.js";
 
 export {
@@ -61,3 +69,41 @@ export {
 export type {
   EnvConfigOptions
 } from "./config.js";
+
+export {
+  NexoContainer
+} from "./container.js";
+
+export type {
+  ServiceToken,
+  ServiceLifetime,
+  ServiceFactory,
+  BindOptions
+} from "./container.js";
+
+export {
+  NexoMiddlewarePipeline
+} from "./middleware.js";
+
+export type {
+  NexoMiddleware
+} from "./middleware.js";
+
+export type {
+  NexoPlugin,
+  InstalledPluginRecord
+} from "./plugin.js";
+
+export {
+  LifecycleRegistry
+} from "./lifecycle.js";
+
+export type {
+  LifecyclePhase,
+  LifecycleHook
+} from "./lifecycle.js";
+
+export type {
+  NexoDecision,
+  NexoConstraint
+} from "./knowledge.js";

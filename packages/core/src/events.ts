@@ -28,7 +28,10 @@ export const NexoEvent = {
   APPLICATION_STOPPING: "application.stopping",
   APPLICATION_STOPPED: "application.stopped",
   APPLICATION_FAILED: "application.failed",
-  APPLICATION_RESET: "application.reset"
+  APPLICATION_RESET: "application.reset",
+  PLUGIN_INSTALLED: "plugin.installed",
+  HOOK_RUN: "hook.run",
+  HOOK_FAILED: "hook.failed"
 } as const;
 
 export interface ApiCalledEvent {

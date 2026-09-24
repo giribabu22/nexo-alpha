@@ -319,14 +319,11 @@ NEXO ALPHA: UNDERSTAND → KNOW → DECIDE → ACT → VERIFY
 
 ## Status
 
-**v0.1.0.** Core engine, 6 built-in rule factories, and audit log are complete — **30/30 tests passing**.
-
-Planned for later phases:
-- `DEFER` outcome built-in rule factory
-- Rule composition helpers (`allOf`, `anyOf`, `not`)
-- `@nexo-alpha/agent` — orchestrates UNDERSTAND → KNOW → DECIDE → ACT → VERIFY in a single `agent.run()` call
-- Bridge to `@nexo-alpha/tools` run-interface: `APPROVE → tools.run() → verify(result)`
+**0.4.0.** Core engine, 6 built-in rule factories, and audit log are complete and integrated with [`@nexo-alpha/agent`](../agent/README.md) to form the DECIDE safety boundary in the 5-layer intelligence stack (`UNDERSTAND → KNOW → DECIDE → ACT → VERIFY`).
 
 ## License
+
+MIT
+
 
 MIT

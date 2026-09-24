@@ -1,122 +1,200 @@
 # @nexo-alpha/hapi
 
-Turns a [`@nexo-alpha/core`](https://www.npmjs.com/package/@nexo-alpha/core) `NexoApplication`'s declared APIs into a real, running [Hapi.js](https://hapi.dev) HTTP server. This is the framework's first package with a real external runtime dependency (`@hapi/hapi`) — everything before it stays dependency-free by design.
+> Production-grade Hapi.js HTTP adapter for the Nexo application framework.
 
-## Install
+`@nexo-alpha/hapi` bridges the gap between [`@nexo-alpha/core`](https://www.npmjs.com/package/@nexo-alpha/core)'s declarative `NexoApi` definitions and a live, running [Hapi.js](https://hapi.dev) HTTP server.
+
+---
+
+## Installation
 
 ```bash
 npm install @nexo-alpha/hapi @nexo-alpha/core @hapi/hapi
 ```
 
-## Why
+Or using pnpm:
 
-Nexo's application model is otherwise purely declarative — `NexoApi` describes an endpoint's method, path, and metadata, but nothing runs it. `@nexo-alpha/hapi` is the adapter that turns a `handler`-bearing `NexoApi` into an actual route, keeping `@nexo-alpha/core` itself Hapi-agnostic.
+```bash
+pnpm add @nexo-alpha/hapi @nexo-alpha/core @hapi/hapi
+```
 
-## Usage
+---
+
+## How to Use
+
+### 1. Basic Server Setup
+
+Declare route handlers on your modules and start the Hapi server:
 
 ```ts
 import { createApplication } from "@nexo-alpha/core";
 import { startHapiServer } from "@nexo-alpha/hapi";
 
-const app = createApplication({ name: "shop" });
+const app = createApplication({ name: "hello-api" });
 
 app.module({
-  name: "hello",
+  name: "greeter",
   apis: [
     {
       name: "sayHello",
       method: "GET",
-      path: "/hello",
-      handler: async () => ({ message: "Hello from Nexo" })
+      path: "/hello/:name",
+      handler: async (ctx) => {
+        const name = ctx.params.name ?? "World";
+        return { message: `Hello, ${name}!` };
+      }
     }
   ]
 });
 
+// Start the Hapi server
 const server = await startHapiServer(app, { port: 3000 });
-console.log(`Listening on ${server.info.uri}`);
+console.log(`Server listening at ${server.info.uri}`);
 ```
 
 ```bash
-curl http://localhost:3000/hello
-# {"message":"Hello from Nexo"}
+curl http://localhost:3000/hello/Alice
+# {"message":"Hello, Alice!"}
 ```
 
-### Auth and validation
+---
 
-`NexoApi.auth` and `NexoApi.validate` are plain declarative/function hooks (no Joi, no JWT library — `@nexo-alpha/core` stays dependency-free); the actual verification logic is supplied by you:
+### 2. Request Context (`NexoRequestContext`)
+
+Every handler receives a normalized request context object completely decoupled from Hapi internals:
+
+```ts
+handler: async (ctx) => {
+  const { params, query, payload, headers } = ctx;
+
+  const id = params.id;
+  const filter = query.filter;
+  const body = payload as { title: string };
+  const authHeader = headers["authorization"];
+
+  return { id, filter, received: body };
+}
+```
+
+- Returning an object serializes it as JSON with HTTP `200`.
+- Returning `undefined` sends an HTTP `204 No Content`.
+
+---
+
+### 3. Authentication & Scopes Pipeline
+
+Enforce authentication and permission scopes declaratively:
 
 ```ts
 app.module({
-  name: "widgets",
+  name: "billing",
   apis: [
     {
-      name: "createWidget",
+      name: "createInvoice",
       method: "POST",
-      path: "/widgets",
-      auth: { required: true, scopes: ["widgets:write"] },
-      validate: (context) => {
-        const payload = context.payload;
-        if (!payload || typeof payload.name !== "string") {
-          return { valid: false, errors: ["name is required"] };
-        }
-        return { valid: true };
+      path: "/invoices",
+      auth: {
+        required: true,
+        scopes: ["invoices:write"]
       },
-      handler: async (context) => ({ created: context.payload.name })
+      handler: async (ctx) => {
+        return { invoiceId: "inv_123", status: "created" };
+      }
     }
   ]
 });
 
+// Provide an authenticator function to verify incoming requests
 const server = await startHapiServer(app, {
-  authenticate: async (context) => {
-    const token = context.headers.authorization;
-    // verify the token however you like (JWT, session lookup, API key, ...)
-    return token === "Bearer good-token"
-      ? { authenticated: true, scopes: ["widgets:write"] }
-      : { authenticated: false };
+  port: 3000,
+  authenticate: async (ctx) => {
+    const authHeader = ctx.headers.authorization;
+    if (!authHeader || !authHeader.startsWith("Bearer ")) {
+      return { authenticated: false };
+    }
+
+    const token = authHeader.replace("Bearer ", "");
+    if (token === "super-secret-token") {
+      return {
+        authenticated: true,
+        actor: "admin_user",
+        scopes: ["invoices:write", "invoices:read"]
+      };
+    }
+
+    return { authenticated: false };
   }
 });
 ```
 
-Requests to `/widgets` now run through **Identity → Permission → Validation → Operation** before the handler: no/invalid auth → `401`; authenticated but missing a required scope → `403`; validation fails → `400` with `errors`; otherwise the handler runs, unchanged. If any API declares `auth.required` but no `authenticate` option is passed to `createHapiServer`/`startHapiServer`, server creation fails immediately rather than silently serving an unenforceable route.
+The pipeline automatically handles errors:
+- Missing / invalid authentication returns `401 Unauthorized`.
+- Missing required scope returns `403 Forbidden`.
 
-### Observability
+---
 
-Every route emits through `app.events` (`@nexo-alpha/core`'s `NexoEventBus`), so you can observe traffic without touching the route logic:
+### 4. Payload Validation
+
+Add lightweight request validation without introducing large schema dependencies:
 
 ```ts
+app.module({
+  name: "products",
+  apis: [
+    {
+      name: "createProduct",
+      method: "POST",
+      path: "/products",
+      validate: (ctx) => {
+        const body = ctx.payload as { name?: string; price?: number };
+        const errors: string[] = [];
+
+        if (!body?.name) errors.push("Product 'name' is required.");
+        if (typeof body?.price !== "number" || body.price <= 0) {
+          errors.push("Product 'price' must be a positive number.");
+        }
+
+        return errors.length > 0
+          ? { valid: false, errors }
+          : { valid: true };
+      },
+      handler: async (ctx) => {
+        return { created: ctx.payload };
+      }
+    }
+  ]
+});
+```
+
+Failed validation returns `400 Bad Request` with `{ errors: [...] }`.
+
+---
+
+### 5. Observability & Telemetry Events
+
+Monitor API traffic via `app.events`:
+
+```ts
+// Fires on every completed request (including 400, 401, 403, and 500)
 app.events.on("api.called", ({ api, method, path, statusCode, durationMs }) => {
   console.log(`${method} ${path} (${api}) -> ${statusCode} in ${durationMs}ms`);
 });
 
+// Fires when an unhandled exception is thrown in a handler
 app.events.on("api.error", ({ api, error }) => {
-  console.error(`${api} handler threw:`, error);
+  console.error(`Error in API handler ${api}:`, error);
 });
 ```
 
-`api.called` fires for every completed request — including auth/validation denials (`401`/`403`/`400`) — with the actual status code, so you can see e.g. how much traffic to an endpoint is getting rejected. `api.error` fires only when the handler itself throws; the error still propagates and Hapi still returns its own default `500`, unchanged. `@nexo-alpha/tools`'s `createMetricsCollector(app)` subscribes to these same events to build call/error counts and average durations, if you want aggregated numbers instead of raw events.
+---
 
-## What's here
+## Related Packages
 
-- **`createHapiServer(app, options?)`** — builds a `Hapi.server(...)` and registers a route for every API that has a `handler`. Path params use Express-style `:id` in `NexoApi.path` (matching the rest of Nexo's examples) and are converted to Hapi's `{id}` syntax automatically.
-- **`startHapiServer(app, options?)`** — `createHapiServer` plus `server.start()`.
-- **`toHapiPath(path)`** — the `:id` → `{id}` path converter, exported directly if you need it.
-- A handler receives a plain `NexoRequestContext` (`params`, `query`, `payload`, `headers`) — no Hapi types leak into `@nexo-alpha/core`. Return a value to send it as the response (objects are serialized to JSON automatically); return `undefined` for a `204`.
-- `options.authenticate` — an optional `NexoAuthenticator` used for every API with `auth.required`, checked before validation and before the handler runs.
+- [`@nexo-alpha/core`](https://www.npmjs.com/package/@nexo-alpha/core) — Defines `NexoApi`, `NexoRequestContext`, and application lifecycle.
+- [`@nexo-alpha/tools`](https://www.npmjs.com/package/@nexo-alpha/tools) — Aggregates metrics from `api.called` events into latency and error reports.
 
-## Design notes
-
-- **APIs without a `handler` get no route.** They stay descriptive-only, exactly as they appear in `@nexo-alpha/context`'s manifest and `@nexo-alpha/cli`'s output.
-- **`HEAD` is not registered as an explicit route** — Hapi generates `HEAD` responses from `GET` routes automatically and rejects `HEAD` as an explicit method.
-- **Auth runs before validation** — both the PRD's stated request pipeline (Identity → Permission → ... → Validation → Operation) and standard security practice: an unauthenticated caller shouldn't learn anything about payload shape from a `400`.
-
-## Related packages
-
-- [`@nexo-alpha/core`](https://www.npmjs.com/package/@nexo-alpha/core) — the application/module model, including `NexoRequestContext`, `NexoApiHandler`, `NexoApiAuth`, `NexoRequestValidator`, and `NexoAuthenticator`
-
-## Status
-
-**v0.1-alpha.** No lifecycle wiring to `NexoApplication.start()`/`stop()` yet — creating and starting the Hapi server is a separate step from the application's own lifecycle.
+---
 
 ## License
 
-MIT
+MIT © Nexo Contributors

@@ -1,104 +1,204 @@
 # @nexo-alpha/tools
 
-A structured, provider-neutral **read and write interface** an AI development tool (or a CLI, or a script) can call to understand — and safely change — a [`@nexo-alpha/core`](https://www.npmjs.com/package/@nexo-alpha/core) application, instead of grepping source code or hand-walking the application object.
+> Structured read, write, verification, metrics, and source-code analysis interfaces for human developers and AI coding agents.
 
-## Install
+`@nexo-alpha/tools` provides programmatic tool interfaces to inspect, safely modify, measure, and verify [`@nexo-alpha/core`](https://www.npmjs.com/package/@nexo-alpha/core) applications.
+
+---
+
+## Installation
 
 ```bash
-npm install @nexo-alpha/tools
+npm install @nexo-alpha/tools @nexo-alpha/core @nexo-alpha/context
 ```
 
-(You'll also need `@nexo-alpha/core`, and this package depends on `@nexo-alpha/context` internally.)
+Or using pnpm:
 
-## Why
+```bash
+pnpm add @nexo-alpha/tools @nexo-alpha/core @nexo-alpha/context
+```
 
-An AI coding agent shouldn't have to rediscover a project's structure from scratch every session. `@nexo/tools` exposes exactly the questions an AI tool needs to ask — "what is this project," "what is the Payments module," "what depends on Orders," "what's currently being worked on" — as plain function calls over the application's declared model.
+---
 
-## Usage
+## How to Use
+
+### 1. Read Interface (`createReadInterface`)
+
+Inspect application structure, modules, services, APIs, and dependencies without grepping source files:
 
 ```ts
 import { createApplication } from "@nexo-alpha/core";
 import { createReadInterface } from "@nexo-alpha/tools";
 
-const app = createApplication({ name: "shop" });
-
-app.module({
-  name: "payments",
-  purpose: "Handle customer payments",
-  dependencies: ["orders"]
-});
-
+const app = createApplication({ name: "storefront" });
 const tools = createReadInterface(app);
 
-tools.getApplication();      // { name, version, description, state }
-tools.getModule("payments"); // full module metadata, or undefined
-tools.getDependents("orders"); // -> ["payments"]
-tools.getStatus();           // { state, developmentState }
-tools.getHistory();          // audit trail of write operations
+// Query high-level application info
+const application = tools.getApplication();
+console.log(application.name); // "storefront"
 
+// Inspect a specific module
+const moduleInfo = tools.getModule("payments");
+
+// Query dependencies
+const dependencies = tools.getDependencies("orders");
+const dependents = tools.getDependents("payments");
+
+// Retrieve architectural decisions and constraints
+const decisions = tools.getDecisions();
+const status = tools.getStatus();
+```
+
+---
+
+### 2. Permission-Gated Write Interface (`createWriteInterface`)
+
+Safely perform structural modifications. Every mutation enforces:
+`Permission Check ──► Input Validation ──► Operation Execution ──► Audit Logging`
+
+```ts
 import { createWriteInterface } from "@nexo-alpha/tools";
 
+// Define explicit permission scopes
 const writes = createWriteInterface(app, {
   scopes: new Set(["modify-source"])
 });
 
-writes.createApi("payments", { name: "refundPayment", method: "POST", path: "/payments/:id/refund" });
-// -> { success: true, data: { name: "refundPayment", ... } }
+// Create a new API on a module
+const result = writes.createApi("payments", {
+  name: "refundPayment",
+  method: "POST",
+  path: "/payments/:id/refund"
+});
 
-writes.updateConfiguration({ debug: true });
-// -> { success: false, error: 'Permission required: "modify-configuration" is not granted...' }
+if (result.success) {
+  console.log("Created API:", result.data);
+} else {
+  console.error("Mutation failed:", result.error);
+}
 
+// Check the audit trail of modifications
+const auditTrail = tools.getHistory();
+console.log("Audit log:", auditTrail);
+```
+
+Supported permission scopes:
+- `"modify-source"` — Allows adding/modifying modules, APIs, services, jobs, and dependencies.
+- `"modify-configuration"` — Allows updating application configuration.
+
+---
+
+### 3. Architecture Verification Interface (`createVerificationInterface`)
+
+Detect architectural flaws, cycles, unresolved dependencies, and health issues:
+
+```ts
 import { createVerificationInterface } from "@nexo-alpha/tools";
 
-const verify = createVerificationInterface(app);
+const verifier = createVerificationInterface(app);
 
-verify.validateArchitecture();
-// -> { valid: true, issues: [] } (or issues for cycles / self-deps / unresolved dependency names)
-verify.checkApplicationHealth();
-// -> { state, moduleCount, apiCount, serviceCount, architecture }
+// 1. Detect cycles, self-dependencies, and missing modules
+const architectureValidation = verifier.validateArchitecture();
+if (!architectureValidation.valid) {
+  console.warn("Architecture issues found:", architectureValidation.issues);
+}
 
+// 2. Validate configuration objects (e.g. JSON serialization safety)
+const configValidation = verifier.validateConfiguration();
+
+// 3. Inspect high-level application health metrics
+const health = verifier.checkApplicationHealth();
+console.log(`Modules: ${health.moduleCount}, APIs: ${health.apiCount}`);
+```
+
+---
+
+### 4. Real-time Metrics Collector (`createMetricsCollector`)
+
+Collect execution metrics from `@nexo-alpha/hapi` and `@nexo-alpha/scheduler` via `app.events`:
+
+```ts
 import { createMetricsCollector } from "@nexo-alpha/tools";
 
 const metrics = createMetricsCollector(app);
-// ... traffic happens via @nexo-alpha/hapi / jobs run via @nexo-alpha/scheduler ...
-metrics.getMetrics();
-// -> { apis: { refundPayment: { calls, errors, averageDurationMs } }, jobs: {...} }
+
+// Later, after traffic runs:
+const snapshot = metrics.getMetrics();
+console.log("API Performance:", snapshot.apis);
+// {
+//   createOrder: { calls: 142, errors: 1, averageDurationMs: 14.2 }
+// }
+
+// Stop collector when finished to clean up event listeners
+metrics.stop();
 ```
 
-## What's here
+---
 
-`createReadInterface(app)` returns a `NexoReadInterface` with:
+### 5. Source Code Scanning Interface (`createSourceInterface`)
 
-`getApplication`, `getModules`, `getModule`, `getApi`, `getService`, `getDependencies`, `getDependents`, `getConfiguration`, `getArchitecture`, `getDecisions`, `getConstraints`, `getCurrentWork`, `getStatus`, `getHistory`.
+Scan source files to extract symbols, exports, imports, and function call graphs:
 
-Name lookups (`getModule`, `getApi`, `getService`) return `undefined` when nothing matches rather than throwing — a tool probing an unfamiliar application should degrade gracefully, not crash.
+```ts
+import { createSourceInterface } from "@nexo-alpha/tools";
 
-`createWriteInterface(app, grants)` returns a `NexoWriteInterface` with:
+const scanner = createSourceInterface({
+  projectRoot: process.cwd(),
+  sourceRoot: "src"
+});
 
-`createModule`, `createApi`, `modifyApi`, `createService`, `modifyService`, `createJob`, `modifyJob`, `updateConfiguration`, `addDependency`.
+const tree = await scanner.scan();
+console.log(`Scanned ${tree.files.length} source files.`);
+```
 
-Each call is a `{ success, data?, error? }` result — never a throw — and runs through **Permission Check → Validation → Operation → Audit** (PRD section 18/20). `grants` is a `PermissionGrants` (`{ scopes: Set<"modify-source" | "modify-configuration"> }`) the caller constructs explicitly; there is no ambient or default-allow permission. Every call, whether denied, failed validation, or successful, is recorded via `app.addHistoryEntry()` and readable back through `getHistory()`.
+---
 
-`createVerificationInterface(app)` returns a `NexoVerificationInterface` with:
+### 6. Knowledge Graph & Impact Tracing
 
-`validateConfiguration`, `validateArchitecture`, `inspectDependencies`, `checkApplicationHealth` — the in-memory subset of PRD section 19's "Verification Capabilities." `validateArchitecture` detects dependency cycles and self-dependencies (errors) and dependency names that don't resolve to a registered module (a warning, not an error — it may be an external system like `"stripe"`). `validateConfiguration` flags config values that won't survive `JSON.stringify` cleanly (functions, circular references). These are read-only diagnostics and are not audited to history, unlike the write interface. `run_tests`/`run_typecheck`/`run_lint`/`run_build` from PRD section 19 are **not implemented** — they'd need to shell out to an external target application's own toolchain via an explicit project-root argument, and this repo has no lint tooling configured to call yet; left for a future pass once that's needed.
+Build, search, and trace dependencies across both registered modules and source code symbols:
 
-`createMetricsCollector(app)` returns a `NexoMetricsCollector` with `getMetrics()`, `reset()`, and `stop()`. Unlike the other three interfaces (stateless — computed fresh from `app` on every call), this one is **stateful**: it subscribes to `app.events` at creation time and accumulates call/run counts, error/failure counts, and average durations per API/job as `@nexo-alpha/hapi` and `@nexo-alpha/scheduler` emit `api.called`/`api.error`/`job.ran`/`job.failed`. `checkApplicationHealth()` stays a separate, static-structure concern — this is the live-runtime counterpart, not a replacement for it. Call `stop()` when you're done with a collector (e.g. between tests) so it unsubscribes rather than leaking listeners on `app.events`.
+```ts
+import {
+  buildKnowledgeGraph,
+  searchKnowledgeGraph,
+  traceImpact,
+  saveKnowledgeGraph,
+  loadKnowledgeGraph,
+  diffKnowledgeGraphFreshness
+} from "@nexo-alpha/tools";
 
-## Design notes
+// 1. Build unified knowledge graph
+const graph = await buildKnowledgeGraph(app, {
+  sourceRoot: "src"
+});
 
-- **Explicit, bounded, auditable.** Per PRD section 20, write operations never bypass a permission check, and every attempt — granted or not — is audited. Actually running tests/lint/build (PRD section 19, "Verification Capabilities") is out of scope here; it's a separate tooling concern layered on top of a successful write.
-- **camelCase**, consistent with the rest of Nexo's API, even though early product docs sketched these as snake_case (`get_application()`) — that was pseudocode-level, not a literal contract.
+// 2. Search graph nodes
+const matches = searchKnowledgeGraph(graph, "refund");
 
-## Related packages
+// 3. Trace the blast radius (impact) of changing a node
+const impact = traceImpact(graph, "module:payments", {
+  direction: "dependents",
+  maxDepth: 3
+});
 
-- [`@nexo-alpha/core`](https://www.npmjs.com/package/@nexo-alpha/core) — the application/module model
-- [`@nexo-alpha/context`](https://www.npmjs.com/package/@nexo-alpha/context) — the JSON manifest this package wraps
+console.log("Blast radius nodes:", impact.hits.map(h => h.nodeId));
 
-## Status
+// 4. Save and diff freshness
+await saveKnowledgeGraph(graph, ".nexo/knowledge-graph.json");
+const diff = await diffKnowledgeGraphFreshness(".nexo/knowledge-graph.json", "src");
+console.log(`Added: ${diff.added.length}, Changed: ${diff.changed.length}`);
+```
 
-**v0.1-alpha.** No MCP server or CLI wiring yet — this is the interface those will eventually sit on top of. `create_test()` and the verification ops (`run_tests`, `run_lint`, etc.) from the PRD are not implemented yet. No tracing/spans — `createMetricsCollector` is counts and durations only.
+---
+
+## Related Packages
+
+- [`@nexo-alpha/core`](https://www.npmjs.com/package/@nexo-alpha/core) — The application model inspected by tools.
+- [`@nexo-alpha/context`](https://www.npmjs.com/package/@nexo-alpha/context) — Structured manifest representation.
+- [`@nexo-alpha/cli`](https://www.npmjs.com/package/@nexo-alpha/cli) — Terminal interface exposing these capabilities.
+
+---
 
 ## License
 
-MIT
+MIT © Nexo Contributors

@@ -1,92 +1,235 @@
 # @nexo-alpha/cli
 
-Command-line interface for [Nexo](https://www.npmjs.com/package/@nexo-alpha/core) — `nexo inspect`, `nexo status`, and `nexo context`, the human-facing counterpart to [`@nexo-alpha/tools`](https://www.npmjs.com/package/@nexo-alpha/tools)'s AI-facing read interface. Both read the same [`@nexo-alpha/context`](https://www.npmjs.com/package/@nexo-alpha/context) manifest.
+> Command-line interface for the Nexo framework: inspect, trace, graph, and query your application architecture from your terminal.
 
-## Install
+`@nexo-alpha/cli` (the `nexo` executable) lets developers and AI agents explore an application's structural model — modules, APIs, services, dependencies, architectural decisions, and source code impact — without manually reading the entire codebase.
+
+---
+
+## Installation
+
+Install globally:
 
 ```bash
 npm install -g @nexo-alpha/cli
 ```
 
-Or use it without a global install via `npx @nexo-alpha/cli`.
-
-## Why
-
-`phase.txt` calls this "the first real demonstration of the idea": run one command and see your application's structure — modules, APIs, dependencies, current development state — without reading the source.
-
-## How it finds an application
-
-The CLI resolves a target app one of two ways:
-
-**Explicit path** — a path to a **compiled JS module** that exports a `NexoApplication` as `app` (or `default`):
-
-```ts
-// dist/app.js
-export const app = createApplication({ name: "shop" });
-app.module({ name: "payments", purpose: "Handle customer payments" });
-```
+Or run directly via `npx`:
 
 ```bash
-nexo inspect ./dist/app.js
+npx @nexo-alpha/cli <command>
+# or simply:
+npx nexo <command>
 ```
 
-**Project config** — omit the path and the CLI looks for a `nexo.config.json` in the current directory, or a parent directory, with the shape:
+---
 
-```json
-{ "app": "./dist/app.js" }
-```
+## Finding Your Application
 
-`app` is resolved relative to the config file's own directory, so it works the same no matter which subdirectory you run `nexo` from. Run `nexo inspect` from anywhere under a project with this config and it just works — no path needed.
+The CLI resolves your Nexo application in one of two ways:
 
-## Commands
+1. **Via `nexo.config.json` (Recommended)**:
+   Place a `nexo.config.json` in your project root pointing to your compiled application file:
+   ```json
+   {
+     "app": "./dist/app.js"
+   }
+   ```
+   Now you can run any `nexo` command without providing the app path.
+
+2. **Explicit file path**:
+   Pass the path to your compiled application module as an argument:
+   ```bash
+   nexo inspect ./dist/app.js
+   ```
+
+---
+
+## Command Reference
+
+### 1. `nexo init`
+Scaffold a new Nexo project using `create-nexo-app`:
 
 ```bash
-nexo inspect [app-path] [moduleName]  # application summary, or one module's full detail
-nexo inspect [--module moduleName]    # same, using nexo.config.json for the app path
-nexo status [app-path]                # development state
-nexo context [app-path]               # raw JSON manifest (buildContext output)
+nexo init my-new-app
 ```
 
-`app-path` is optional in every form above — when omitted, the CLI falls back to `nexo.config.json`. `--module` is only meaningful for `inspect`, and only when `app-path` is omitted (when a path is given, the module name is just the next positional argument, as before).
+---
 
-Example:
+### 2. `nexo inspect`
+View a summary of the entire application, or inspect a specific module's APIs, services, and dependencies:
 
+```bash
+# View all modules, APIs, and services
+nexo inspect
+
+# Inspect a specific module in detail
+nexo inspect payments
+# or
+nexo inspect --module payments
+```
+
+**Example output:**
 ```text
-$ nexo inspect ./dist/app.js payments
-
 payments
 
 Purpose: Handle customer payments
-Status: in-progress
+Status: active
 
 Dependencies:
   stripe
   orders
 
 Dependents:
-  (none)
+  checkout
 
 APIs:
-  POST /payments  createPayment
+  POST /payments/charge  createCharge
+  POST /payments/refund  refundCharge
 
-...
+Services:
+  PaymentGateway
 ```
 
-## Design notes
+---
 
-- **Read-only.** No commands modify an application — matching the rest of Nexo's "read-only first" AI/tooling surface.
-- **No dependencies beyond Nexo's own packages** (`@nexo-alpha/core`, `@nexo-alpha/context`) — argument parsing is hand-rolled since the commands take no flags.
+### 3. `nexo status`
+Display active development objectives, completed milestones, in-progress items, and known blockers:
 
-## Related packages
+```bash
+nexo status
+```
 
-- [`@nexo-alpha/core`](https://www.npmjs.com/package/@nexo-alpha/core) — the application/module model
-- [`@nexo-alpha/context`](https://www.npmjs.com/package/@nexo-alpha/context) — the manifest this CLI renders
-- [`@nexo-alpha/tools`](https://www.npmjs.com/package/@nexo-alpha/tools) — the same data, shaped for AI tools instead of a terminal
+---
 
-## Status
+### 4. `nexo context`
+Output the full serialized `ApplicationContext` JSON manifest. Useful for piping directly into AI prompts, LLMs, or documentation generators:
 
-**v0.1-alpha.** No write commands.
+```bash
+# Output JSON manifest
+nexo context
+
+# Fold real source file code scanning into the manifest
+nexo context --source-root src > context.json
+```
+
+---
+
+### 5. `nexo knowledge` & `nexo intents`
+View recorded architectural decisions, constraints, history, and component intents:
+
+```bash
+# Display decisions and constraints
+nexo knowledge
+
+# View recorded entity intents (why components exist)
+nexo intents
+
+# View intent for a specific entity
+nexo intents --entity-kind component --entity-name PaymentGateway
+```
+
+---
+
+### 6. `nexo source`
+Scan project source files directly from the filesystem (independent of whether they are registered with `NexoApplication`):
+
+```bash
+nexo source src
+```
+
+---
+
+### 7. `nexo graph`
+Generate a unified architectural and source-code knowledge graph linking modules, APIs, services, files, imports, and function calls:
+
+```bash
+# Build knowledge graph and save to .nexo/knowledge-graph.json
+nexo graph --source-root src
+
+# Specify custom output path
+nexo graph --source-root src --out .nexo/my-graph.json
+
+# Force rebuild bypassing cached hashes
+nexo graph --source-root src --force
+
+# Provide an LLM summarizer for nodes
+nexo graph --source-root src --summarize ./summarizer.js
+```
+
+---
+
+### 8. `nexo freshness`
+Check which source files have been added, modified, or deleted since the knowledge graph was last built:
+
+```bash
+nexo freshness --source-root src
+```
+
+---
+
+### 9. `nexo search`
+Perform live, case-insensitive keyword searches over modules, APIs, and source symbols in your architecture:
+
+```bash
+nexo search "payment" --source-root src
+```
+
+---
+
+### 10. `nexo trace`
+Trace inbound edges to determine what connects to or affects a specific node:
+
+```bash
+# Trace everything that points to the payments module
+nexo trace "module:payments"
+
+# Trace only function callers
+nexo trace "symbol:src/orders.ts#createOrder" --source-root src --callers
+```
+
+---
+
+### 11. `nexo impact`
+Calculate the transitive **blast radius** of changing a node. Walks the full multi-hop dependency graph:
+
+```bash
+# Find everything affected if payments changes
+nexo impact "module:payments"
+
+# Trace upward dependencies instead of dependents
+nexo impact "module:orders" --dependencies
+
+# Cap the traversal depth
+nexo impact "module:orders" --max-depth 2
+
+# Filter by specific edge kinds
+nexo impact "module:orders" --edge-kinds calls,imports
+```
+
+---
+
+### 12. `nexo validate` & `nexo health`
+Run structural validation and health checks on your application:
+
+```bash
+# Validate architecture (checks for circular dependencies, missing modules, self-deps)
+nexo validate
+
+# High-level application health summary
+nexo health
+```
+
+---
+
+## Related Packages
+
+- [`@nexo-alpha/core`](https://www.npmjs.com/package/@nexo-alpha/core) — Core application runtime.
+- [`@nexo-alpha/context`](https://www.npmjs.com/package/@nexo-alpha/context) — Underlying context manifest and knowledge records.
+- [`@nexo-alpha/tools`](https://www.npmjs.com/package/@nexo-alpha/tools) — Programmatic read/write/verification interface powering this CLI.
+
+---
 
 ## License
 
-MIT
+MIT © Nexo Contributors

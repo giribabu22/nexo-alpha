@@ -245,3 +245,36 @@ test("initializes and starts modules in registration order, stops in reverse ord
 
   assert.deepEqual(events, ["c:stop", "b:stop", "a:stop"]);
 });
+
+test("invokes NexoService onStart and onStop handlers", async () => {
+  const events = [];
+  const app = createApplication({ name: "service-lifecycle-test" });
+
+  const service = {
+    name: "inventoryService",
+    onStart() {
+      events.push("service:start");
+    },
+    onStop() {
+      events.push("service:stop");
+    }
+  };
+
+  app.module({
+    name: "inventory",
+    services: [service],
+    start() {
+      events.push("module:start");
+    },
+    stop() {
+      events.push("module:stop");
+    }
+  });
+
+  await app.start();
+  assert.deepEqual(events, ["module:start", "service:start"]);
+
+  events.length = 0;
+  await app.stop();
+  assert.deepEqual(events, ["service:stop", "module:stop"]);
+});

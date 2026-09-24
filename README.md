@@ -1,68 +1,282 @@
 # Nexo
 
-A lightweight Node.js application framework and environment for the AI era.
+> A lightweight, modular application framework and runtime for the AI era.
 
-Nexo's core (`@nexo-alpha/core`) defines the application model — applications,
-modules, services, APIs, jobs, and lifecycle — with zero AI, HTTP, database,
-or scheduling dependencies. Every other package builds on top of it, never
-the reverse; see `docs/architecture/README.md`'s "Dependency direction rule".
+Nexo bridges the gap between software development and AI intelligence. It provides a pure, dependency-free application model for your code and surrounds it with structured context, deterministic decision boundaries, bounded behaviors, autonomous workflows, and deep introspection tooling.
 
-See `PRD — AI-Era Software Development Framework.md`, `plan.txt`, and
-`phase.txt` for the product vision and build roadmap, and
-`docs/architecture/README.md` for a running, per-milestone log of what has
-actually been built and why.
+```
+       ┌────────────────────────────────────────────────────────┐
+       │                       AI WORLD                         │
+       │     LLM / Intent Parser proposes an action / workflow   │
+       └───────────────────────────┬────────────────────────────┘
+                                   │  DecisionIntent
+       ┌───────────────────────────▼────────────────────────────┐
+       │                   CONTROLLED WORLD                     │
+       │  Decision Engine evaluates deterministic safety rules  │
+       │  APPROVE │ REJECT │ ASK_USER │ ESCALATE │ DEFER        │
+       └───────────────────────────┬────────────────────────────┘
+                                   │  (Only if APPROVED)
+       ┌───────────────────────────▼────────────────────────────┐
+       │               NEXO APPLICATION RUNTIME                 │
+       │  Modules ──► Services ──► APIs (Hapi) ──► Jobs (Cron)  │
+       │  Knowledge Context ──► Audit Trails ──► Verifications  │
+       └────────────────────────────────────────────────────────┘
+```
 
-## Status
+---
 
-**v0.17** — application model (with lifecycle failure/recovery, lifecycle
-events, and mutation gating), a context manifest that includes a
-registry-derived structure hash for staleness detection, a separate
-knowledge journal (decisions/constraints/development state/history) with
-JSON serialization, AI read/write/verification interfaces (including
-process-shelling `run_tests`/`run_typecheck`/`run_build`), a Hapi HTTP
-adapter with request auth/validation and lifecycle-bound shutdown, a cron
-job scheduler, event-based observability, and a CLI (`inspect`, `status`,
-`context`, `knowledge`, `validate`, `health`). See
-`docs/architecture/README.md` for the full milestone-by-milestone
-breakdown and what remains deliberately out of scope (source-text
-extraction — files/symbols/call graphs, distributed coordination,
-autonomous AI operations, `run_lint`).
+## Quick Start: Scaffold in Seconds
 
-## Development
+The fastest way to start a new Nexo project is using `create-nexo-app`:
 
 ```bash
+# Fullstack React (Vite) + Nexo backend (Default)
+npx create-nexo-app my-app
+
+# Standalone modular backend API service
+npx create-nexo-app my-service --template backend-api
+
+# Minimal single-file setup
+npx create-nexo-app quick-start --template minimal
+```
+
+Then cd into your project, install dependencies, and run:
+
+```bash
+cd my-app
+npm install
+npm run dev
+```
+
+---
+
+## Monorepo Packages
+
+Nexo is built as a set of modular, composable packages published under the `@nexo-alpha` scope on npm:
+
+| Package | npm | Description |
+|---|---|---|
+| [`@nexo-alpha/core`](./packages/core/README.md) | `0.4.0` | Core runtime: applications, modules, services, declarative APIs, jobs, lifecycle, and event bus. |
+| [`@nexo-alpha/context`](./packages/context/README.md) | `0.4.0` | Application context manifest, knowledge journal (decisions, constraints, state, intents), and structure hashing. |
+| [`@nexo-alpha/decision`](./packages/decision/README.md) | `0.4.0` | Deterministic AI decision engine. Rule chains (`permission`, `state`, `constraint`, `confirmation`, `escalation`, `rateLimit`). |
+| [`@nexo-alpha/agent`](./packages/agent/README.md) | `0.4.0` | AI agent orchestration layer wiring `UNDERSTAND → KNOW → DECIDE → ACT → VERIFY`, tool registries, and autonomous workflows. |
+| [`@nexo-alpha/behavior`](./packages/behavior/README.md) | `0.4.0` | Typed bounded behavior layer: micro-decision primitives (`choice`, `boolean`, `score`), policies, and telemetry. |
+| [`@nexo-alpha/web`](./packages/web/README.md) | `0.4.0` | Web search, evidence extraction, and claim verification pipeline for AI research. |
+| [`@nexo-alpha/tools`](./packages/tools/README.md) | `0.4.0` | AI & developer introspection: read/write interfaces, verification, live metrics, source scanning, and knowledge graph. |
+| [`@nexo-alpha/scheduler`](./packages/scheduler/README.md) | `0.4.0` | Lightweight, dependency-free cron scheduler for `NexoJob`s. |
+| [`@nexo-alpha/hapi`](./packages/hapi/README.md) | `0.4.0` | HTTP adapter turning declared `NexoApi`s into running Hapi.js servers with auth, validation, and lifecycle hooks. |
+| [`@nexo-alpha/cli`](./packages/cli/README.md) | `0.4.0` | Terminal CLI for architecture inspection, dependency impact tracing, health checks, and knowledge graphs. |
+| [`create-nexo-app`](./packages/create-nexo-app/README.md) | `0.4.0` | Scaffolding CLI for generating starter templates. |
+
+---
+
+## How to Use Nexo: Core Walkthrough
+
+### 1. Build an Application (`@nexo-alpha/core`)
+
+Nexo applications are built around declarative modules, services, and APIs:
+
+```ts
+import { createApplication, NexoService } from "@nexo-alpha/core";
+
+export const app = createApplication({
+  name: "storefront",
+  version: "1.0.0",
+  description: "E-commerce platform"
+});
+
+class CartService extends NexoService {
+  constructor() {
+    super({ name: "cart-service" });
+  }
+  async getCart(userId: string) {
+    return { userId, items: [] };
+  }
+}
+
+const cartService = new CartService();
+
+app.module({
+  name: "cart",
+  purpose: "Manage user shopping carts",
+  status: "in-progress",
+  services: [cartService],
+  apis: [
+    {
+      name: "getCart",
+      method: "GET",
+      path: "/cart/:userId",
+      handler: async (ctx) => cartService.getCart(ctx.params.userId)
+    }
+  ]
+});
+
+await app.start();
+```
+
+### 2. Serve APIs over HTTP (`@nexo-alpha/hapi`)
+
+Turn your declared module APIs into an HTTP server with validation and authentication:
+
+```ts
+import { startHapiServer } from "@nexo-alpha/hapi";
+import { app } from "./app.js";
+
+const server = await startHapiServer(app, {
+  port: 3000,
+  authenticate: async (ctx) => {
+    const token = ctx.headers.authorization;
+    return token ? { authenticated: true } : { authenticated: false };
+  }
+});
+
+console.log(`Server listening at ${server.info.uri}`);
+```
+
+### 3. Schedule Background Cron Jobs (`@nexo-alpha/scheduler`)
+
+Declare recurring cron jobs right inside your modules:
+
+```ts
+import { startJobScheduler } from "@nexo-alpha/scheduler";
+
+app.module({
+  name: "cleanup",
+  jobs: [
+    {
+      name: "purgeExpiredCarts",
+      schedule: "0 * * * *", // every hour
+      run: async () => {
+        console.log("Cleaning up expired carts...");
+      }
+    }
+  ]
+});
+
+const scheduler = startJobScheduler(app);
+```
+
+### 4. Deterministic AI Safety Boundary (`@nexo-alpha/decision`)
+
+Prevent AI hallucinations and unauthorized actions using explicit deterministic rule chains:
+
+```ts
+import { createDecisionEngine, permissionRule, stateRule } from "@nexo-alpha/decision";
+
+const engine = createDecisionEngine({ name: "order-safety" });
+
+engine
+  .addRule(permissionRule({
+    name: "owner-only",
+    actions: ["cancel_order"],
+    check: ({ intent }) => intent.actor === intent.payload?.ownerId,
+    message: "You can only cancel your own orders."
+  }))
+  .addRule(stateRule({
+    name: "cancellable-state",
+    actions: ["cancel_order"],
+    allowedStates: ["pending", "processing"],
+    resolveState: async ({ intent }) => fetchOrderStatus(intent.target)
+  }));
+
+const outcome = await engine.evaluate({
+  action: "cancel_order",
+  actor: "user_123",
+  target: "order_999",
+  payload: { ownerId: "user_123" }
+});
+
+if (outcome.result === "APPROVE") {
+  // Safe to execute!
+} else if (outcome.result === "REJECT") {
+  console.error("Blocked:", outcome.reason);
+}
+```
+
+### 5. Orchestrate AI Agents & Workflows (`@nexo-alpha/agent`)
+
+Wire the full `UNDERSTAND → KNOW → DECIDE → ACT → VERIFY` pipeline:
+
+```ts
+import { createAgent, createWorkflow } from "@nexo-alpha/agent";
+import { createKnowledge } from "@nexo-alpha/context";
+import { engine } from "./decision-engine.js";
+
+const knowledge = createKnowledge();
+
+const agent = createAgent({
+  name: "support-agent",
+  decisionEngine: engine,
+  knowledge
+});
+
+// Register tools
+agent.tools.register({
+  name: "cancel_order",
+  description: "Cancels an open order",
+  execute: async ({ intent }) => cancelOrderInDatabase(intent.target)
+});
+
+// Run with automatic intent parsing, decision verification, and execution
+const record = await agent.run("Please cancel order order_999 for user_123");
+console.log(record.status); // "SUCCESS", "REJECTED", "ESCALATED", etc.
+```
+
+### 6. Inspect & Query Architecture with Nexo CLI (`@nexo-alpha/cli`)
+
+Inspect your architecture and trace impact directly in your terminal:
+
+```bash
+# Inspect application modules and APIs
+npx nexo inspect
+
+# Check decisions and development status
+npx nexo status
+
+# Generate full architecture knowledge graph
+npx nexo graph --source-root src --out .nexo/knowledge-graph.json
+
+# Trace the blast radius of changes to a function or module
+npx nexo impact "module:cart"
+
+# Check which files have changed since the graph was generated
+npx nexo freshness --source-root src
+```
+
+---
+
+## Development & Monorepo Workflows
+
+Clone and build the entire monorepo:
+
+```bash
+# Clone the repository
+git clone https://github.com/nexo-framework/nexo.git
+cd nexo
+
+# Install dependencies across all packages
 pnpm install
+
+# Build all packages
 pnpm build
+
+# Run typechecks across all packages
 pnpm typecheck
+
+# Run test suites across all packages
 pnpm test
 ```
 
-Each command runs across every workspace package (`pnpm -r`).
+---
 
-## Packages
+## Documentation
 
-- `packages/core` — `@nexo-alpha/core`, the framework-independent application
-  model: `NexoApplication`, `NexoModule`, `NexoService`, `NexoApi`, `NexoJob`,
-  lifecycle management (including failure/reset semantics), and the event bus.
-- `packages/context` — `@nexo-alpha/context`, builds a plain,
-  JSON-serializable `ApplicationContext` manifest from a `NexoApplication`,
-  and defines `createKnowledge()` — the human-authored decisions,
-  constraints, development state, and history journal.
-- `packages/decision` — `@nexo-alpha/decision`, the deterministic Decision Engine:
-  rule evaluation chain (`permission`, `state`, `constraint`, `confirmation`, `escalation`, `rateLimit`)
-  producing structured outcomes (`APPROVE`, `REJECT`, `ASK_USER`, `ESCALATE`, `DEFER`) and audit logs.
-- `packages/agent` — `@nexo-alpha/agent`, the AI-native application orchestration layer:
-  wires the intelligence stack (`UNDERSTAND → KNOW → DECIDE → ACT → VERIFY`), `ToolRegistry`,
-  `VerifierRegistry`, `ExecutionAuditLog`, `NexoAgent` (`execute()` & `run()`), and `NexoWorkflow`
-  (Phase 6 multi-step autonomous workflow engine with safety boundaries and human resumption).
-- `packages/tools` — `@nexo-alpha/tools`, the AI/tooling interface: source-interface code scanning,
-  read-only query interface, permission-gated write interface, verification interface, and metrics collector.
-- `packages/hapi` — `@nexo-alpha/hapi`, an HTTP adapter that turns
-  handler-backed `NexoApi` declarations into a running `@hapi/hapi` server.
-- `packages/scheduler` — `@nexo-alpha/scheduler`, a cron-based executor for `NexoJob`s.
-- `packages/cli` — `@nexo-alpha/cli` (`nexo` binary), developer CLI for inspecting applications.
+- [Developer Handbook & Guide](./docs/DEVELOPER_GUIDE.md) — Comprehensive guide on architecture, routing, services, and AI.
+- [Architecture Notes](./docs/architecture/README.md) — Detailed design rationale and milestone log.
+- [Product Requirements Document (PRD)](./PRD%20-%20AI-Era%20Software%20Development%20Framework.md) — The founding design principles of Nexo.
 
-## Examples
+---
 
-- `examples/hello-world` — minimal application using `@nexo-alpha/core` and
-  `@nexo-alpha/hapi`.
+## License
+
+MIT © Nexo Contributors
