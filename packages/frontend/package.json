@@ -29,8 +29,7 @@
     "./styles.css": "./dist/styles.css"
   },
   "publishConfig": {
-    "access": "public",
-    "registry": "https://npm.pkg.github.com"
+    "access": "public"
   },
   "files": [
     "dist"

@@ -59,7 +59,7 @@
 - `@nexo-alpha/integrations`: GitHub and Slack toolkits for agents.
 
 **Packaging & Distribution**
-- Official distribution via GitHub Packages registry (`npm.pkg.github.com`) under `@nexo-alpha`.
+- Official distribution via the npm registry under `@nexo-alpha`.
 - Automated GitHub Actions CI/CD release workflow (`.github/workflows/publish.yml`) with automated tests, typechecks, and dry-run validation.
 - Standardized `repository` metadata linking all monorepo subpackages to the root repository.
 - Scaffolding tool published as `@nexo-alpha/create-nexo-app` (`npx @nexo-alpha/create-nexo-app`).

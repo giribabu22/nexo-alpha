@@ -52,7 +52,7 @@ npm run dev
 
 ## Monorepo Packages
 
-Nexo is built as a set of modular, composable packages published under the `@nexo-alpha` scope on the GitHub Packages npm registry (`https://npm.pkg.github.com`):
+Nexo is built as a set of modular, composable packages published under the `@nexo-alpha` scope on npm (`https://www.npmjs.com/org/nexo-alpha`):
 
 | Package | npm | Description |
 |---|---|---|
