@@ -27,10 +27,11 @@ test("playground: explore RBAC, approval, memory and metrics through commands", 
 
     assert.match(await playground.execute("memory refund"), /refund:o-1 = \{"amount":40,"by":"sam"\}/);
     assert.match(await playground.execute("runs"), /Refund order o-2/);
-    assert.match(await playground.execute("metrics"), /HTTP 403/);
+    assert.match(await playground.execute("metrics"), /refunds: started 3, completed 2, failed 1, paused 1/); // acme only
     assert.match(await playground.execute("projects"), /acme  "Acme Corp"  \(manager\)[\s\S]*globex  "Globex"  \(manager\)/);
     assert.match(await playground.execute("project globex"), /Now in project globex/);
     assert.match(await playground.execute("runs"), /No runs yet/); // acme's runs are not visible in globex
+    assert.match(await playground.execute("metrics"), /refunds: no runs yet/);
     await playground.execute("as ops");
     assert.match(await playground.execute("metrics"), /refunds: started 3, completed 2, failed 1, paused 1/);
     assert.match(await playground.execute("dance"), /Unknown command/);

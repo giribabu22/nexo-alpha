@@ -144,3 +144,77 @@ test("createMetricsApiModule: GET /metrics returns the live snapshot through dis
   assert.equal(snapshot.workflows.refund.started, 1);
   assert.equal(app.getApis().find((api) => api.name === "getMetrics").path, "/metrics");
 });
+
+test("createMetricsApiModule: GET /metrics/prometheus serves Prometheus text with the right content type", async () => {
+  const { createHapiServer } = await import("@nexo-alpha/hapi");
+  const app = createApplication({ name: "shop" });
+  const metrics = createMetricsCollector(app);
+  app.module(createMetricsApiModule(metrics));
+  metrics.workflowListener({ type: "workflow.started", workflowName: "refund", workflowId: "a", goal: "g" });
+
+  const server = await createHapiServer(app, { logging: false });
+  const response = await server.inject({ method: "GET", url: "/metrics/prometheus" });
+  assert.equal(response.statusCode, 200);
+  assert.equal(response.headers["content-type"], "text/plain; version=0.0.4; charset=utf-8");
+  assert.match(response.payload, /^nexo_workflow_runs_started_total\{workflow="refund"\} 1$/m);
+
+  const json = await server.inject({ method: "GET", url: "/metrics" });
+  assert.equal(JSON.parse(json.payload).workflows.refund.started, 1);
+
+  const custom = createApplication({ name: "custom" });
+  custom.module(createMetricsApiModule(createMetricsCollector(custom), { path: "/ops/metrics", prometheusPath: false }));
+  assert.deepEqual(custom.getApis().map((api) => api.path), ["/ops/metrics"]);
+});
+
+test("per-project metrics: events inside a project count for it and for the platform totals", async () => {
+  const { runInProject } = await import("@nexo-alpha/core");
+  const app = createApplication({ name: "shop" });
+  const metrics = createMetricsCollector(app);
+
+  runInProject("acme", () => metrics.workflowListener({ type: "workflow.started", workflowName: "refund", workflowId: "a", goal: "g" }));
+  runInProject("globex", () => metrics.workflowListener({ type: "workflow.started", workflowName: "refund", workflowId: "b", goal: "g" }));
+  metrics.workflowListener({ type: "workflow.started", workflowName: "refund", workflowId: "c", goal: "g" });
+  metrics.queueListener({ type: "job.enqueued", job: { type: "send", projectId: "acme" } });
+  runInProject("acme", () => app.events.emit("api.called", { api: "getOrder", method: "GET", path: "/o", statusCode: 200, durationMs: 5 }));
+  app.events.emit("job.ran", { job: "nightly", durationMs: 10 });
+
+  assert.equal(metrics.getMetrics().workflows.refund.started, 3);
+  assert.equal(metrics.getMetrics({ projectId: "acme" }).workflows.refund.started, 1);
+  assert.equal(metrics.getMetrics({ projectId: "acme" }).queues.send.enqueued, 1);
+  assert.equal(metrics.getMetrics({ projectId: "acme" }).apis.getOrder.calls, 1);
+  assert.deepEqual(metrics.getMetrics({ projectId: "acme" }).jobs, {}); // cron jobs are platform-level
+  assert.equal(metrics.getMetrics({ projectId: "globex" }).queues.send, undefined);
+  assert.deepEqual(metrics.getMetrics({ projectId: "unknown" }), { apis: {}, jobs: {}, workflows: {}, queues: {} });
+  assert.deepEqual(metrics.projectIds().sort(), ["acme", "globex"]);
+  assert.match(metrics.toPrometheus({ projectId: "globex" }), /nexo_workflow_runs_started_total\{workflow="refund"\} 1/);
+
+  metrics.reset();
+  assert.deepEqual(metrics.projectIds(), []);
+});
+
+test("createMetricsApiModule({ scope: 'project' }): tenants see only their project; outside a project it is a 400", async () => {
+  const { createHapiServer } = await import("@nexo-alpha/hapi");
+  const { runInProject } = await import("@nexo-alpha/core");
+  const app = createApplication({ name: "shop" });
+  const metrics = createMetricsCollector(app);
+  app.module(createMetricsApiModule(metrics, { name: "project-metrics", path: "/project/metrics", scope: "project" }));
+  app.module(createMetricsApiModule(metrics));
+  runInProject("acme", () => metrics.workflowListener({ type: "workflow.started", workflowName: "refund", workflowId: "a", goal: "g" }));
+  metrics.workflowListener({ type: "workflow.started", workflowName: "refund", workflowId: "b", goal: "g" });
+
+  const server = await createHapiServer(app, {
+    logging: false,
+    project: { resolve: (context) => context.headers["x-project-id"], required: false }
+  });
+  const get = async (url, headers = {}) => {
+    const response = await server.inject({ method: "GET", url, headers });
+    return { status: response.statusCode, body: response.payload };
+  };
+
+  assert.equal(JSON.parse((await get("/project/metrics", { "x-project-id": "acme" })).body).workflows.refund.started, 1);
+  assert.equal(JSON.parse((await get("/project/metrics", { "x-project-id": "globex" })).body).workflows.refund, undefined);
+  assert.equal((await get("/project/metrics")).status, 400);
+  assert.match((await get("/project/metrics/prometheus", { "x-project-id": "acme" })).body, /started_total\{workflow="refund"\} 1/);
+  assert.equal(JSON.parse((await get("/metrics")).body).workflows.refund.started, 2);
+  assert.deepEqual(app.getApis().map((api) => api.name).sort(), ["getMetrics", "getProjectMetrics", "getProjectPrometheusMetrics", "getPrometheusMetrics"]);
+});

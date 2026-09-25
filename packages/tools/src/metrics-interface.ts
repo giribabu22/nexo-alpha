@@ -1,5 +1,8 @@
 import {
   NexoEvent,
+  NexoHttpError,
+  currentProjectId,
+  httpResponse,
   type ApiCalledEvent,
   type ApiErrorEvent,
   type JobFailedEvent,
@@ -62,17 +65,25 @@ export interface WorkflowEventLike {
 /** The job queue event fields the collector reads (matches `@nexo-alpha/scheduler`'s JobQueueEvent). */
 export interface JobQueueEventLike {
   readonly type: string;
-  readonly job: { readonly type: string; readonly startedAt?: string; readonly finishedAt?: string };
+  readonly job: { readonly type: string; readonly startedAt?: string; readonly finishedAt?: string; readonly projectId?: string };
+}
+
+export interface MetricsFilter {
+  /** Only this project's share (events that happened inside it). */
+  readonly projectId?: string | undefined;
 }
 
 export interface NexoMetricsCollector {
-  getMetrics(): NexoMetricsSnapshot;
+  /** Platform totals, or one project's share with `{ projectId }`. */
+  getMetrics(filter?: MetricsFilter): NexoMetricsSnapshot;
+  /** Projects that have recorded at least one event. */
+  projectIds(): string[];
   /** Pass as `createWorkflow({ onEvent })` to record workflow metrics. */
   readonly workflowListener: (event: WorkflowEventLike) => void;
   /** Pass as `createJobQueue({ onEvent })` to record job queue metrics. */
   readonly queueListener: (event: JobQueueEventLike) => void;
   /** The current snapshot in Prometheus text exposition format (version 0.0.4). */
-  toPrometheus(): string;
+  toPrometheus(filter?: MetricsFilter): string;
   reset(): void;
   stop(): void;
 }
@@ -172,85 +183,148 @@ export function formatPrometheusMetrics(snapshot: NexoMetricsSnapshot): string {
   return `${lines.join("\n")}\n`;
 }
 
-export function createMetricsCollector(app: NexoApplication): NexoMetricsCollector {
-  let apis = new Map<string, MutableCounters>();
-  let jobs = new Map<string, MutableCounters>();
-  let workflows = new Map<string, MutableWorkflowCounters>();
-  let queues = new Map<string, MutableQueueCounters>();
+/** One set of counters: the platform totals, or one project's share. */
+interface CounterSet {
+  readonly apis: Map<string, MutableCounters>;
+  readonly jobs: Map<string, MutableCounters>;
+  readonly workflows: Map<string, MutableWorkflowCounters>;
+  readonly queues: Map<string, MutableQueueCounters>;
+}
 
-  function entry<T>(map: Map<string, T>, key: string, create: () => T): T {
-    let counters = map.get(key);
-    if (counters === undefined) {
-      counters = create();
-      map.set(key, counters);
-    }
-    return counters;
+function newCounterSet(): CounterSet {
+  return { apis: new Map(), jobs: new Map(), workflows: new Map(), queues: new Map() };
+}
+
+function entry<T>(map: Map<string, T>, key: string, create: () => T): T {
+  let counters = map.get(key);
+  if (counters === undefined) {
+    counters = create();
+    map.set(key, counters);
+  }
+  return counters;
+}
+
+const newApiCounters = (): MutableCounters => ({ calls: 0, errors: 0, totalDurationMs: 0 });
+
+function snapshotOf(set: CounterSet): NexoMetricsSnapshot {
+  const apiEntries: Record<string, ApiMetrics> = {};
+  for (const [name, counters] of set.apis) {
+    apiEntries[name] = toRate(counters);
+  }
+
+  const jobEntries: Record<string, JobMetrics> = {};
+  for (const [name, counters] of set.jobs) {
+    const rate = toRate(counters);
+    jobEntries[name] = { runs: rate.calls, failures: rate.errors, averageDurationMs: rate.averageDurationMs };
+  }
+
+  const workflowEntries: Record<string, WorkflowMetrics> = {};
+  for (const [name, c] of set.workflows) {
+    const finished = c.completed + c.failed + c.cancelled;
+    workflowEntries[name] = {
+      started: c.started,
+      completed: c.completed,
+      failed: c.failed,
+      cancelled: c.cancelled,
+      paused: c.paused,
+      stepsCompleted: c.stepsCompleted,
+      stepsFailed: c.stepsFailed,
+      averageDurationMs: finished === 0 ? 0 : c.finishedDurationMs / finished
+    };
+  }
+
+  const queueEntries: Record<string, QueueMetrics> = {};
+  for (const [type, c] of set.queues) {
+    queueEntries[type] = {
+      enqueued: c.enqueued,
+      completed: c.completed,
+      failed: c.failed,
+      retried: c.retried,
+      averageDurationMs: c.completed === 0 ? 0 : c.completedDurationMs / c.completed
+    };
+  }
+
+  return { apis: apiEntries, jobs: jobEntries, workflows: workflowEntries, queues: queueEntries };
+}
+
+/**
+ * Collects metrics for APIs and cron jobs (from `app.events`), workflows
+ * (`workflowListener`) and job queues (`queueListener`).
+ *
+ * Every event counts towards the platform totals. Events that happen inside
+ * a project (see `runInProject` in `@nexo-alpha/core`) — or queue jobs that
+ * belong to one — also count towards that project, readable with
+ * `getMetrics({ projectId })`.
+ */
+export function createMetricsCollector(app: NexoApplication): NexoMetricsCollector {
+  let platform = newCounterSet();
+  let projects = new Map<string, CounterSet>();
+
+  /** The counter sets an event updates: the platform totals, plus its project's. */
+  function targets(projectId: string | undefined): CounterSet[] {
+    return projectId === undefined ? [platform] : [platform, entry(projects, projectId, newCounterSet)];
   }
 
   const workflowListener = (event: WorkflowEventLike): void => {
-    const counters = entry(workflows, event.workflowName, newWorkflowCounters);
     const duration = event.durationMs ?? 0;
-    switch (event.type) {
-      case "workflow.started": counters.started += 1; break;
-      case "workflow.completed": counters.completed += 1; counters.finishedDurationMs += duration; break;
-      case "workflow.failed": counters.failed += 1; counters.finishedDurationMs += duration; break;
-      case "workflow.cancelled": counters.cancelled += 1; counters.finishedDurationMs += duration; break;
-      case "workflow.paused": counters.paused += 1; break;
-      case "step.completed": counters.stepsCompleted += 1; break;
-      case "step.failed": counters.stepsFailed += 1; break;
-      default: break;
+    for (const set of targets(currentProjectId())) {
+      const counters = entry(set.workflows, event.workflowName, newWorkflowCounters);
+      switch (event.type) {
+        case "workflow.started": counters.started += 1; break;
+        case "workflow.completed": counters.completed += 1; counters.finishedDurationMs += duration; break;
+        case "workflow.failed": counters.failed += 1; counters.finishedDurationMs += duration; break;
+        case "workflow.cancelled": counters.cancelled += 1; counters.finishedDurationMs += duration; break;
+        case "workflow.paused": counters.paused += 1; break;
+        case "step.completed": counters.stepsCompleted += 1; break;
+        case "step.failed": counters.stepsFailed += 1; break;
+        default: break;
+      }
     }
   };
 
   const queueListener = (event: JobQueueEventLike): void => {
-    const counters = entry(queues, event.job.type, newQueueCounters);
-    switch (event.type) {
-      case "job.enqueued": counters.enqueued += 1; break;
-      case "job.retrying": counters.retried += 1; break;
-      case "job.failed": counters.failed += 1; break;
-      case "job.completed": {
-        counters.completed += 1;
-        const { startedAt, finishedAt } = event.job;
-        if (startedAt !== undefined && finishedAt !== undefined) {
-          counters.completedDurationMs += Math.max(0, Date.parse(finishedAt) - Date.parse(startedAt));
-        }
-        break;
+    const { startedAt, finishedAt } = event.job;
+    for (const set of targets(event.job.projectId ?? currentProjectId())) {
+      const counters = entry(set.queues, event.job.type, newQueueCounters);
+      switch (event.type) {
+        case "job.enqueued": counters.enqueued += 1; break;
+        case "job.retrying": counters.retried += 1; break;
+        case "job.failed": counters.failed += 1; break;
+        case "job.completed":
+          counters.completed += 1;
+          if (startedAt !== undefined && finishedAt !== undefined) {
+            counters.completedDurationMs += Math.max(0, Date.parse(finishedAt) - Date.parse(startedAt));
+          }
+          break;
+        default: break;
       }
-      default: break;
     }
   };
 
-  function bucket(map: Map<string, MutableCounters>, key: string): MutableCounters {
-    let counters = map.get(key);
-    if (!counters) {
-      counters = { calls: 0, errors: 0, totalDurationMs: 0 };
-      map.set(key, counters);
-    }
-    return counters;
-  }
-
   const onApiCalled = (event: ApiCalledEvent): void => {
-    const counters = bucket(apis, event.api);
-    counters.calls += 1;
-    counters.totalDurationMs += event.durationMs;
-    if (event.statusCode >= 400) {
-      counters.errors += 1;
+    for (const set of targets(currentProjectId())) {
+      const counters = entry(set.apis, event.api, newApiCounters);
+      counters.calls += 1;
+      counters.totalDurationMs += event.durationMs;
+      if (event.statusCode >= 400) counters.errors += 1;
     }
   };
 
   const onApiError = (event: ApiErrorEvent): void => {
-    bucket(apis, event.api).errors += 1;
+    for (const set of targets(currentProjectId())) {
+      entry(set.apis, event.api, newApiCounters).errors += 1;
+    }
   };
 
+  // Cron jobs are platform-level: they don't belong to a project.
   const onJobRan = (event: JobRanEvent): void => {
-    const counters = bucket(jobs, event.job);
+    const counters = entry(platform.jobs, event.job, newApiCounters);
     counters.calls += 1;
     counters.totalDurationMs += event.durationMs;
   };
 
   const onJobFailed = (event: JobFailedEvent): void => {
-    const counters = bucket(jobs, event.job);
-    counters.errors += 1;
+    entry(platform.jobs, event.job, newApiCounters).errors += 1;
   };
 
   app.events.on(NexoEvent.API_CALLED, onApiCalled as (...args: unknown[]) => void);
@@ -259,63 +333,25 @@ export function createMetricsCollector(app: NexoApplication): NexoMetricsCollect
   app.events.on(NexoEvent.JOB_FAILED, onJobFailed as (...args: unknown[]) => void);
 
   const collector: NexoMetricsCollector = {
-    getMetrics() {
-      const apiEntries: Record<string, ApiMetrics> = {};
-      for (const [name, counters] of apis) {
-        apiEntries[name] = toRate(counters);
-      }
+    getMetrics(filter = {}) {
+      if (filter.projectId === undefined) return snapshotOf(platform);
+      return snapshotOf(projects.get(filter.projectId) ?? newCounterSet());
+    },
 
-      const jobEntries: Record<string, JobMetrics> = {};
-      for (const [name, counters] of jobs) {
-        const rate = toRate(counters);
-        jobEntries[name] = {
-          runs: rate.calls,
-          failures: rate.errors,
-          averageDurationMs: rate.averageDurationMs
-        };
-      }
-
-      const workflowEntries: Record<string, WorkflowMetrics> = {};
-      for (const [name, c] of workflows) {
-        const finished = c.completed + c.failed + c.cancelled;
-        workflowEntries[name] = {
-          started: c.started,
-          completed: c.completed,
-          failed: c.failed,
-          cancelled: c.cancelled,
-          paused: c.paused,
-          stepsCompleted: c.stepsCompleted,
-          stepsFailed: c.stepsFailed,
-          averageDurationMs: finished === 0 ? 0 : c.finishedDurationMs / finished
-        };
-      }
-
-      const queueEntries: Record<string, QueueMetrics> = {};
-      for (const [type, c] of queues) {
-        queueEntries[type] = {
-          enqueued: c.enqueued,
-          completed: c.completed,
-          failed: c.failed,
-          retried: c.retried,
-          averageDurationMs: c.completed === 0 ? 0 : c.completedDurationMs / c.completed
-        };
-      }
-
-      return { apis: apiEntries, jobs: jobEntries, workflows: workflowEntries, queues: queueEntries };
+    projectIds() {
+      return [...projects.keys()];
     },
 
     workflowListener,
     queueListener,
 
-    toPrometheus() {
-      return formatPrometheusMetrics(collector.getMetrics());
+    toPrometheus(filter = {}) {
+      return formatPrometheusMetrics(collector.getMetrics(filter));
     },
 
     reset() {
-      apis = new Map();
-      jobs = new Map();
-      workflows = new Map();
-      queues = new Map();
+      platform = newCounterSet();
+      projects = new Map();
     },
 
     stop() {
@@ -330,33 +366,64 @@ export function createMetricsCollector(app: NexoApplication): NexoMetricsCollect
 }
 
 export interface MetricsApiModuleOptions {
-  /** Route path. Default: "/metrics" */
+  /** JSON snapshot route. Default: "/metrics" */
   readonly path?: string;
-  /** Auth requirement for the route. */
+  /** Prometheus text route; `false` disables it. Default: "<path>/prometheus" */
+  readonly prometheusPath?: string | false;
+  /** Auth requirement for both routes. */
   readonly auth?: NexoApiAuth;
+  /**
+   * "platform" (default): totals across all projects — for operators.
+   * "project": only the current request's project (see `runInProject`), so
+   * tenants can be given their own metrics; outside a project it answers 400.
+   */
+  readonly scope?: "platform" | "project";
   /** Module name. Default: "metrics" */
   readonly name?: string;
 }
 
+/** Content type of the Prometheus text exposition format. */
+export const PROMETHEUS_CONTENT_TYPE = "text/plain; version=0.0.4; charset=utf-8";
+
 /**
- * A module exposing `GET /metrics` with the collector's JSON snapshot, for
- * dashboards such as `@nexo-alpha/frontend`'s `NexoMetricsDashboard`.
- * For Prometheus scraping, serve `collector.toPrometheus()` as
- * `text/plain; version=0.0.4` from your HTTP server directly.
+ * A module exposing the collector over HTTP:
+ * - `GET /metrics` — JSON snapshot, for dashboards such as
+ *   `@nexo-alpha/frontend`'s `NexoMetricsDashboard`.
+ * - `GET /metrics/prometheus` — Prometheus text format, for scraping.
  */
 export function createMetricsApiModule(collector: NexoMetricsCollector, options: MetricsApiModuleOptions = {}): NexoModule {
+  const path = options.path ?? "/metrics";
+  const prometheusPath = options.prometheusPath ?? `${path.replace(/\/+$/, "")}/prometheus`;
+  const auth = options.auth !== undefined ? { auth: options.auth } : {};
+  const filter = (): MetricsFilter => {
+    if (options.scope !== "project") return {};
+    const projectId = currentProjectId();
+    if (projectId === undefined) throw new NexoHttpError(400, "PROJECT_REQUIRED", "Project metrics need a project.");
+    return { projectId };
+  };
+
   return {
     name: options.name ?? "metrics",
     description: "Runtime metrics snapshot (APIs, cron jobs, workflows, queues).",
     apis: [
       {
-        name: "getMetrics",
+        name: options.scope === "project" ? "getProjectMetrics" : "getMetrics",
         method: "GET",
-        path: options.path ?? "/metrics",
+        path,
         description: "Current metrics snapshot.",
-        ...(options.auth !== undefined ? { auth: options.auth } : {}),
-        handler: () => collector.getMetrics()
-      }
+        ...auth,
+        handler: () => collector.getMetrics(filter())
+      },
+      ...(prometheusPath === false
+        ? []
+        : [{
+          name: options.scope === "project" ? "getProjectPrometheusMetrics" : "getPrometheusMetrics",
+          method: "GET" as const,
+          path: prometheusPath,
+          description: "Current metrics in Prometheus text exposition format.",
+          ...auth,
+          handler: () => httpResponse(200, collector.toPrometheus(filter()), { "content-type": PROMETHEUS_CONTENT_TYPE })
+        }])
     ]
   };
 }

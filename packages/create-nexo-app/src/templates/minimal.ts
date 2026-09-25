@@ -24,8 +24,8 @@ dist
               start: "node dist/index.js"
             },
             dependencies: {
-              "@nexo-alpha/core": "^0.5.0",
-              "@nexo-alpha/hapi": "^0.5.0"
+              "@nexo-alpha/core": "^0.6.0",
+              "@nexo-alpha/hapi": "^0.6.0"
             },
             devDependencies: {
               "@types/node": "^20.11.0",

@@ -52,7 +52,7 @@ import { createWebhookDispatcher, type WebhookDispatcher } from "@nexo-alpha/web
 
 /** Roles within a project. "owner" is what a project's creator gets. */
 export const access = createAccessControl([
-  { name: "viewer", permissions: ["orders:read", "workflows:run", "memory:read"] },
+  { name: "viewer", permissions: ["orders:read", "workflows:run", "memory:read", "metrics:read"] },
   { name: "support", permissions: ["orders:refund"], inherits: ["viewer"] },
   { name: "manager", permissions: ["orders:*", "memory:*"], inherits: ["support"] },
   { name: "owner", permissions: [], inherits: ["manager"] }
@@ -256,11 +256,18 @@ export function createSupportDesk(options: SupportDeskOptions): SupportDesk {
     auth: { required: true, scopes: ["memory:read"] },
     writeAuth: { required: true, scopes: ["memory:write"] }
   }));
+  // Operators see totals across projects; members see their own project's metrics.
   app.module(createMetricsApiModule(metrics, { auth: { required: true, scopes: ["platform:metrics"] } }));
+  app.module(createMetricsApiModule(metrics, {
+    name: "project-metrics",
+    path: "/project/metrics",
+    scope: "project",
+    auth: { required: true, scopes: ["metrics:read"] }
+  }));
   app.module(createProjectApiModule({ registry: projects, resolveUser: resolveActor, auth: { required: true, scopes: ["projects:use"] } }));
 
   // Tenant-scoped routes run inside the requested project, for members only.
-  const GLOBAL_APIS = new Set(["health", "getMetrics", "listProjects", "createProject", "getProject", "setProjectMember"]);
+  const GLOBAL_APIS = new Set(["health", "getMetrics", "getPrometheusMetrics", "listProjects", "createProject", "getProject", "setProjectMember"]);
   const project: HapiProjectOptions = {
     skip: (api) => GLOBAL_APIS.has(api.name),
     resolve: async (context) => {

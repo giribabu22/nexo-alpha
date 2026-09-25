@@ -35,7 +35,8 @@ export type {
 export {
   createMetricsCollector,
   createMetricsApiModule,
-  formatPrometheusMetrics
+  formatPrometheusMetrics,
+  PROMETHEUS_CONTENT_TYPE
 } from "./metrics-interface.js";
 
 export type {
@@ -47,7 +48,8 @@ export type {
   QueueMetrics,
   WorkflowEventLike,
   JobQueueEventLike,
-  MetricsApiModuleOptions
+  MetricsApiModuleOptions,
+  MetricsFilter
 } from "./metrics-interface.js";
 
 export {

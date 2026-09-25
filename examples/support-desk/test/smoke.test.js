@@ -126,7 +126,10 @@ test("support desk: workflow events reach webhooks (signed) and metrics", async 
     assert.equal(verifyWebhookSignature({ body: received[0].body, signature: received[0].signature, secret }), true);
     assert.equal(JSON.parse(received[0].body).data.workflowId, started.body.id);
 
-    assert.equal((await call("max", "GET", "/metrics", undefined, null)).status, 403); // metrics are platform-wide
+    assert.equal((await call("max", "GET", "/metrics", undefined, null)).status, 403); // platform totals: operators only
+    const own = (await call("ann", "GET", "/project/metrics")).body;
+    assert.equal(own.workflows.refunds.completed, 1);
+    assert.equal((await call("max", "GET", "/project/metrics", undefined, "globex")).body.workflows.refunds, undefined);
     const metrics = (await call("ops", "GET", "/metrics", undefined, null)).body;
     assert.equal(metrics.workflows.refunds.completed, 1);
     assert.equal(metrics.workflows.refunds.stepsCompleted, 2);

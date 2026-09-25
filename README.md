@@ -31,13 +31,13 @@ The fastest way to start a new Nexo project is using `create-nexo-app`:
 
 ```bash
 # Fullstack React (Vite) + Nexo backend (Default)
-npx create-nexo-app my-app
+npx @nexo-alpha/create-nexo-app my-app
 
 # Standalone modular backend API service
-npx create-nexo-app my-service --template backend-api
+npx @nexo-alpha/create-nexo-app my-service --template backend-api
 
 # Minimal single-file setup
-npx create-nexo-app quick-start --template minimal
+npx @nexo-alpha/create-nexo-app quick-start --template minimal
 ```
 
 Then cd into your project, install dependencies, and run:
@@ -52,23 +52,24 @@ npm run dev
 
 ## Monorepo Packages
 
-Nexo is built as a set of modular, composable packages published under the `@nexo-alpha` scope on npm:
+Nexo is built as a set of modular, composable packages published under the `@nexo-alpha` scope on the GitHub Packages npm registry (`https://npm.pkg.github.com`):
 
 | Package | npm | Description |
 |---|---|---|
-| [`@nexo-alpha/core`](./packages/core/README.md) | `0.4.1` | Core runtime: applications, modules, services, declarative APIs, jobs, lifecycle, and event bus. |
-| [`@nexo-alpha/context`](./packages/context/README.md) | `0.4.1` | Application context manifest, knowledge journal (decisions, constraints, state, intents), and structure hashing. |
-| [`@nexo-alpha/decision`](./packages/decision/README.md) | `0.4.1` | Deterministic AI decision engine. Rule chains (`permission`, `state`, `constraint`, `confirmation`, `escalation`, `rateLimit`). |
-| [`@nexo-alpha/agent`](./packages/agent/README.md) | `0.4.1` | AI agent orchestration layer wiring `UNDERSTAND → KNOW → DECIDE → ACT → VERIFY`, tool registries, and autonomous workflows. |
-| [`@nexo-alpha/behavior`](./packages/behavior/README.md) | `0.4.1` | Typed bounded behavior layer: micro-decision primitives (`choice`, `boolean`, `score`), policies, and telemetry. |
-| [`@nexo-alpha/web`](./packages/web/README.md) | `0.4.1` | Web search, evidence extraction, and claim verification pipeline for AI research. |
-| [`@nexo-alpha/tools`](./packages/tools/README.md) | `0.4.1` | AI & developer introspection: read/write interfaces, verification, live metrics, source scanning, and knowledge graph. |
-| [`@nexo-alpha/scheduler`](./packages/scheduler/README.md) | `0.4.1` | Dependency-free cron scheduler for `NexoJob`s, plus a persistent background job queue with retries. |
-| [`@nexo-alpha/webhooks`](./packages/webhooks/README.md) | `0.5.0` | Signed, retried webhook delivery with subscription management and receiver-side verification. |
-| [`@nexo-alpha/integrations`](./packages/integrations/README.md) | `0.5.0` | Agent toolkits for GitHub and Slack, gated by RBAC like any other tool. |
-| [`@nexo-alpha/hapi`](./packages/hapi/README.md) | `0.4.1` | HTTP adapter turning declared `NexoApi`s into running Hapi.js servers with auth, validation, and lifecycle hooks. |
-| [`@nexo-alpha/cli`](./packages/cli/README.md) | `0.4.1` | Terminal CLI for architecture inspection, dependency impact tracing, health checks, and knowledge graphs. |
-| [`create-nexo-app`](./packages/create-nexo-app/README.md) | `0.4.1` | Scaffolding CLI for generating starter templates. |
+| [`@nexo-alpha/core`](./packages/core/README.md) | `0.6.0` | Core runtime: applications, modules, services, declarative APIs, jobs, lifecycle, and event bus. |
+| [`@nexo-alpha/context`](./packages/context/README.md) | `0.6.0` | Application context manifest, knowledge journal (decisions, constraints, state, intents), and structure hashing. |
+| [`@nexo-alpha/decision`](./packages/decision/README.md) | `0.6.0` | Deterministic AI decision engine. Rule chains (`permission`, `state`, `constraint`, `confirmation`, `escalation`, `rateLimit`). |
+| [`@nexo-alpha/agent`](./packages/agent/README.md) | `0.6.0` | AI agent orchestration layer wiring `UNDERSTAND → KNOW → DECIDE → ACT → VERIFY`, tool registries, and autonomous workflows. |
+| [`@nexo-alpha/behavior`](./packages/behavior/README.md) | `0.6.0` | Typed bounded behavior layer: micro-decision primitives (`choice`, `boolean`, `score`), policies, and telemetry. |
+| [`@nexo-alpha/web`](./packages/web/README.md) | `0.6.0` | Web search, evidence extraction, and claim verification pipeline for AI research. |
+| [`@nexo-alpha/tools`](./packages/tools/README.md) | `0.6.0` | AI & developer introspection: read/write interfaces, verification, live metrics, source scanning, and knowledge graph. |
+| [`@nexo-alpha/scheduler`](./packages/scheduler/README.md) | `0.6.0` | Dependency-free cron scheduler for `NexoJob`s, plus a persistent background job queue with retries. |
+| [`@nexo-alpha/webhooks`](./packages/webhooks/README.md) | `0.6.0` | Signed, retried webhook delivery with subscription management and receiver-side verification. |
+| [`@nexo-alpha/integrations`](./packages/integrations/README.md) | `0.6.0` | Agent toolkits for GitHub and Slack, gated by RBAC like any other tool. |
+| [`@nexo-alpha/hapi`](./packages/hapi/README.md) | `0.6.0` | HTTP adapter turning declared `NexoApi`s into running Hapi.js servers with auth, validation, and lifecycle hooks. |
+| [`@nexo-alpha/cli`](./packages/cli/README.md) | `0.6.0` | Terminal CLI for architecture inspection, dependency impact tracing, health checks, and knowledge graphs. |
+| [`@nexo-alpha/frontend`](./packages/frontend/README.md) | `0.6.0` | React components, UI dashboards, and universal client for Nexo applications. |
+| [`@nexo-alpha/create-nexo-app`](./packages/create-nexo-app/README.md) | `0.6.0` | Scaffolding CLI for generating starter templates. |
 
 ---
 

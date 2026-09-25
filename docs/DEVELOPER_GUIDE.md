@@ -575,8 +575,8 @@ const metrics = createMetricsCollector(app);
 createWorkflow({ name: "support-flow", agent, onEvent: metrics.workflowListener });
 createJobQueue({ store, onEvent: metrics.queueListener });
 
-app.module(createMetricsApiModule(metrics)); // GET /metrics -> JSON snapshot for dashboards
-metrics.toPrometheus();                      // Prometheus text format for scraping
+app.module(createMetricsApiModule(metrics)); // GET /metrics (JSON for dashboards)
+                                             // GET /metrics/prometheus (text format for scraping)
 ```
 
 ---
@@ -732,7 +732,7 @@ await runInProject("acme", () => workflow.run("Refund order 9"));
   - `client.forProject(id)` switches project.
   - `client.projects` manages projects.
   - `<NexoProjectSwitcher onChange={…} allowCreate />` is a ready-made picker.
-- **Metrics are platform-wide,** across all projects. Keep `/metrics` for platform operators rather than tenants.
+- **Metrics per project.** Events inside a project count towards that project as well as the platform totals. `createMetricsApiModule(metrics)` serves platform totals, which are meant for operators. `createMetricsApiModule(metrics, { scope: "project", path: "/project/metrics", name: "project-metrics" })` serves only the requesting project's numbers, for tenants.
 
 `examples/support-desk` is fully multi-tenant: two demo projects with different members, and tests that prove isolation.
 

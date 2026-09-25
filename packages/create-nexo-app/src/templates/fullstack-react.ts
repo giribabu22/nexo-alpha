@@ -132,7 +132,7 @@ npx nexo freshness --source-root src
               inspect: "nexo inspect"
             },
             devDependencies: {
-              "@nexo-alpha/cli": "^0.5.0",
+              "@nexo-alpha/cli": "^0.6.0",
               concurrently: "^9.1.0"
             }
           },
@@ -166,16 +166,16 @@ npx nexo freshness --source-root src
               graph: "nexo graph --source-root src --out .nexo/knowledge-graph.json"
             },
             dependencies: {
-              "@nexo-alpha/core": "^0.5.0",
-              "@nexo-alpha/context": "^0.5.0",
-              "@nexo-alpha/decision": "^0.5.0",
-              "@nexo-alpha/behavior": "^0.5.0",
-              "@nexo-alpha/agent": "^0.5.0",
-              "@nexo-alpha/web": "^0.5.0",
-              "@nexo-alpha/hapi": "^0.5.0",
-              "@nexo-alpha/scheduler": "^0.5.0",
-              "@nexo-alpha/tools": "^0.5.0",
-              "@nexo-alpha/cli": "^0.5.0"
+              "@nexo-alpha/core": "^0.6.0",
+              "@nexo-alpha/context": "^0.6.0",
+              "@nexo-alpha/decision": "^0.6.0",
+              "@nexo-alpha/behavior": "^0.6.0",
+              "@nexo-alpha/agent": "^0.6.0",
+              "@nexo-alpha/web": "^0.6.0",
+              "@nexo-alpha/hapi": "^0.6.0",
+              "@nexo-alpha/scheduler": "^0.6.0",
+              "@nexo-alpha/tools": "^0.6.0",
+              "@nexo-alpha/cli": "^0.6.0"
             },
             devDependencies: {
               "@types/node": "^20.11.0",
@@ -507,7 +507,7 @@ main().catch((err) => {
               preview: "vite preview"
             },
             dependencies: {
-              "@nexo-alpha/frontend": "^0.5.0",
+              "@nexo-alpha/frontend": "^0.6.0",
               react: "^18.3.1",
               "react-dom": "^18.3.1"
             },

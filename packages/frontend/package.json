@@ -1,6 +1,6 @@
 {
   "name": "@nexo-alpha/frontend",
-  "version": "0.5.0",
+  "version": "0.6.0",
   "description": "Client SDK, React hooks, and live introspection UI components for Nexo applications",
   "keywords": [
     "nexo",
@@ -29,7 +29,8 @@
     "./styles.css": "./dist/styles.css"
   },
   "publishConfig": {
-    "access": "public"
+    "access": "public",
+    "registry": "https://npm.pkg.github.com"
   },
   "files": [
     "dist"
@@ -64,5 +65,10 @@
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "typescript": "^5.0.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/giribabu22/nexo-alpha.git",
+    "directory": "packages/frontend"
   }
 }

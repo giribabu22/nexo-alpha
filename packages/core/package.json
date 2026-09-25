@@ -1,6 +1,6 @@
 {
   "name": "@nexo-alpha/core",
-  "version": "0.5.0",
+  "version": "0.6.0",
   "description": "Core runtime for the Nexo application framework",
   "keywords": [
     "nexo",
@@ -22,7 +22,8 @@
     }
   },
   "publishConfig": {
-    "access": "public"
+    "access": "public",
+    "registry": "https://npm.pkg.github.com"
   },
   "files": [
     "dist"
@@ -36,5 +37,10 @@
   "devDependencies": {
     "typescript": "^5.0.0",
     "@types/node": "^20.0.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/giribabu22/nexo-alpha.git",
+    "directory": "packages/core"
   }
 }

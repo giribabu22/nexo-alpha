@@ -36,7 +36,7 @@ const HELP = `Commands:
   show <run-id>        show a run's steps and decisions
   approve <run-id>     resume a paused run as the current user
   memory [text]        search agent memory
-  metrics              workflow and queue metrics (platform admins only)
+  metrics              workflow and queue metrics (this project; platform totals for admins)
   help                 this help
   exit                 quit`;
 
@@ -148,7 +148,7 @@ export async function createPlayground(): Promise<Playground> {
           return entries.length === 0 ? "Memory is empty." : entries.map((e) => `${e.key} = ${JSON.stringify(e.value)}`).join("\n");
         }
         case "metrics": {
-          const { status, body } = await call("GET", "/metrics");
+          const { status, body } = await call("GET", PLATFORM_ADMINS.includes(user) ? "/metrics" : "/project/metrics");
           if (status < 200 || status > 299) return `HTTP ${status}: ${body?.error ?? ""}`;
           const refunds = body.workflows.refunds;
           const queue = body.queues["nexo.workflow.execute"];

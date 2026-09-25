@@ -17,6 +17,7 @@ Examples:
   npx create-nexo-app my-app
   npx create-nexo-app my-service --template backend-api
   npx create-nexo-app quick-start --template minimal
+  npx create-nexo-app support-bot --template agent-service
 `;
 
 async function main(): Promise<void> {
