@@ -33,14 +33,21 @@ export type {
 } from "./verification-interface.js";
 
 export {
-  createMetricsCollector
+  createMetricsCollector,
+  createMetricsApiModule,
+  formatPrometheusMetrics
 } from "./metrics-interface.js";
 
 export type {
   NexoMetricsCollector,
   NexoMetricsSnapshot,
   ApiMetrics,
-  JobMetrics
+  JobMetrics,
+  WorkflowMetrics,
+  QueueMetrics,
+  WorkflowEventLike,
+  JobQueueEventLike,
+  MetricsApiModuleOptions
 } from "./metrics-interface.js";
 
 export {

@@ -262,3 +262,100 @@ test("Workflow: human escalation ESCALATE → ESCALATED → resume completes wor
 
   assert.equal(finalState.status, "COMPLETED");
 });
+
+test("Workflow: onEvent receives the step lifecycle in order", async () => {
+  const agent = createAgent({ name: "events-agent", decisionEngine: approveAllEngine() });
+  agent.tools.register(successTool("step_a"));
+  agent.tools.register(successTool("step_b"));
+
+  const events = [];
+  const workflow = createWorkflow({
+    name: "events-workflow",
+    agent,
+    parser: createStepIntentParser([{ action: "step_a" }, { action: "step_b" }]),
+    onEvent: (event) => { events.push(event); }
+  });
+
+  const state = await workflow.run("Run two steps");
+
+  assert.equal(state.status, "COMPLETED");
+  assert.deepEqual(events.map(e => e.type), [
+    "workflow.started",
+    "step.started",
+    "step.completed",
+    "step.started",
+    "step.completed",
+    "workflow.completed"
+  ]);
+  assert.ok(events.every(e => e.workflowId === state.id));
+  assert.equal(events[1].action, "step_a");
+  assert.equal(events[2].record.intent.action, "step_a");
+  assert.equal(events[5].steps, 2);
+});
+
+test("Workflow: failed step emits step.failed and workflow.failed", async () => {
+  const agent = createAgent({ decisionEngine: approveAllEngine() });
+  agent.tools.register({
+    action: "broken",
+    execute: async () => ({ success: false, error: "boom", durationMs: 1 })
+  });
+
+  const events = [];
+  const workflow = createWorkflow({
+    name: "failing-workflow",
+    agent,
+    parser: createStepIntentParser([{ action: "broken" }]),
+    onEvent: (event) => { events.push(event); }
+  });
+
+  const state = await workflow.run("Break");
+
+  assert.equal(state.status, "FAILED");
+  const types = events.map(e => e.type);
+  assert.deepEqual(types.slice(-2), ["step.failed", "workflow.failed"]);
+  assert.equal(events.at(-1).error, state.error);
+});
+
+test("Workflow: aborting the signal cancels before the next step", async () => {
+  const agent = createAgent({ decisionEngine: approveAllEngine() });
+  const controller = new AbortController();
+  agent.tools.register({
+    action: "first",
+    execute: async () => {
+      controller.abort();
+      return { success: true, data: { ok: true }, durationMs: 1 };
+    }
+  });
+  agent.tools.register(successTool("second"));
+
+  const events = [];
+  const workflow = createWorkflow({
+    name: "cancel-workflow",
+    agent,
+    parser: createStepIntentParser([{ action: "first" }, { action: "second" }]),
+    onEvent: (event) => { events.push(event); }
+  });
+
+  const state = await workflow.run("Cancel midway", { signal: controller.signal });
+
+  assert.equal(state.status, "CANCELLED");
+  assert.equal(state.history.length, 1);
+  assert.equal(events.at(-1).type, "workflow.cancelled");
+  assert.equal((await workflow.load(state.id)).status, "CANCELLED");
+});
+
+test("Workflow: a throwing onEvent listener does not affect the outcome", async () => {
+  const agent = createAgent({ decisionEngine: approveAllEngine() });
+  agent.tools.register(successTool("only"));
+
+  const workflow = createWorkflow({
+    name: "listener-isolation",
+    agent,
+    parser: createStepIntentParser([{ action: "only" }]),
+    onEvent: () => { throw new Error("listener exploded"); }
+  });
+
+  const state = await workflow.run("Stay healthy");
+
+  assert.equal(state.status, "COMPLETED");
+});

@@ -1,4 +1,5 @@
 import type { DecisionIntent } from "@nexo-alpha/decision";
+import { withTimeout } from "@nexo-alpha/core";
 
 /**
  * The result of executing a registered tool.
@@ -53,6 +54,18 @@ export interface NexoTool {
   /** Human-readable description — used in logs and error messages. */
   readonly description?: string | undefined;
   /**
+   * Permissions an actor needs to call this tool. Enforced only when the
+   * Decision Engine has a {@link toolPermissionRule}; purely declarative
+   * otherwise.
+   */
+  readonly permissions?: readonly string[] | undefined;
+  /**
+   * Fails the call (`{ success: false, error: "...timed out..." }`) if the
+   * handler hasn't finished within this many ms, so a hung dependency can't
+   * stall a workflow. The handler itself is not cancelled.
+   */
+  readonly timeoutMs?: number | undefined;
+  /**
    * The tool handler. Receives the full call context and returns a result.
    * May be synchronous or asynchronous.
    */
@@ -78,6 +91,8 @@ export interface ToolRegistry {
   unregister(action: string): boolean;
   /** Whether a tool for the given `action` is registered. */
   has(action: string): boolean;
+  /** The tool registered for `action`, if any. */
+  get(action: string): NexoTool | undefined;
   /** Names of all registered actions. */
   readonly actions: readonly string[];
   /**
@@ -127,6 +142,10 @@ export function createToolRegistry(): ToolRegistry {
       return map.has(action);
     },
 
+    get(action) {
+      return map.get(action);
+    },
+
     get actions() {
       return [...map.keys()];
     },
@@ -145,7 +164,9 @@ export function createToolRegistry(): ToolRegistry {
       const startMs = Date.now();
       try {
         const ctx: ToolContext = { intent, extras };
-        const result = await tool.execute(ctx);
+        const result = tool.timeoutMs !== undefined
+          ? await withTimeout(Promise.resolve(tool.execute(ctx)), tool.timeoutMs, `Tool "${tool.action}" timed out after ${tool.timeoutMs}ms.`)
+          : await tool.execute(ctx);
         // Ensure durationMs is always set (tool author may have omitted it)
         return {
           ...result,

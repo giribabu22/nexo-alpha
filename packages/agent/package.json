@@ -19,6 +19,10 @@
     ".": {
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
+    },
+    "./testing": {
+      "types": "./dist/testing.d.ts",
+      "import": "./dist/testing.js"
     }
   },
   "publishConfig": {
@@ -41,7 +45,9 @@
     "@nexo-alpha/web": "workspace:*"
   },
   "devDependencies": {
-    "typescript": "^5.0.0",
-    "@types/node": "^20.0.0"
+    "@nexo-alpha/hapi": "workspace:*",
+    "@nexo-alpha/scheduler": "workspace:*",
+    "@types/node": "^20.0.0",
+    "typescript": "^5.0.0"
   }
 }

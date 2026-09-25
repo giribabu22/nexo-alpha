@@ -34,19 +34,52 @@ export type {
   WorkflowState,
   WorkflowStatus,
   WorkflowOptions,
-  RunWorkflowOptions
+  RunWorkflowOptions,
+  WorkflowEvent,
+  WorkflowEventListener
 } from "./workflow.js";
 
 export {
   createInMemoryWorkflowStore,
   createKnowledgeWorkflowStore,
-  createFileWorkflowStore
+  createFileWorkflowStore,
+  createDocumentWorkflowStore
 } from "./workflow-store.js";
 
 export type {
   WorkflowStore,
-  WorkflowFilter
+  WorkflowFilter,
+  DocumentWorkflowStoreOptions
 } from "./workflow-store.js";
+
+// ---- Workflow HTTP API ----------------------------------------------------
+export { createWorkflowApiModule } from "./workflow-api.js";
+export type { WorkflowApiOptions, WorkflowJobQueue, WorkflowJobPayload } from "./workflow-api.js";
+
+// ---- Durable audit trail --------------------------------------------------
+export { createDocumentAuditTrail } from "./audit-trail.js";
+export type { AuditQuery, DocumentAuditTrail, DocumentAuditTrailOptions } from "./audit-trail.js";
+
+// ---- Memory HTTP API ------------------------------------------------------
+export { createMemoryApiModule } from "./memory-api.js";
+export type { MemoryApiOptions } from "./memory-api.js";
+
+// ---- Agent Memory ---------------------------------------------------------
+export {
+  createAgentMemory,
+  createInMemoryAgentMemory,
+  createFileAgentMemory,
+  createDocumentAgentMemory
+} from "./memory.js";
+
+export type {
+  AgentMemory,
+  MemoryBackend,
+  MemoryEntry,
+  RememberOptions,
+  RecallQuery,
+  DocumentAgentMemoryOptions
+} from "./memory.js";
 
 // ---- Tool Registry --------------------------------------------------------
 export {
@@ -59,6 +92,14 @@ export type {
   ToolContext,
   ToolResult
 } from "./tool-registry.js";
+
+// ---- Toolkits (tool plugins) ----------------------------------------------
+export { installToolkit } from "./toolkit.js";
+export type { AgentToolkit } from "./toolkit.js";
+
+// ---- Tool Permissions (RBAC) ----------------------------------------------
+export { toolPermissionRule } from "./tool-permissions.js";
+export type { ToolPermissionRuleOptions } from "./tool-permissions.js";
 
 // ---- Verifier Registry ----------------------------------------------------
 export {

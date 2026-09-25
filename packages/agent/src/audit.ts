@@ -86,7 +86,12 @@ export interface ExecutionAuditLog {
 // Factory
 // ---------------------------------------------------------------------------
 
-export function createExecutionAuditLog(): ExecutionAuditLog {
+/**
+ * Creates an in-memory audit log. Once `maxEntries` records are held, the
+ * oldest are dropped — stream records to durable storage with an agent's
+ * `auditSink` if you need the full history.
+ */
+export function createExecutionAuditLog(maxEntries = Number.POSITIVE_INFINITY): ExecutionAuditLog {
   const entries: ExecutionRecord[] = [];
 
   const log: ExecutionAuditLog = {
@@ -113,6 +118,7 @@ export function createExecutionAuditLog(): ExecutionAuditLog {
 
   (log as unknown as { _append(r: ExecutionRecord): void })._append = (r: ExecutionRecord) => {
     entries.push(r);
+    if (entries.length > maxEntries) entries.splice(0, entries.length - maxEntries);
   };
 
   return log;

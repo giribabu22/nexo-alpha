@@ -20,6 +20,23 @@ export type {
   JobSchedulerClock
 } from "./scheduler.js";
 
+// Persistent background job queue
+export {
+  createJobQueue
+} from "./queue.js";
+
+export type {
+  NexoJobQueue,
+  JobQueueOptions,
+  JobQueueEvent,
+  JobRecord,
+  JobStatus,
+  JobHandler,
+  JobContext,
+  JobFilter,
+  EnqueueOptions
+} from "./queue.js";
+
 // DSC-instrumented scheduler (dedup + tracing)
 export {
   createDscJobScheduler,

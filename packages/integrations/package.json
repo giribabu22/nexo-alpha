@@ -1,0 +1,44 @@
+{
+  "name": "@nexo-alpha/integrations",
+  "version": "0.5.0",
+  "description": "Agent toolkits for external services (GitHub, Slack) for the Nexo framework",
+  "keywords": [
+    "nexo",
+    "integrations",
+    "github",
+    "slack",
+    "agent",
+    "toolkit"
+  ],
+  "author": "prem1999",
+  "license": "MIT",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "node --test",
+    "clean": "rm -rf dist"
+  },
+  "dependencies": {
+    "@nexo-alpha/agent": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "typescript": "^5.0.0",
+    "@nexo-alpha/decision": "workspace:*"
+  }
+}

@@ -1,0 +1,44 @@
+{
+  "name": "@nexo-alpha/webhooks",
+  "version": "0.5.0",
+  "description": "Signed, retried webhook delivery for the Nexo framework",
+  "keywords": [
+    "nexo",
+    "webhooks",
+    "hmac",
+    "events",
+    "framework",
+    "typescript"
+  ],
+  "author": "prem1999",
+  "license": "MIT",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "node --test",
+    "clean": "rm -rf dist"
+  },
+  "dependencies": {
+    "@nexo-alpha/core": "workspace:*",
+    "@nexo-alpha/scheduler": "workspace:*"
+  },
+  "devDependencies": {
+    "typescript": "^5.0.0",
+    "@types/node": "^20.0.0"
+  }
+}

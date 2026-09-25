@@ -6,6 +6,7 @@
  */
 
 import type { ApplicationKnowledge } from "@nexo-alpha/context";
+import type { NexoDocumentStore } from "@nexo-alpha/core";
 import type { WorkflowState, WorkflowStatus } from "./workflow.js";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
@@ -101,9 +102,18 @@ export function createKnowledgeWorkflowStore(knowledge: ApplicationKnowledge): W
 
 /**
  * Creates a file-system backed WorkflowStore (JSON file).
- * WorkflowState snapshots persist across Node process restarts.
+ * WorkflowState snapshots persist across Node process restarts. Operations on
+ * one instance are serialized so concurrent saves are not lost; for several
+ * processes, use {@link createDocumentWorkflowStore} with a SQLite store.
  */
 export function createFileWorkflowStore(filePath: string): WorkflowStore {
+  let tail: Promise<unknown> = Promise.resolve();
+  function exclusive<T>(operation: () => Promise<T>): Promise<T> {
+    const result = tail.then(operation, operation);
+    tail = result.then(() => undefined, () => undefined);
+    return result;
+  }
+
   async function readAll(): Promise<Record<string, WorkflowState>> {
     try {
       const content = await fs.readFile(filePath, "utf-8");
@@ -121,35 +131,83 @@ export function createFileWorkflowStore(filePath: string): WorkflowStore {
 
   return {
     async save(state) {
-      const all = await readAll();
-      all[state.id] = JSON.parse(JSON.stringify(state));
-      await writeAll(all);
+      // Snapshot now: the caller may keep mutating `state` while this save waits its turn.
+      const snapshot = JSON.parse(JSON.stringify(state)) as WorkflowState;
+      await exclusive(async () => {
+        const all = await readAll();
+        all[snapshot.id] = snapshot;
+        await writeAll(all);
+      });
     },
 
-    async load(id) {
-      const all = await readAll();
-      const data = all[id];
-      return data ? JSON.parse(JSON.stringify(data)) : undefined;
+    load(id) {
+      return exclusive(async () => {
+        const all = await readAll();
+        const data = all[id];
+        return data ? JSON.parse(JSON.stringify(data)) : undefined;
+      });
+    },
+
+    list(filter) {
+      return exclusive(async () => {
+        const all = await readAll();
+        return JSON.parse(JSON.stringify(filterStates(Object.values(all), filter)));
+      });
+    },
+
+    delete(id) {
+      return exclusive(async () => {
+        const all = await readAll();
+        if (!(id in all)) return false;
+        delete all[id];
+        await writeAll(all);
+        return true;
+      });
+    }
+  };
+}
+
+function filterStates(states: WorkflowState[], filter: WorkflowFilter | undefined): WorkflowState[] {
+  let entries = states;
+  if (filter?.status) {
+    entries = entries.filter((e) => e.status === filter.status);
+  }
+  if (filter?.workflowName) {
+    entries = entries.filter((e) => e.workflowName === filter.workflowName);
+  }
+  return entries;
+}
+
+export interface DocumentWorkflowStoreOptions {
+  /** Collection holding workflow runs. Default: "workflow_runs" */
+  readonly collection?: string | undefined;
+}
+
+/**
+ * Creates a WorkflowStore on a `@nexo-alpha/core` {@link NexoDocumentStore}
+ * (in-memory, JSON file, or SQLite), one document per run.
+ */
+export function createDocumentWorkflowStore(
+  store: NexoDocumentStore,
+  options: DocumentWorkflowStoreOptions = {}
+): WorkflowStore {
+  const collection = options.collection ?? "workflow_runs";
+
+  return {
+    save(state) {
+      return store.put(collection, state.id, state);
+    },
+
+    load(id) {
+      return store.get<WorkflowState>(collection, id);
     },
 
     async list(filter) {
-      const all = await readAll();
-      let entries = Object.values(all);
-      if (filter?.status) {
-        entries = entries.filter((e) => e.status === filter.status);
-      }
-      if (filter?.workflowName) {
-        entries = entries.filter((e) => e.workflowName === filter.workflowName);
-      }
-      return JSON.parse(JSON.stringify(entries));
+      return filterStates(await store.list<WorkflowState>(collection), filter);
     },
 
-    async delete(id) {
-      const all = await readAll();
-      if (!(id in all)) return false;
-      delete all[id];
-      await writeAll(all);
-      return true;
+    delete(id) {
+      return store.delete(collection, id);
     }
   };
 }

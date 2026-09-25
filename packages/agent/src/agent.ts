@@ -28,6 +28,15 @@ export interface AgentOptions {
   readonly maxRetries?: number | undefined;
   readonly confidenceThreshold?: number | undefined;
   readonly extras?: Readonly<Record<string, unknown>> | undefined;
+  /**
+   * Receives every execution record (approved, blocked, failed or errored)
+   * as it is written — e.g. `createDocumentAuditTrail(store).sink` for a
+   * durable audit trail. Awaited in order; errors are ignored so auditing
+   * can never block execution.
+   */
+  readonly auditSink?: ((record: ExecutionRecord) => void | Promise<void>) | undefined;
+  /** Records kept in the in-memory `auditLog` (oldest dropped). Default: 10000 */
+  readonly maxAuditEntries?: number | undefined;
 }
 
 // ---------------------------------------------------------------------------
@@ -94,7 +103,20 @@ export function createAgent(options: AgentOptions): NexoAgent {
 
   const tools = createToolRegistry();
   const verifiers = createVerifierRegistry();
-  const auditLog = createExecutionAuditLog();
+  const auditLog = createExecutionAuditLog(options.maxAuditEntries ?? 10_000);
+  const auditSink = options.auditSink;
+
+  async function recordExecution(intent: DecisionIntent, record: ExecutionRecord): Promise<void> {
+    appendExecutionRecord(auditLog, record);
+    writeToKnowledge(knowledge, intent, record);
+    if (auditSink !== undefined) {
+      try {
+        await auditSink(record);
+      } catch {
+        // Auditing is best-effort: a failing sink must not block execution.
+      }
+    }
+  }
 
   const behavior: AgentBehaviorCapabilities = {
     engine: behaviorEngine,
@@ -142,8 +164,7 @@ export function createAgent(options: AgentOptions): NexoAgent {
         status: "ERROR",
         error: error instanceof Error ? error.message : String(error)
       };
-      appendExecutionRecord(auditLog, record);
-      writeToKnowledge(knowledge, intent, record);
+      await recordExecution(intent, record);
       return record;
     }
 
@@ -158,8 +179,7 @@ export function createAgent(options: AgentOptions): NexoAgent {
         attempt,
         status: "BLOCKED"
       };
-      appendExecutionRecord(auditLog, record);
-      writeToKnowledge(knowledge, intent, record);
+      await recordExecution(intent, record);
       return record;
     }
 
@@ -188,8 +208,7 @@ export function createAgent(options: AgentOptions): NexoAgent {
       status
     };
 
-    appendExecutionRecord(auditLog, record);
-    writeToKnowledge(knowledge, intent, record);
+    await recordExecution(intent, record);
 
     return record;
   }
