@@ -66,9 +66,13 @@ CMD ["node", "backend/dist/index.js"]
       },
       {
         path: "README.md",
-        content: `# ${projectName}
+        content: `<p align="center">
+  <img src="https://raw.githubusercontent.com/giribabu22/nexo-alpha/main/logo.png" alt="Nexo - The AI Application Framework" width="140">
+</p>
 
-A full-stack application powered by **Nexo** backend and **React (Vite)** frontend.
+# ${projectName}
+
+A full-stack application powered by **Nexo — The AI Application Framework** backend and **React (Vite)** frontend.
 
 ## Getting Started
 
@@ -583,20 +587,62 @@ export default defineConfig({
 `
       },
       {
+        path: "frontend/public/logo.svg",
+        content: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 800" width="100%" height="100%">
+  <defs>
+    <radialGradient id="bgGlow" cx="50%" cy="45%" r="60%">
+      <stop offset="0%" stop-color="#0f172a" />
+      <stop offset="100%" stop-color="#07090e" />
+    </radialGradient>
+    <linearGradient id="topApex" x1="0%" y1="0%" x2="50%" y2="100%">
+      <stop offset="0%" stop-color="#22d3ee" />
+      <stop offset="100%" stop-color="#06b6d4" />
+    </linearGradient>
+    <linearGradient id="leftArm" x1="100%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#0ea5e9" />
+      <stop offset="100%" stop-color="#38bdf8" />
+    </linearGradient>
+    <linearGradient id="rightArm" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#0284c7" />
+      <stop offset="100%" stop-color="#38bdf8" />
+    </linearGradient>
+    <linearGradient id="nodeGlow" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#38bdf8" />
+      <stop offset="100%" stop-color="#0284c7" />
+    </linearGradient>
+    <filter id="glow" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur stdDeviation="14" result="blur" />
+      <feComposite in="SourceGraphic" in2="blur" operator="over" />
+    </filter>
+  </defs>
+  <rect width="800" height="800" rx="40" fill="url(#bgGlow)" />
+  <g transform="translate(0, -30)">
+    <circle cx="400" cy="350" r="160" fill="#38bdf8" opacity="0.12" />
+    <path d="M 400 160 L 490 320 C 460 320 440 310 400 310 C 360 310 340 320 310 320 Z" fill="url(#topApex)" filter="url(#glow)" />
+    <path d="M 280 340 L 370 375 L 320 490 C 290 495 240 480 230 460 C 220 440 250 370 280 340 Z" fill="url(#leftArm)" filter="url(#glow)" />
+    <path d="M 520 340 L 570 460 C 560 480 510 495 480 490 L 430 375 L 520 340 Z" fill="url(#rightArm)" filter="url(#glow)" />
+    <circle cx="400" cy="355" r="46" fill="#07090e" stroke="url(#topApex)" stroke-width="12" />
+    <circle cx="400" cy="355" r="24" fill="url(#nodeGlow)" />
+  </g>
+  <text x="400" y="585" text-anchor="middle" fill="#ffffff" font-family="system-ui, -apple-system, sans-serif" font-size="82" font-weight="800">Nexo</text>
+  <text x="400" y="640" text-anchor="middle" fill="#94a3b8" font-family="system-ui, -apple-system, sans-serif" font-size="21" font-weight="600" letter-spacing="0.28em">THE AI APPLICATION FRAMEWORK</text>
+</svg>`
+      },
+      {
         path: "frontend/index.html",
         content: `<!DOCTYPE html>
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link rel="icon" type="image/svg+xml" href="/logo.svg" />
     <title>${projectName} — Powered by Nexo</title>
   </head>
   <body>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
-</html>
-`
+</html>`
       },
       {
         path: "frontend/src/main.tsx",
@@ -884,11 +930,24 @@ export const HeaderComp = nexoComp({
   render: ({ projectName }: { projectName: string }) => {
     return (
       <header style={{ textAlign: "center", marginBottom: "32px", animation: "slideUp 0.6s both" }}>
+        <div style={{ display: "inline-flex", justifyContent: "center", marginBottom: "16px" }}>
+          <img
+            src="/logo.svg"
+            alt="Nexo Logo"
+            style={{
+              width: "68px",
+              height: "68px",
+              borderRadius: "18px",
+              boxShadow: "0 10px 25px rgba(56, 189, 248, 0.25)",
+              border: "1px solid rgba(56, 189, 248, 0.2)"
+            }}
+          />
+        </div>
         <h1 className="gradient-text" style={{ fontSize: "3rem", fontWeight: 800, margin: "0 0 8px 0", letterSpacing: "-0.02em" }}>
           {projectName}
         </h1>
         <p style={{ color: "var(--text-secondary)", fontSize: "1.1rem", margin: 0 }}>
-          Premium Fullstack Architecture powered by Nexo & nexoComp
+          The AI Application Framework — Powered by Nexo & nexoComp
         </p>
       </header>
     );

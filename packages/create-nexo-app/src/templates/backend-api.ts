@@ -56,9 +56,13 @@ CMD ["node", "dist/index.js"]
       },
       {
         path: "README.md",
-        content: `# ${projectName}
+        content: `<p align="center">
+  <img src="https://raw.githubusercontent.com/giribabu22/nexo-alpha/main/logo.png" alt="Nexo - The AI Application Framework" width="140">
+</p>
 
-A modern backend service powered by the **Nexo** application framework.
+# ${projectName}
+
+A modern backend service powered by **Nexo — The AI Application Framework**.
 
 ## Getting Started
 

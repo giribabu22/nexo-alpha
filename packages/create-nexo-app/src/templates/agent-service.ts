@@ -71,9 +71,13 @@ CMD ["node", "dist/index.js"]
       },
       {
         path: "README.md",
-        content: `# ${projectName}
+        content: `<p align="center">
+  <img src="https://raw.githubusercontent.com/giribabu22/nexo-alpha/main/logo.png" alt="Nexo - The AI Application Framework" width="140">
+</p>
 
-An agent workflow service built on [Nexo](https://www.npmjs.com/package/@nexo-alpha/core).
+# ${projectName}
+
+An agent workflow service built on [Nexo — The AI Application Framework](https://www.npmjs.com/package/@nexo-alpha/core).
 
 - **Workflows over HTTP**, executed in a persistent background queue (SQLite on Node >= 22.5, a JSON file otherwise).
 - **JWT authentication** and **role-based tool permissions**: a tool only runs if the caller's roles grant its permissions.

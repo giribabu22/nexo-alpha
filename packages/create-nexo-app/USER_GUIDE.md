@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="https://raw.githubusercontent.com/giribabu22/nexo-alpha/main/logo.png" alt="Nexo - The AI Application Framework" width="140">
+</p>
+
 # Nexo User Guide
 
 Welcome to the **Nexo** User Guide! This document will walk you through everything you need to know to scaffold, build, and interact with a Nexo application using `create-nexo-app`.

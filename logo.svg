@@ -1,0 +1,89 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 800" width="100%" height="100%">
+  <defs>
+    <!-- Background Gradient -->
+    <radialGradient id="bgGlow" cx="50%" cy="45%" r="60%">
+      <stop offset="0%" stop-color="#0f172a" />
+      <stop offset="100%" stop-color="#07090e" />
+    </radialGradient>
+
+    <!-- Glowing Delta Gradients -->
+    <linearGradient id="topApex" x1="0%" y1="0%" x2="50%" y2="100%">
+      <stop offset="0%" stop-color="#22d3ee" />
+      <stop offset="100%" stop-color="#06b6d4" />
+    </linearGradient>
+
+    <linearGradient id="leftArm" x1="100%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#0ea5e9" />
+      <stop offset="100%" stop-color="#38bdf8" />
+    </linearGradient>
+
+    <linearGradient id="rightArm" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#0284c7" />
+      <stop offset="100%" stop-color="#38bdf8" />
+    </linearGradient>
+
+    <linearGradient id="nodeGlow" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#38bdf8" />
+      <stop offset="100%" stop-color="#0284c7" />
+    </linearGradient>
+
+    <!-- Drop Shadows / Glow Filter -->
+    <filter id="glow" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur stdDeviation="14" result="blur" />
+      <feComposite in="SourceGraphic" in2="blur" operator="over" />
+    </filter>
+  </defs>
+
+  <!-- Background -->
+  <rect width="800" height="800" rx="40" fill="url(#bgGlow)" />
+
+  <!-- Logo Mark Group -->
+  <g transform="translate(0, -30)">
+    <!-- Ambient Glow behind symbol -->
+    <circle cx="400" cy="350" r="160" fill="#38bdf8" opacity="0.12" filter="blur(30px)" />
+
+    <!-- Top Apex Piece -->
+    <path d="M 400 160 L 490 320 C 460 320 440 310 400 310 C 360 310 340 320 310 320 Z" 
+          fill="url(#topApex)" 
+          filter="url(#glow)" />
+
+    <!-- Bottom Left Arm -->
+    <path d="M 280 340 L 370 375 L 320 490 C 290 495 240 480 230 460 C 220 440 250 370 280 340 Z" 
+          fill="url(#leftArm)" 
+          filter="url(#glow)" />
+
+    <!-- Bottom Right Arm -->
+    <path d="M 520 340 L 570 460 C 560 480 510 495 480 490 L 430 375 L 520 340 Z" 
+          fill="url(#rightArm)" 
+          filter="url(#glow)" />
+
+    <!-- Central Nexus Node Outer Ring -->
+    <circle cx="400" cy="355" r="46" fill="#07090e" stroke="url(#topApex)" stroke-width="12" />
+
+    <!-- Central Nexus Inner Core -->
+    <circle cx="400" cy="355" r="24" fill="url(#nodeGlow)" />
+  </g>
+
+  <!-- Typography -->
+  <!-- Brand Wordmark -->
+  <text x="400" y="585" 
+        text-anchor="middle" 
+        fill="#ffffff" 
+        font-family="system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', sans-serif" 
+        font-size="82" 
+        font-weight="800" 
+        letter-spacing="-0.02em">
+    Nexo
+  </text>
+
+  <!-- Tagline -->
+  <text x="400" y="640" 
+        text-anchor="middle" 
+        fill="#94a3b8" 
+        font-family="system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', sans-serif" 
+        font-size="21" 
+        font-weight="600" 
+        letter-spacing="0.28em">
+    THE AI APPLICATION FRAMEWORK
+  </text>
+</svg>

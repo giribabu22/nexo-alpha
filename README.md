@@ -1,6 +1,24 @@
-# Nexo
+<p align="center">
+  <picture>
+    <source srcset="./logo.svg" type="image/svg+xml">
+    <img src="./logo.png" alt="Nexo - The AI Application Framework" width="180">
+  </picture>
+</p>
 
-> A lightweight, modular application framework and runtime for the AI era.
+<h1 align="center">Nexo</h1>
+
+<p align="center">
+  <strong>The AI Application Framework</strong><br>
+  <em>A lightweight, modular application framework and runtime for the AI era.</em>
+</p>
+
+<p align="center">
+  <a href="https://www.npmjs.com/org/nexo-alpha"><img src="https://img.shields.io/npm/v/@nexo-alpha/core.svg?color=38bdf8" alt="npm version" /></a>
+  <a href="https://github.com/giribabu22/nexo-alpha"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="License" /></a>
+  <a href="https://github.com/giribabu22/nexo-alpha"><img src="https://img.shields.io/badge/status-active-emerald.svg" alt="Build Status" /></a>
+</p>
+
+---
 
 Nexo bridges the gap between software development and AI intelligence. It provides a pure, dependency-free application model for your code and surrounds it with structured context, deterministic decision boundaries, bounded behaviors, autonomous workflows, and deep introspection tooling.
 

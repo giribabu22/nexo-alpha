@@ -1,6 +1,10 @@
+<p align="center">
+  <img src="https://raw.githubusercontent.com/giribabu22/nexo-alpha/main/logo.png" alt="Nexo - The AI Application Framework" width="140">
+</p>
+
 # create-nexo-app
 
-The official scaffolding tool for **Nexo** applications.
+The official scaffolding tool for **Nexo — The AI Application Framework**.
 
 ## Quick Start
 

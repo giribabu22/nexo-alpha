@@ -1,6 +1,10 @@
+<p align="center">
+  <img src="https://raw.githubusercontent.com/giribabu22/nexo-alpha/main/logo.png" alt="Nexo - The AI Application Framework" width="160">
+</p>
+
 # Nexo Developer Handbook & Guide
 
-Welcome to **Nexo** — the lightweight, modular application framework built for modern TypeScript engineering and AI-driven software development.
+Welcome to **Nexo — The AI Application Framework**, the lightweight, modular application framework built for modern TypeScript engineering and AI-driven software development.
 
 ---
 

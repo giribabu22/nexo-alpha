@@ -82,6 +82,23 @@ await app.start();
 const server = await startHapiServer(app, { port: 3000 });
 console.log(\`Running at \${server.info.uri}\`);
 `
+      },
+      {
+        path: "README.md",
+        content: `<p align="center">
+  <img src="https://raw.githubusercontent.com/giribabu22/nexo-alpha/main/logo.png" alt="Nexo - The AI Application Framework" width="140">
+</p>
+
+# ${projectName}
+
+Minimal application powered by **Nexo — The AI Application Framework**.
+
+## Quick Start
+\`\`\`bash
+npm install
+npm run dev
+\`\`\`
+`
       }
     ];
   }
