@@ -20,9 +20,13 @@ import {
   trace,
   validate
 } from "./commands.js";
+import { doctor, renderDoctorReport } from "./doctor.js";
+import { GENERATOR_KINDS, generateFiles, writeGeneratedFiles, type GeneratorKind } from "./generate.js";
 
 const USAGE = `Usage:
   nexo init [project-name] [--template <name>]
+  nexo generate <tool|workflow|module> <name> [--dir <project-root>] [--force]
+  nexo doctor [project-root] [--json]
   nexo inspect [app-module-path] [moduleName]
   nexo inspect [--module moduleName]
   nexo status [app-module-path]
@@ -121,6 +125,27 @@ async function main(): Promise<void> {
     const projectName = rest[0] || "my-nexo-app";
     console.log(`\n🚀 To scaffold a new Nexo project, run:\n`);
     console.log(`   npx create-nexo-app ${projectName}\n`);
+    return;
+  }
+
+  if (command === "generate" || command === "g") {
+    const [kind, name] = rest;
+    if (kind === undefined || name === undefined || !GENERATOR_KINDS.includes(kind as GeneratorKind)) {
+      console.error(`Usage: nexo generate <${GENERATOR_KINDS.join("|")}> <name> [--dir <project-root>] [--force]`);
+      process.exitCode = 1;
+      return;
+    }
+    const root = resolve(process.cwd(), extractFlagValue(rest, "--dir") ?? ".");
+    const written = await writeGeneratedFiles(root, generateFiles(kind as GeneratorKind, name), { force: rest.includes("--force") });
+    console.log(written.map((path) => `created ${path}`).join("\n"));
+    return;
+  }
+
+  if (command === "doctor") {
+    const target = rest[0] !== undefined && !rest[0].startsWith("--") ? rest[0] : ".";
+    const report = await doctor(resolve(process.cwd(), target));
+    console.log(rest.includes("--json") ? JSON.stringify(report, null, 2) : renderDoctorReport(report));
+    if (!report.ok) process.exitCode = 1;
     return;
   }
 

@@ -4,6 +4,10 @@ import type {
   NexoKnowledge,
   NexoModuleInfo
 } from "./types.js";
+import { NexoWorkflowsClient } from "./workflows.js";
+import { NexoMemoryClient } from "./memory.js";
+import { NexoProjectsClient } from "./projects.js";
+import type { NexoMetricsSnapshot } from "./metrics.js";
 
 export class NexoApiError extends Error {
   readonly status: number;
@@ -19,16 +23,36 @@ export class NexoApiError extends Error {
 
 export class NexoClient {
   readonly baseUrl: string;
+  /** Workflow API: start, inspect, resume and wait for workflow runs. */
+  readonly workflows: NexoWorkflowsClient;
+  /** Agent memory API: recall, inspect, edit and forget memory entries. */
+  readonly memory: NexoMemoryClient;
+  /** Projects API: list, create and manage members of projects (tenants). */
+  readonly projects: NexoProjectsClient;
+  /** The active project, sent as `x-project-id` on every request. */
+  readonly projectId: string | undefined;
+  private readonly options: NexoClientOptions;
   private readonly defaultHeaders: Record<string, string>;
   private readonly fetchFn: typeof fetch;
 
   constructor(options: NexoClientOptions = {}) {
+    this.options = options;
     this.baseUrl = (options.baseUrl ?? "").replace(/\/+$/, "");
+    this.projectId = options.projectId;
+    this.workflows = new NexoWorkflowsClient(this, options.workflowsPath);
+    this.memory = new NexoMemoryClient(this, options.memoryPath);
+    this.projects = new NexoProjectsClient(this, options.projectsPath);
     this.defaultHeaders = {
       "Accept": "application/json",
-      ...(options.headers ?? {})
+      ...(options.headers ?? {}),
+      ...(options.projectId !== undefined ? { "x-project-id": options.projectId } : {})
     };
     this.fetchFn = options.fetch ?? (typeof globalThis.fetch === "function" ? globalThis.fetch.bind(globalThis) : fetch);
+  }
+
+  /** A client with the same settings that works in another project. */
+  forProject(projectId: string | undefined): NexoClient {
+    return new NexoClient({ ...this.options, projectId });
   }
 
   private resolveUrl(path: string): string {
@@ -111,6 +135,11 @@ export class NexoClient {
 
   async getKnowledge(): Promise<NexoKnowledge> {
     return this.get<NexoKnowledge>("/api/knowledge");
+  }
+
+  /** Metrics snapshot from `createMetricsApiModule()` (`@nexo-alpha/tools`). */
+  async getMetrics(path = "/metrics"): Promise<NexoMetricsSnapshot> {
+    return this.get<NexoMetricsSnapshot>(path);
   }
 
   async getModules(): Promise<readonly NexoModuleInfo[]> {

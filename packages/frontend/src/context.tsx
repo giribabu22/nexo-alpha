@@ -22,13 +22,23 @@ export interface NexoProviderProps extends NexoClientOptions {
   readonly children: ReactNode;
 }
 
-export function NexoProvider({ client, baseUrl, headers, fetch: customFetch, children }: NexoProviderProps): React.JSX.Element {
+export function NexoProvider({
+  client,
+  baseUrl,
+  headers,
+  fetch: customFetch,
+  workflowsPath,
+  memoryPath,
+  projectId,
+  projectsPath,
+  children
+}: NexoProviderProps): React.JSX.Element {
   const resolvedClient = useMemo(() => {
     if (client) {
-      return client;
+      return projectId !== undefined ? client.forProject(projectId) : client;
     }
-    return createNexoClient({ baseUrl, headers, fetch: customFetch });
-  }, [client, baseUrl, headers, customFetch]);
+    return createNexoClient({ baseUrl, headers, fetch: customFetch, workflowsPath, memoryPath, projectId, projectsPath });
+  }, [client, baseUrl, headers, customFetch, workflowsPath, memoryPath, projectId, projectsPath]);
 
   return (
     <NexoContext.Provider value={{ client: resolvedClient }}>

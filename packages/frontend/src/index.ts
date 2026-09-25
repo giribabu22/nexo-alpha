@@ -18,6 +18,40 @@ export {
   NexoApiError
 } from "./client.js";
 
+// Workflow API client (also available React-free from "@nexo-alpha/frontend/client")
+export {
+  NexoWorkflowsClient,
+  type WorkflowRun,
+  type WorkflowRunStatus,
+  type WorkflowStepRecord,
+  type StartRunRequest,
+  type WaitForRunOptions,
+  type WorkflowDescription,
+  type WorkflowToolInfo
+} from "./workflows.js";
+
+export {
+  NexoProjectsClient,
+  type NexoProject
+} from "./projects.js";
+
+export {
+  NexoMemoryClient,
+  type MemoryEntry,
+  type MemoryQuery,
+  type RememberRequest
+} from "./memory.js";
+
+export {
+  summarizeMetrics,
+  type NexoMetricsSnapshot,
+  type NexoMetricsTotals,
+  type NexoApiMetrics,
+  type NexoCronJobMetrics,
+  type NexoWorkflowMetrics,
+  type NexoQueueMetrics
+} from "./metrics.js";
+
 export {
   createNexoRpcClient,
   type NexoRpcClient,
@@ -51,6 +85,17 @@ export {
   type UseNexoRpcQueryResult,
   type UseNexoRpcMutationResult
 } from "./hooks.js";
+
+export {
+  useWorkflowRuns,
+  useWorkflowRun,
+  useWorkflowActions,
+  type UseWorkflowRunsOptions,
+  type UseWorkflowRunsResult,
+  type UseWorkflowRunOptions,
+  type UseWorkflowRunResult,
+  type UseWorkflowActionsResult
+} from "./workflow-hooks.js";
 
 // NexoComp Core Layer (React in background, NexoComp everywhere)
 export {
@@ -138,6 +183,52 @@ export {
   NexoDscDashboardComp,
   type NexoDscDashboardProps
 } from "./components/NexoDscDashboard.js";
+
+export {
+  NexoWorkflowStatusBadge,
+  NexoWorkflowRunList,
+  NexoWorkflowRunListComp,
+  NexoWorkflowRunDetail,
+  NexoWorkflowRunDetailComp,
+  NexoWorkflowDashboard,
+  NexoWorkflowDashboardComp,
+  type NexoWorkflowRunListProps,
+  type NexoWorkflowRunDetailProps,
+  type NexoWorkflowDashboardProps
+} from "./components/NexoWorkflowRuns.js";
+
+export {
+  NexoProjectSwitcher,
+  NexoProjectSwitcherComp,
+  useProjects,
+  type NexoProjectSwitcherProps,
+  type UseProjectsResult
+} from "./components/NexoProjectSwitcher.js";
+
+export {
+  NexoWorkflowCatalog,
+  NexoWorkflowCatalogComp,
+  useWorkflowCatalog,
+  type NexoWorkflowCatalogProps,
+  type UseWorkflowCatalogResult
+} from "./components/NexoWorkflowCatalog.js";
+
+export {
+  NexoMetricsDashboard,
+  NexoMetricsDashboardComp,
+  useNexoMetrics,
+  type NexoMetricsDashboardProps,
+  type UseNexoMetricsOptions,
+  type UseNexoMetricsResult
+} from "./components/NexoMetricsDashboard.js";
+
+export {
+  NexoMemoryBrowser,
+  NexoMemoryBrowserComp,
+  useAgentMemory,
+  type NexoMemoryBrowserProps,
+  type UseAgentMemoryResult
+} from "./components/NexoMemoryBrowser.js";
 
 // DSA (Data Structures & Algorithms) Optimization Layer
 // --- Core Structures ---

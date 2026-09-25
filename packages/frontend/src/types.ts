@@ -53,6 +53,14 @@ export interface NexoClientOptions {
   readonly baseUrl?: string | undefined;
   readonly headers?: Record<string, string> | undefined;
   readonly fetch?: typeof fetch | undefined;
+  /** Route prefix of the workflow API (`createWorkflowApiModule`). Default: "/workflows" */
+  readonly workflowsPath?: string | undefined;
+  /** Route prefix of the memory API (`createMemoryApiModule`). Default: "/memory" */
+  readonly memoryPath?: string | undefined;
+  /** Active project: sent as the `x-project-id` header on every request. */
+  readonly projectId?: string | undefined;
+  /** Route prefix of the projects API (`createProjectApiModule`). Default: "/projects" */
+  readonly projectsPath?: string | undefined;
 }
 
 export interface UsePollingOptions {
