@@ -33,6 +33,19 @@ export {
   rateLimitRule
 } from "./rules.js";
 
+// ---- Role-based access control --------------------------------------------
+export {
+  createAccessControl,
+  permissionMatches,
+  rbacRule
+} from "./rbac.js";
+
+export type {
+  AccessControl,
+  RoleDefinition,
+  RbacRuleOptions
+} from "./rbac.js";
+
 export type {
   PermissionRuleOptions,
   StateRuleOptions,

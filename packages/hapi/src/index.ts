@@ -1,9 +1,12 @@
 export {
   createHapiServer,
   startHapiServer,
-  toHapiPath
+  toHapiPath,
+  REQUEST_ID_HEADER
 } from "./create-server.js";
 
 export type {
-  CreateHapiServerOptions
+  CreateHapiServerOptions,
+  HapiRateLimitOptions,
+  HapiProjectOptions
 } from "./create-server.js";

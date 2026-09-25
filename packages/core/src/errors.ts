@@ -53,3 +53,18 @@ export class NexoAuthenticationError extends NexoError {
     this.name = "NexoAuthenticationError";
   }
 }
+
+/**
+ * Thrown from an API handler to answer with a specific 4xx status instead of
+ * a 500. HTTP adapters (e.g. `@nexo-alpha/hapi`) respond with
+ * `{ error: message, code }` and this `statusCode`.
+ */
+export class NexoHttpError extends NexoError {
+  readonly statusCode: number;
+
+  constructor(statusCode: number, code: string, message: string) {
+    super(code, message);
+    this.name = "NexoHttpError";
+    this.statusCode = statusCode;
+  }
+}

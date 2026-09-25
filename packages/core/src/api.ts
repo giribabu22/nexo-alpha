@@ -89,3 +89,28 @@ export interface NexoApi {
   /** Declared request/response shape. See {@link NexoApiSchema}. */
   readonly schema?: NexoApiSchema;
 }
+
+const HTTP_RESPONSE = Symbol.for("nexo.httpResponse");
+
+/**
+ * A handler result that sets the HTTP status and headers — e.g. `202
+ * Accepted` with a `Location` header. Build one with {@link httpResponse}.
+ * (For 4xx errors, throw `NexoHttpError` instead.)
+ */
+export interface NexoHttpResponse<T = unknown> {
+  readonly [HTTP_RESPONSE]: true;
+  readonly statusCode: number;
+  readonly body: T | undefined;
+  readonly headers: Readonly<Record<string, string>>;
+}
+
+export function httpResponse<T>(statusCode: number, body?: T, headers: Readonly<Record<string, string>> = {}): NexoHttpResponse<T> {
+  if (!Number.isInteger(statusCode) || statusCode < 100 || statusCode > 599) {
+    throw new RangeError(`Invalid HTTP status code ${statusCode}.`);
+  }
+  return { [HTTP_RESPONSE]: true, statusCode, body, headers };
+}
+
+export function isHttpResponse(value: unknown): value is NexoHttpResponse {
+  return typeof value === "object" && value !== null && (value as Record<symbol, unknown>)[HTTP_RESPONSE] === true;
+}

@@ -15,6 +15,8 @@ import {
   NexoAuthenticationError
 } from "./errors.js";
 import { NexoEvent, NexoEventBus } from "./events.js";
+import { missingScopes } from "./auth.js";
+import { isHttpResponse } from "./api.js";
 import {
   NexoContainer,
   type ServiceToken,
@@ -515,8 +517,7 @@ export class NexoApplication {
           );
         }
         if (api.auth.scopes && api.auth.scopes.length > 0) {
-          const userScopes = authResult.scopes ?? [];
-          const missing = api.auth.scopes.filter((s) => !userScopes.includes(s));
+          const missing = missingScopes(authResult.scopes, api.auth.scopes);
           if (missing.length > 0) {
             throw new NexoAuthenticationError(
               `Missing required scope(s): ${missing.join(", ")}`
@@ -549,11 +550,12 @@ export class NexoApplication {
         api: api.name,
         method: api.method,
         path: api.path,
-        statusCode: 200,
+        statusCode: isHttpResponse(result) ? result.statusCode : 200,
         durationMs
       });
 
-      return result;
+      // dispatch() callers get the body; HTTP adapters read status/headers themselves.
+      return isHttpResponse(result) ? result.body : result;
     } catch (error) {
       const durationMs = Date.now() - startTime;
       this.events.emit(NexoEvent.API_ERROR, {

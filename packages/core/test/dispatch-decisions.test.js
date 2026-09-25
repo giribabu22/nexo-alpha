@@ -120,3 +120,17 @@ test("dispatches API calls through validation, auth, middleware, and handler", a
     (err) => err instanceof NexoConfigurationError
   );
 });
+
+test("httpResponse: dispatch returns the body and reports the status in api.called", async () => {
+  const { createApplication, httpResponse, isHttpResponse } = await import("../dist/index.js");
+  const app = createApplication({ name: "accepted" });
+  app.module({ name: "m", apis: [{ name: "queue", method: "POST", path: "/q", handler: () => httpResponse(202, { queued: true }, { location: "/q/1" }) }] });
+  const statuses = [];
+  app.events.on("api.called", (event) => statuses.push(event.statusCode));
+
+  assert.deepEqual(await app.dispatch("queue", { params: {}, query: {}, payload: undefined, headers: {} }), { queued: true });
+  assert.deepEqual(statuses, [202]);
+  assert.equal(isHttpResponse(httpResponse(204)), true);
+  assert.equal(isHttpResponse({ statusCode: 202 }), false);
+  assert.throws(() => httpResponse(99), RangeError);
+});

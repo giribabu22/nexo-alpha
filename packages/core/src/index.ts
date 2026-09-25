@@ -31,8 +31,87 @@ export type {
   NexoRequestValidator,
   NexoApiAuth,
   NexoAuthResult,
-  NexoAuthenticator
+  NexoAuthenticator,
+  NexoHttpResponse
 } from "./api.js";
+
+export { httpResponse, isHttpResponse } from "./api.js";
+
+export {
+  scopeMatches,
+  missingScopes,
+  apiKeyAuthenticator,
+  jwtAuthenticator,
+  anyAuthenticator,
+  signToken,
+  verifyToken,
+  scopesFromClaims
+} from "./auth.js";
+
+export { createRequestContext } from "./request.js";
+
+export {
+  runInProject,
+  currentProjectId,
+  isValidProjectId,
+  scopeByProject,
+  createProjectRegistry,
+  createProjectApiModule
+} from "./projects.js";
+export type {
+  Project,
+  ProjectRegistry,
+  ProjectRegistryOptions,
+  ProjectApiOptions,
+  ScopeByProjectOptions
+} from "./projects.js";
+
+export { createRateLimiter } from "./rate-limit.js";
+
+export {
+  withTimeout,
+  retry,
+  createCircuitBreaker,
+  NexoTimeoutError,
+  NexoCircuitOpenError
+} from "./resilience.js";
+export type { RetryOptions, CircuitBreaker, CircuitBreakerOptions, CircuitState } from "./resilience.js";
+export type { RateLimiter, RateLimiterOptions, RateLimitResult } from "./rate-limit.js";
+
+export {
+  createLogger,
+  noopLogger,
+  DEFAULT_REDACT_KEYS
+} from "./logger.js";
+
+export type {
+  NexoLogger,
+  LogLevel,
+  LogFields,
+  LogEntry,
+  LoggerOptions
+} from "./logger.js";
+
+export {
+  createInMemoryDocumentStore,
+  createFileDocumentStore,
+  createSqliteDocumentStore
+} from "./storage.js";
+
+export type {
+  NexoDocumentStore,
+  SqliteDocumentStoreOptions
+} from "./storage.js";
+
+export type {
+  ApiKeyEntry,
+  ApiKeyAuthenticatorOptions,
+  JwtAuthenticatorOptions,
+  TokenClaims,
+  SignTokenOptions,
+  VerifyTokenOptions,
+  VerifyTokenResult
+} from "./auth.js";
 
 export type {
   NexoJob,
@@ -58,7 +137,8 @@ export {
   NexoResolutionError,
   NexoPluginError,
   NexoValidationError,
-  NexoAuthenticationError
+  NexoAuthenticationError,
+  NexoHttpError
 } from "./errors.js";
 
 export {
