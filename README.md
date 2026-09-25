@@ -63,7 +63,9 @@ Nexo is built as a set of modular, composable packages published under the `@nex
 | [`@nexo-alpha/behavior`](./packages/behavior/README.md) | `0.4.1` | Typed bounded behavior layer: micro-decision primitives (`choice`, `boolean`, `score`), policies, and telemetry. |
 | [`@nexo-alpha/web`](./packages/web/README.md) | `0.4.1` | Web search, evidence extraction, and claim verification pipeline for AI research. |
 | [`@nexo-alpha/tools`](./packages/tools/README.md) | `0.4.1` | AI & developer introspection: read/write interfaces, verification, live metrics, source scanning, and knowledge graph. |
-| [`@nexo-alpha/scheduler`](./packages/scheduler/README.md) | `0.4.1` | Lightweight, dependency-free cron scheduler for `NexoJob`s. |
+| [`@nexo-alpha/scheduler`](./packages/scheduler/README.md) | `0.4.1` | Dependency-free cron scheduler for `NexoJob`s, plus a persistent background job queue with retries. |
+| [`@nexo-alpha/webhooks`](./packages/webhooks/README.md) | `0.5.0` | Signed, retried webhook delivery with subscription management and receiver-side verification. |
+| [`@nexo-alpha/integrations`](./packages/integrations/README.md) | `0.5.0` | Agent toolkits for GitHub and Slack, gated by RBAC like any other tool. |
 | [`@nexo-alpha/hapi`](./packages/hapi/README.md) | `0.4.1` | HTTP adapter turning declared `NexoApi`s into running Hapi.js servers with auth, validation, and lifecycle hooks. |
 | [`@nexo-alpha/cli`](./packages/cli/README.md) | `0.4.1` | Terminal CLI for architecture inspection, dependency impact tracing, health checks, and knowledge graphs. |
 | [`create-nexo-app`](./packages/create-nexo-app/README.md) | `0.4.1` | Scaffolding CLI for generating starter templates. |
@@ -267,11 +269,13 @@ pnpm typecheck
 pnpm test
 ```
 
+`build`, `typecheck` and `test` run through [Turborepo](https://turborepo.com), which caches results per package: unchanged packages are skipped on later runs.
+
 ---
 
 ## Documentation
 
-- [Developer Handbook & Guide](./docs/DEVELOPER_GUIDE.md) — Comprehensive guide on architecture, routing, services, and AI.
+- [Developer Handbook & Guide](./docs/DEVELOPER_GUIDE.md) — Comprehensive guide on architecture, routing, services, and AI, plus the production runtime: workflows over HTTP, auth & RBAC, persistence, job queues, webhooks, observability, frontend dashboards, generators and testing (sections 13–22, including multi-tenant projects).
 - [Architecture Notes](./docs/architecture/README.md) — Detailed design rationale and milestone log.
 - [Product Requirements Document (PRD)](./PRD%20-%20AI-Era%20Software%20Development%20Framework.md) — The founding design principles of Nexo.
 

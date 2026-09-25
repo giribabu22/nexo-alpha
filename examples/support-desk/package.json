@@ -1,0 +1,28 @@
+{
+  "name": "@nexo/example-support-desk",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Refund desk: JWT auth, RBAC, queued workflows with human approval, memory, webhooks and metrics",
+  "scripts": {
+    "start": "node dist/index.js",
+    "playground": "node dist/playground.js",
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "node --test"
+  },
+  "dependencies": {
+    "@nexo-alpha/agent": "workspace:*",
+    "@nexo-alpha/core": "workspace:*",
+    "@nexo-alpha/decision": "workspace:*",
+    "@nexo-alpha/hapi": "workspace:*",
+    "@nexo-alpha/scheduler": "workspace:*",
+    "@nexo-alpha/tools": "workspace:*",
+    "@nexo-alpha/webhooks": "workspace:*"
+  },
+  "devDependencies": {
+    "@nexo-alpha/frontend": "workspace:*",
+    "@types/node": "^20.0.0",
+    "typescript": "^5.0.0"
+  }
+}

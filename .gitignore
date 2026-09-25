@@ -5,3 +5,6 @@ dist/
 .env
 .env.*
 coverage/
+
+# Turborepo cache
+.turbo

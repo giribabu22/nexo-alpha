@@ -9,14 +9,16 @@
     "node": ">=20"
   },
   "scripts": {
-    "build": "pnpm -r build",
-    "test": "pnpm -r --if-present test",
-    "typecheck": "pnpm -r typecheck",
+    "build": "turbo run build",
+    "test": "turbo run test",
+    "typecheck": "turbo run typecheck",
     "clean": "pnpm -r --if-present clean",
-    "publish:all": "pnpm build && pnpm -r publish --access public --no-git-checks"
+    "publish:all": "pnpm build && pnpm -r publish --access public --no-git-checks",
+    "bench": "node scripts/bench.mjs"
   },
   "devDependencies": {
-    "typescript": "^5.0.0",
-    "@types/node": "^20.0.0"
+    "@types/node": "^20.0.0",
+    "turbo": "^2.11.4",
+    "typescript": "^5.0.0"
   }
 }
