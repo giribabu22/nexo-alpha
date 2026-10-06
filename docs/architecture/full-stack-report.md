@@ -185,8 +185,8 @@ Run on 2026-10-06 with Node 22.19, `turbo run build typecheck test --force` (no 
 | frontend type tests | pass (9 assertions / expected errors) |
 | cli tests | 62 pass (2 new); generated resource/page files compile under the repo's strict tsconfig |
 | benchmark conformance | 16 pass (before and after, 8 checks each) |
-| Lint | not run: the repo has no lint configuration |
-| Hooks in a browser DOM | not tested: the repo has no DOM test environment. Hook state logic lives in `createQuery`, which is unit-tested; components are tested by server rendering |
+| Browser environment | `frontend/test/dom.test.js` (jsdom + react-dom): form → API → table refresh, field errors with no request sent, delete confirmation, file upload attached to the saved record, protected page → sign-up → back to the page → sign out |
+| Lint | `pnpm lint`: 0 errors (3 warnings in older hooks with deliberate dependency lists) |
 
 **`packages/data`**, a parallel `resource()` implementation that appeared in the working tree
 during this work, was reviewed and removed (2026-10-06). Three of its ideas were ported into

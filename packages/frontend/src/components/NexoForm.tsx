@@ -162,10 +162,12 @@ interface FieldInputProps {
   readonly value: unknown;
   readonly error: string | undefined;
   readonly onChange: (value: unknown) => void;
+  /** Called with +1 when an upload starts and -1 when it ends, so the form can wait. */
+  readonly onUploading?: ((delta: 1 | -1) => void) | undefined;
 }
 
 /** A file picker that uploads on selection and stores the uploaded file's id. */
-function FileInput({ name, label, field, value, error, onChange }: FieldInputProps): React.JSX.Element {
+function FileInput({ name, label, field, value, error, onChange, onUploading }: FieldInputProps): React.JSX.Element {
   const client = useNexoClient();
   const [status, setStatus] = useState<string | null>(null);
   const [uploadError, setUploadError] = useState<string | null>(null);
@@ -175,6 +177,7 @@ function FileInput({ name, label, field, value, error, onChange }: FieldInputPro
     setUploadError(null);
     if (file === undefined) return;
     setStatus(`Uploading ${file.name}…`);
+    onUploading?.(1);
     try {
       const uploaded = await client.files.upload(file);
       setStatus(uploaded.name);
@@ -182,6 +185,8 @@ function FileInput({ name, label, field, value, error, onChange }: FieldInputPro
     } catch (caught) {
       setStatus(null);
       setUploadError(caught instanceof Error ? caught.message : String(caught));
+    } finally {
+      onUploading?.(-1);
     }
   }
 
@@ -323,9 +328,21 @@ function NexoFormFields<M extends NexoModel>({
   });
 
   const shown = (fields ?? Object.keys(model.fields)).filter((key) => model.fields[key]?.kind !== "array");
+  // Saving while a file is still uploading would store the record without it.
+  const [uploads, setUploads] = useState(0);
 
   return (
-    <form onSubmit={(event) => void form.submit(event)} noValidate style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
+    <form
+      onSubmit={(event) => {
+        if (uploads > 0) {
+          event.preventDefault();
+          return;
+        }
+        void form.submit(event);
+      }}
+      noValidate
+      style={{ display: "flex", flexDirection: "column", gap: "14px" }}
+    >
       {shown.map((key) => (
         <FieldInput
           key={key}
@@ -335,12 +352,13 @@ function NexoFormFields<M extends NexoModel>({
           value={form.values[key]}
           error={form.errors[key]?.join(" ")}
           onChange={(value) => form.setValue(key, value)}
+          onUploading={(delta) => setUploads((count) => count + delta)}
         />
       ))}
       {form.formError && <div role="alert" style={errorStyle}>{form.formError}</div>}
       <div>
-        <NexoButton type="submit" disabled={form.submitting}>
-          {form.submitting ? "Saving…" : submitLabel ?? (editing ? "Save" : "Create")}
+        <NexoButton type="submit" disabled={form.submitting || uploads > 0}>
+          {uploads > 0 ? "Uploading…" : form.submitting ? "Saving…" : submitLabel ?? (editing ? "Save" : "Create")}
         </NexoButton>
       </div>
     </form>

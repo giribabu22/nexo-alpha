@@ -45,6 +45,7 @@
 
 **Tooling**
 - `pnpm lint`: ESLint with typescript-eslint and React's rules of hooks, run in CI.
+- Browser-environment tests (jsdom) for `@nexo-alpha/frontend` drive forms, tables, delete confirmation, file uploads and the sign-in redirect against a live server.
 
 **Templates (`create-nexo-app`)**
 - `backend-api` projects start with a `notes` resource (`src/notes/`) stored in `data/app.json`.
@@ -56,6 +57,7 @@
 - `NexoProvider` ignored its `auth` and `timeoutMs` props.
 - The code-to-intent benchmark's "before" email checks rejected addresses containing the letter "s" (a lost escape in the pattern). Found by the new lint step.
 - Tests that need `node:sqlite` are skipped on Node.js 20, as the CI matrix expects.
+- `NexoForm` could be submitted while a file was still uploading, saving the record without the file. The submit button now waits ("Uploading…"). Found by the new browser-environment tests.
 - Projects generated from the `fullstack-react` template failed `npm run build`: the frontend type check rejected an unused `React` import in `KnowledgeInspector.tsx`.
 - The README's hapi example accepted any `Authorization` header as signed in. It now uses `jwtAuthenticator`.
 
