@@ -85,7 +85,7 @@ export async function buildContextWithDsc(
       name: "context:build",
       idempotent: true,
       ttlMs: options.ttlMs ?? 30_000,
-      plan(ctx) {
+      plan(_ctx) {
         // Use the structural hash as the cache key so only genuinely changed
         // applications bust the cache.
         return { cacheKey: `context:build:${structureHash}` };

@@ -1,4 +1,4 @@
-import { NexoRadixTrie, type RouteMatchResult } from "../dsa/trie.js";
+import { NexoRadixTrie } from "../dsa/trie.js";
 import { NexoLruCache } from "../dsa/lru.js";
 
 export interface RouteDefinition<TComponent = any, TMeta = Record<string, unknown>> {

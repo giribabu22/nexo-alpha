@@ -1,8 +1,7 @@
 import React, {
   forwardRef,
   memo as reactMemo,
-  type ReactNode,
-  type CSSProperties
+  type ReactNode
 } from "react";
 import { NexoElement } from "../dsa/reactive-element.js";
 import { NexoLruCache } from "../dsa/lru.js";
@@ -24,7 +23,10 @@ export interface NexoCompMetadata {
 export interface NexoCompDsaConfig<TProps = any> {
   /** Whether to register node in NexoElementGraph DAG tree for dirty state tracking */
   readonly trackDirty?: boolean | undefined;
-  /** Whether to enable O(1) LRU render memoization cache */
+  /**
+   * Whether to enable O(1) LRU render memoization cache. A cache hit skips
+   * `render`, so only use it for components whose render calls no hooks.
+   */
   readonly lruCache?: boolean | undefined;
   /** Custom key generator when lruCache is enabled */
   readonly cacheKey?: ((props: TProps) => string) | undefined;

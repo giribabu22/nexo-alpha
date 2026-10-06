@@ -15,6 +15,9 @@ import {
   resource
 } from "../dist/index.js";
 
+const HAS_SQLITE = await import("node:sqlite").then(() => true, () => false);
+const SQLITE = { skip: !HAS_SQLITE && "node:sqlite not available" };
+
 const NAMES = ["ann", "Ann", "ANNA", "bob", "Bobby", "cy", "Zoe", "zed", "Éva", "éva", "o'brien", "100%_sure"];
 const CATEGORIES = ["tools", "toys", "books"];
 
@@ -51,7 +54,7 @@ function randomQuery(next) {
   return query;
 }
 
-test("SQLite query() gives exactly the in-memory results for random queries", async () => {
+test("SQLite query() gives exactly the in-memory results for random queries", SQLITE, async () => {
   const next = random(42);
   const docs = dataset(next);
   const sqlite = await createSqliteDocumentStore(":memory:");
@@ -90,7 +93,7 @@ test("queryDocuments rules: missing values last both ways, ASCII-only case foldi
   assert.throws(() => queryDocuments(docs, { sort: { field: "a') OR 1=1 --" } }), /Invalid query field/);
 });
 
-test("SQLite query() rejects field names that are not plain identifiers", async () => {
+test("SQLite query() rejects field names that are not plain identifiers", SQLITE, async () => {
   const sqlite = await createSqliteDocumentStore(":memory:");
   await sqlite.put("items", "a", { name: "x" });
   for (const field of ["name') OR 1=1 --", "a.b", "$", ""]) {
@@ -99,7 +102,7 @@ test("SQLite query() rejects field names that are not plain identifiers", async 
   await sqlite.close();
 });
 
-test("scopeByProject forwards query() and keeps projects apart", async () => {
+test("scopeByProject forwards query() and keeps projects apart", SQLITE, async () => {
   const scoped = scopeByProject(await createSqliteDocumentStore(":memory:"));
   await runInProject("p1", () => scoped.put("items", "a", { name: "one" }));
   await runInProject("p2", () => scoped.put("items", "b", { name: "two" }));
@@ -108,7 +111,7 @@ test("scopeByProject forwards query() and keeps projects apart", async () => {
   assert.equal(scopeByProject(createInMemoryDocumentStore()).query, undefined);
 });
 
-test("resource() lists the same way on SQLite and in memory, including old records missing a defaulted field", async () => {
+test("resource() lists the same way on SQLite and in memory, including old records missing a defaulted field", SQLITE, async () => {
   const Product = model("products", {
     name: field.string(),
     price: field.number(),
@@ -139,7 +142,7 @@ test("resource() only allows text fields as searchable", () => {
   assert.throws(() => resource(Thing, { store: createInMemoryDocumentStore(), searchable: ["count"] }), /must hold text/);
 });
 
-test("index() makes filters use an index, including fields with defaults", async (t) => {
+test("index() makes filters use an index, including fields with defaults", SQLITE, async (t) => {
   const dir = await mkdtemp(join(tmpdir(), "nexo-index-"));
   t.after(() => rm(dir, { recursive: true, force: true }));
   const file = join(dir, "data.db");

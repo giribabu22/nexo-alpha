@@ -13,7 +13,7 @@ export type UserInput = Pick<User, "name" | "email"> & Partial<Pick<User, "role"
 
 const properties: Record<string, NexoFieldSchema> = {
   name: { type: "string", minLength: 1 },
-  email: { type: "string", pattern: "^[^\s@]+@[^\s@]+\.[^\s@]+$" },
+  email: { type: "string", pattern: "^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$" },
   role: { type: "string", enum: ["member", "admin"] }
 };
 

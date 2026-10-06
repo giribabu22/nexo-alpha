@@ -403,6 +403,9 @@ pnpm typecheck
 # Run test suites across all packages (unit, integration and type tests)
 pnpm test
 
+# Lint (bug-catching rules such as React's rules of hooks; no style rules)
+pnpm lint
+
 # Runtime throughput benchmarks (stores, lists on SQLite, workflows, job queue)
 pnpm bench
 

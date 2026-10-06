@@ -44,6 +44,7 @@ export function modules(store: NexoDocumentStore, directory: string): NexoModule
             const id = randomUUID();
             const file: StoredFile = {
               id,
+              // eslint-disable-next-line no-control-regex -- removing control characters is the point
               name: basename(body.name.replace(/\\/g, "/")).replace(/[\u0000-\u001f"]/g, "") || "file",
               type,
               size: bytes.length,

@@ -63,7 +63,7 @@ function resolveEndpointCall(
   let rawPath = customRoute?.path ?? `/api/${moduleName}/${endpointName}`;
 
   let body: unknown = undefined;
-  let queryParams: Record<string, string> = {};
+  const queryParams: Record<string, string> = {};
 
   if (input && typeof input === "object" && !Array.isArray(input)) {
     const inputObj = { ...(input as Record<string, unknown>) };

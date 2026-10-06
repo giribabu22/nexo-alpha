@@ -20,6 +20,7 @@ import {
 } from "../dist/index.js";
 
 const SECRET = "accounts-test-secret-0123456789abcdefghij";
+const HAS_SQLITE = await import("node:sqlite").then(() => true, () => false);
 
 const bearer = (token) => createRequestContext({ headers: { authorization: `Bearer ${token}` } });
 
@@ -38,7 +39,8 @@ test("insert stores only when the id is free, in every built-in store", async (t
   const stores = {
     memory: createInMemoryDocumentStore(),
     file: createFileDocumentStore(join(dir, "data.json")),
-    sqlite: await createSqliteDocumentStore(":memory:")
+    // node:sqlite needs Node >= 22.5.
+    ...(HAS_SQLITE ? { sqlite: await createSqliteDocumentStore(":memory:") } : {})
   };
   for (const [name, store] of Object.entries(stores)) {
     assert.equal(await store.insert("c", "a", { v: 1 }), true, name);

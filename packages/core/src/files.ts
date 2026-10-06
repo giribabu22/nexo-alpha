@@ -175,6 +175,7 @@ const INLINE_TYPES = [
 /** The last path segment, without control characters, at most 200 characters. */
 function cleanName(name: string | undefined): string {
   const base = (name ?? "").split(/[/\\]/).pop() ?? "";
+  // eslint-disable-next-line no-control-regex -- removing control characters is the point
   const clean = base.replace(/[\u0000-\u001f\u007f"]/g, "").trim().slice(0, 200);
   return clean === "" || clean === "." || clean === ".." ? "file" : clean;
 }

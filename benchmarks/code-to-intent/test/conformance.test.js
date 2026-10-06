@@ -64,6 +64,7 @@ for (const variant of VARIANTS) {
     assert.equal((await call("POST", "/api/invitations", { email: "not-an-email" }, writer)).status, 400);
     assert.equal((await call("POST", "/api/invitations", { email: "a@example.com", role: "owner" }, writer)).status, 400);
 
+    assert.equal((await call("POST", "/api/invitations", { email: "sam.smith@sales.example.com" }, writer)).status, 201);
     const created = await call("POST", "/api/invitations", { email: "a@example.com" }, writer);
     assert.equal(created.status, 201);
     assert.equal(created.body.role, "member");
@@ -76,13 +77,15 @@ for (const variant of VARIANTS) {
     assert.equal((await call("POST", "/api/users", { email: "ann@example.com" })).status, 400);
     assert.equal((await call("POST", "/api/users", { name: "Ann", email: "nope" })).status, 400);
 
+    // An address with an "s": catches email patterns that lost their backslashes.
+    assert.equal((await call("POST", "/api/users", { name: "Sam", email: "sam.smith@sales.example.com" })).status, 201);
     const created = await call("POST", "/api/users", { name: "Ann", email: "ann@example.com" });
     assert.equal(created.status, 201);
     const ann = created.body;
     assert.equal(ann.role, "member");
 
     assert.deepEqual(await call("GET", `/api/users/${ann.id}`), { status: 200, body: ann });
-    assert.deepEqual(items((await call("GET", "/api/users")).body), [ann]);
+    assert.deepEqual(items((await call("GET", "/api/users")).body).find((user) => user.id === ann.id), ann);
 
     const updated = await call("PATCH", `/api/users/${ann.id}`, { role: "admin" });
     assert.equal(updated.status, 200);

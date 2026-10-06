@@ -13,7 +13,7 @@ const invitationBody: NexoFieldSchema = {
   type: "object",
   required: ["email"],
   properties: {
-    email: { type: "string", pattern: "^[^\s@]+@[^\s@]+\.[^\s@]+$" },
+    email: { type: "string", pattern: "^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$" },
     role: { type: "string", enum: ["member", "admin"] }
   }
 };

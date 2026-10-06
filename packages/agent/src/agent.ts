@@ -10,9 +10,9 @@ import {
   type ExecutionRecord,
   type ExecutionStatus
 } from "./audit.js";
-import { createToolRegistry, type NexoTool, type ToolRegistry } from "./tool-registry.js";
-import { createVerifierRegistry, type ResultVerifier, type VerifierRegistry } from "./verifier.js";
-import type { IntentParser, IntentParserOptions } from "./understand.js";
+import { createToolRegistry, type ToolRegistry } from "./tool-registry.js";
+import { createVerifierRegistry, type VerifierRegistry } from "./verifier.js";
+import type { IntentParser } from "./understand.js";
 
 // ---------------------------------------------------------------------------
 // Agent options

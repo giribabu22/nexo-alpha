@@ -99,7 +99,7 @@ export class BehaviorEngine {
     return this.telemetry.getMetrics();
   }
 
-  public async decide<TState = unknown, TQuestions extends QuestionMap = QuestionMap>(
+  public async decide<TState = unknown, _TQuestions extends QuestionMap = QuestionMap>(
     request: DecisionRequest<TState>,
     callType: CallType | string = 'custom'
   ): Promise<DecisionResponse> {

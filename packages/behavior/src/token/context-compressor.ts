@@ -196,7 +196,7 @@ export class ContextCompressor {
     const include = options?.include;
 
     // --- 1. Clone & apply exclusions ---
-    let working: Record<string, unknown> = JSON.parse(JSON.stringify(state));
+    const working: Record<string, unknown> = JSON.parse(JSON.stringify(state));
     for (const path of exclude) {
       deleteNestedKey(working, path);
     }

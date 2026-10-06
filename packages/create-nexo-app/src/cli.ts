@@ -1,7 +1,6 @@
 #!/usr/bin/env node
-import * as path from "node:path";
 import { createNexoApp } from "./generator.js";
-import { templates, defaultTemplateName } from "./templates/index.js";
+import { defaultTemplateName } from "./templates/index.js";
 
 const USAGE = `create-nexo-app — Scaffold a new Nexo application
 

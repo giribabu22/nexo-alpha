@@ -75,6 +75,7 @@ export function useForm<M extends NexoModel>(model: M, options: UseFormOptions<M
   const [formError, setFormError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const partial = options.partial === true;
+  const onSubmit = options.onSubmit;
   const resetOnSuccess = options.resetOnSuccess ?? !partial;
 
   const showErrors = useCallback((messages: readonly string[]) => {
@@ -110,7 +111,7 @@ export function useForm<M extends NexoModel>(model: M, options: UseFormOptions<M
 
       setSubmitting(true);
       try {
-        await options.onSubmit(toSend as InferInput<M>);
+        await onSubmit(toSend as InferInput<M>);
         setErrors({});
         setFormError(null);
         if (resetOnSuccess) setValues(initial);
@@ -124,7 +125,7 @@ export function useForm<M extends NexoModel>(model: M, options: UseFormOptions<M
         setSubmitting(false);
       }
     },
-    [values, initial, partial, resetOnSuccess, model, options.onSubmit, showErrors]
+    [values, initial, partial, resetOnSuccess, model, onSubmit, showErrors]
   );
 
   const reset = useCallback(() => {

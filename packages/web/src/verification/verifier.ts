@@ -1,4 +1,4 @@
-import { BehaviorEngine, createBehaviorEngine, type BehaviorProvider } from "@nexo-alpha/behavior";
+import { createBehaviorEngine, type BehaviorProvider } from "@nexo-alpha/behavior";
 import type { Evidence } from "../types/index.js";
 
 export interface VerifyEvidenceOptions {

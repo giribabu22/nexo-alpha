@@ -49,7 +49,7 @@ export function NexoElement({
 }: NexoElementProps): React.JSX.Element {
   const graph = useContext(ElementGraphContext) ?? getGlobalElementGraph();
   const parentId = useContext(ParentElementIdContext);
-  const [, setTick] = useState(0);
+  const [, _setTick] = useState(0);
   const prevDataRef = useRef<unknown>(data);
 
   useEffect(() => {

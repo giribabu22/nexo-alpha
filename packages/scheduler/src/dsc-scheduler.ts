@@ -19,7 +19,6 @@
  */
 
 import {
-  createJobScheduler,
   type JobSchedulerOptions,
   type NexoJobScheduler,
   type JobSchedulerClock

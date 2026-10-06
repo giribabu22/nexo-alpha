@@ -16,13 +16,19 @@
     "build": "turbo run build",
     "test": "turbo run test",
     "typecheck": "turbo run typecheck",
+    "lint": "eslint .",
     "clean": "pnpm -r --if-present clean",
     "publish:all": "pnpm build && pnpm -r publish --access public --no-git-checks",
     "bench": "node scripts/bench.mjs"
   },
   "devDependencies": {
+    "@eslint/js": "^9",
     "@types/node": "^20.0.0",
+    "eslint": "^9",
+    "eslint-plugin-react-hooks": "^5",
+    "globals": "^15",
     "turbo": "^2.11.7",
-    "typescript": "^5.0.0"
+    "typescript": "^5.0.0",
+    "typescript-eslint": "^8"
   }
 }

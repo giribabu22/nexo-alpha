@@ -26,7 +26,8 @@ import type { NexoResourceClient, NexoResourceClientOptions } from "./resource.j
 /** The client's typed resource client for `model` (shared by every hook using the same model). */
 export function useResourceClient<M extends NexoModel>(model: M, options: NexoResourceClientOptions = {}): NexoResourceClient<M> {
   const client = useNexoClient();
-  return useMemo(() => client.resource(model, options), [client, model, options.path]);
+  const path = options.path;
+  return useMemo(() => client.resource(model, path === undefined ? {} : { path }), [client, model, path]);
 }
 
 export interface UseResourceResult<M extends NexoModel> extends NexoQueryState<ResourceListResult<Infer<M>>> {

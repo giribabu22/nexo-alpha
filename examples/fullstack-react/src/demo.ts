@@ -1,4 +1,4 @@
-import { app, dscCollector, knowledge, scheduler, jobQueue, type TodoItem } from "./app.js";
+import { app, scheduler, jobQueue, type TodoItem } from "./app.js";
 import { startHapiServer } from "@nexo-alpha/hapi";
 import { createNexoClient } from "@nexo-alpha/frontend/client";
 import { renderStudioHtml } from "./render-studio.js";
