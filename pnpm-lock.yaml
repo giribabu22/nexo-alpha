@@ -18,6 +18,37 @@ importers:
         specifier: ^5.0.0
         version: 5.9.3
 
+  benchmarks/code-to-intent:
+    dependencies:
+      '@nexo-alpha/core':
+        specifier: workspace:*
+        version: link:../../packages/core
+      '@nexo-alpha/frontend':
+        specifier: workspace:*
+        version: link:../../packages/frontend
+      '@nexo-alpha/hapi':
+        specifier: workspace:*
+        version: link:../../packages/hapi
+    devDependencies:
+      '@types/node':
+        specifier: ^20.0.0
+        version: 20.19.43
+      '@types/react':
+        specifier: ^18.3.5
+        version: 18.3.31
+      '@types/react-dom':
+        specifier: ^18.3.0
+        version: 18.3.7(@types/react@18.3.31)
+      react:
+        specifier: ^18.3.1
+        version: 18.3.1
+      react-dom:
+        specifier: ^18.3.1
+        version: 18.3.1(react@18.3.1)
+      typescript:
+        specifier: ^5.0.0
+        version: 5.9.3
+
   examples/behavior-agent:
     dependencies:
       '@nexo-alpha/agent':
@@ -324,13 +355,14 @@ importers:
         version: 5.9.3
 
   packages/frontend:
+    dependencies:
+      '@nexo-alpha/core':
+        specifier: workspace:*
+        version: link:../core
     devDependencies:
       '@nexo-alpha/agent':
         specifier: workspace:*
         version: link:../agent
-      '@nexo-alpha/core':
-        specifier: workspace:*
-        version: link:../core
       '@nexo-alpha/decision':
         specifier: workspace:*
         version: link:../decision

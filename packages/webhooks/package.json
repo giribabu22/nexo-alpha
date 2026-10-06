@@ -1,6 +1,6 @@
 {
   "name": "@nexo-alpha/webhooks",
-  "version": "0.6.0",
+  "version": "0.7.0",
   "description": "Signed, retried webhook delivery for the Nexo framework",
   "keywords": [
     "nexo",

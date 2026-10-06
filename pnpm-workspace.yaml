@@ -2,3 +2,4 @@ packages:
   - "packages/*"
   - "packages/create-nexo-app/test-app/*"
   - "examples/*"
+  - "benchmarks/*"

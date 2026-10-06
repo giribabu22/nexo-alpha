@@ -1,6 +1,6 @@
 {
   "name": "@nexo-alpha/integrations",
-  "version": "0.6.0",
+  "version": "0.7.0",
   "description": "Agent toolkits for external services (GitHub, Slack) for the Nexo framework",
   "keywords": [
     "nexo",

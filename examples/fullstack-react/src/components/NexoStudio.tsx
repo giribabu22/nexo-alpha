@@ -272,7 +272,7 @@ export const NexoStudioComp = nexoComp<NexoStudioProps>({
                     <h1 style={{ fontSize: "26px", fontWeight: 800, margin: 0, color: "#ffffff", letterSpacing: "-0.02em" }}>
                       Nexo Studio
                     </h1>
-                    <NexoBadge variant="purple">v0.6.0</NexoBadge>
+                    <NexoBadge variant="purple">v0.7.0</NexoBadge>
                     <NexoBadge variant="success">● Connected</NexoBadge>
                     <NexoBadge variant="info">Multi-Tenant</NexoBadge>
                   </div>
