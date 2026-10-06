@@ -37,7 +37,11 @@ export type {
   NexoDecision,
   NexoHistoryEntry,
   NexoIntent,
-  NexoIntentEvidence
+  NexoIntentEvidence,
+  KnowledgeSearchDecisionsOptions,
+  KnowledgeSearchConstraintsOptions,
+  KnowledgeSearchIntentsOptions,
+  KnowledgeSummary
 } from "./knowledge.js";
 
 // DSC-accelerated context builders

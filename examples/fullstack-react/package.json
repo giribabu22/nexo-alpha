@@ -12,14 +12,19 @@
   "dependencies": {
     "@nexo-alpha/core": "workspace:*",
     "@nexo-alpha/context": "workspace:*",
+    "@nexo-alpha/decision": "workspace:*",
     "@nexo-alpha/hapi": "workspace:*",
     "@nexo-alpha/scheduler": "workspace:*",
     "@nexo-alpha/tools": "workspace:*",
     "@nexo-alpha/agent": "workspace:*",
     "@nexo-alpha/behavior": "workspace:*",
-    "@nexo-alpha/frontend": "workspace:*"
+    "@nexo-alpha/frontend": "workspace:*",
+    "@nexo-alpha/webhooks": "workspace:*",
+    "@nexo-alpha/integrations": "workspace:*",
+    "@nexo-alpha/web": "workspace:*"
   },
   "devDependencies": {
+    "@nexo-alpha/cli": "workspace:*",
     "@types/node": "^20.0.0",
     "@types/react": "^18.3.5",
     "@types/react-dom": "^18.3.0",

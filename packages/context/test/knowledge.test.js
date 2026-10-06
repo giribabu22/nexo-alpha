@@ -219,3 +219,77 @@ test("knowledgeToJson stamps a schema version and a generation timestamp", () =>
     "generatedAt should be a valid ISO timestamp"
   );
 });
+
+test("searchDecisions filters by query, status, category, and tag", () => {
+  const knowledge = createKnowledge();
+  knowledge.addDecision({ title: "Use Redis Cache", status: "accepted", tags: ["cache", "infra"], category: "storage" });
+  knowledge.addDecision({ title: "Migrate to PostgreSQL", status: "proposed", tags: ["db"], category: "storage" });
+  knowledge.addDecision({ title: "Use JWT Auth", status: "accepted", tags: ["auth", "security"], category: "security" });
+
+  assert.equal(knowledge.searchDecisions({ status: "accepted" }).length, 2);
+  assert.equal(knowledge.searchDecisions({ query: "redis" }).length, 1);
+  assert.equal(knowledge.searchDecisions({ tag: "security" }).length, 1);
+  assert.equal(knowledge.searchDecisions({ category: "storage" }).length, 2);
+  assert.equal(knowledge.searchDecisions({ category: "storage", status: "accepted" }).length, 1);
+});
+
+test("searchConstraints filters by query and category", () => {
+  const knowledge = createKnowledge();
+  knowledge.addConstraint({ description: "Never log raw passwords", category: "security" });
+  knowledge.addConstraint({ description: "Rate limit public endpoints to 100 req/min", category: "resilience" });
+
+  assert.equal(knowledge.searchConstraints({ query: "passwords" }).length, 1);
+  assert.equal(knowledge.searchConstraints({ category: "security" }).length, 1);
+  assert.equal(knowledge.searchConstraints({ query: "nonexistent" }).length, 0);
+});
+
+test("searchIntents and getIntentsByDependency filter accurately", () => {
+  const knowledge = createKnowledge();
+  knowledge.addIntent({
+    entityKind: "api",
+    entityName: "createPayment",
+    purpose: "Charge credit card",
+    dependencies: ["stripe", "billing-db"]
+  });
+  knowledge.addIntent({
+    entityKind: "service",
+    entityName: "StripeGateway",
+    purpose: "Communicate with Stripe API",
+    dependencies: ["stripe"]
+  });
+
+  assert.equal(knowledge.searchIntents({ entityKind: "api" }).length, 1);
+  assert.equal(knowledge.searchIntents({ query: "charge" }).length, 1);
+  assert.equal(knowledge.getIntentsByDependency("stripe").length, 2);
+  assert.equal(knowledge.getIntentsByDependency("billing-db").length, 1);
+  assert.equal(knowledge.getIntentsByDependency("unknown").length, 0);
+});
+
+test("getKnowledgeSummary computes summary metrics", () => {
+  const knowledge = createKnowledge();
+  knowledge.addDecision({ title: "Decision 1", status: "accepted" });
+  knowledge.addDecision({ title: "Decision 2", status: "proposed" });
+  knowledge.addConstraint({ description: "Constraint 1" });
+  knowledge.addIntent({ entityKind: "module", entityName: "orders", purpose: "Manage orders" });
+  knowledge.addHistoryEntry({ operation: "create_module", target: "orders", result: "success" });
+  knowledge.setDevelopmentState({
+    currentObjective: "MVP Launch",
+    completed: ["auth", "orders"],
+    inProgress: ["checkout"],
+    blocked: ["payments"],
+    knownIssues: ["slow query"]
+  });
+
+  const summary = knowledge.getKnowledgeSummary();
+  assert.equal(summary.totalDecisions, 2);
+  assert.equal(summary.decisionsByStatus.accepted, 1);
+  assert.equal(summary.decisionsByStatus.proposed, 1);
+  assert.equal(summary.totalConstraints, 1);
+  assert.equal(summary.totalIntents, 1);
+  assert.equal(summary.intentsByKind.module, 1);
+  assert.equal(summary.totalHistoryEntries, 1);
+  assert.equal(summary.developmentState.objective, "MVP Launch");
+  assert.equal(summary.developmentState.completedCount, 2);
+  assert.equal(summary.developmentState.progressRatio, 0.5); // 2 completed / 4 total (2+1+1)
+});
+

@@ -150,3 +150,69 @@ test("client throws NexoApiError on HTTP error status", async () => {
     }
   );
 });
+
+test("client.patch sends JSON body and PATCH method", async () => {
+  let capturedInit;
+  const client = createNexoClient({
+    fetch: async (url, init) => {
+      capturedInit = init;
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({ id: 1, completed: true })
+      };
+    }
+  });
+
+  const res = await client.patch("/api/todos/1", { completed: true });
+  assert.deepEqual(res, { id: 1, completed: true });
+  assert.equal(capturedInit?.method, "PATCH");
+  assert.equal(capturedInit?.headers?.["Content-Type"], "application/json");
+  assert.equal(capturedInit?.body, JSON.stringify({ completed: true }));
+});
+
+test("client injects Bearer token and x-api-key from auth options", async () => {
+  let capturedHeaders;
+  const client = createNexoClient({
+    auth: {
+      token: async () => "dynamic-jwt-token-123",
+      apiKey: "secret-api-key"
+    },
+    fetch: async (url, init) => {
+      capturedHeaders = init?.headers;
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({ ok: true })
+      };
+    }
+  });
+
+  await client.get("/api/profile");
+  assert.equal(capturedHeaders?.["Authorization"], "Bearer dynamic-jwt-token-123");
+  assert.equal(capturedHeaders?.["x-api-key"], "secret-api-key");
+});
+
+test("client aborts request when timeoutMs is exceeded", async () => {
+  const client = createNexoClient({
+    timeoutMs: 10,
+    fetch: async (url, init) => {
+      return new Promise((resolve, reject) => {
+        const timer = setTimeout(() => resolve({ ok: true, status: 200, json: async () => ({}) }), 100);
+        init?.signal?.addEventListener("abort", () => {
+          clearTimeout(timer);
+          reject(new Error("aborted"));
+        });
+      });
+    }
+  });
+
+  await assert.rejects(
+    async () => client.get("/api/slow"),
+    (err) => {
+      assert.ok(err);
+      return true;
+    }
+  );
+});
+

@@ -49,10 +49,19 @@ export interface NexoKnowledge {
   readonly developmentState: NexoDevelopmentState | null;
 }
 
+export interface NexoAuthOptions {
+  readonly token?: string | (() => string | Promise<string>) | undefined;
+  readonly apiKey?: string | (() => string | Promise<string>) | undefined;
+}
+
 export interface NexoClientOptions {
   readonly baseUrl?: string | undefined;
   readonly headers?: Record<string, string> | undefined;
   readonly fetch?: typeof fetch | undefined;
+  /** Authentication credentials: auto-injects `Authorization: Bearer <token>` or `x-api-key`. */
+  readonly auth?: NexoAuthOptions | undefined;
+  /** Global request timeout in milliseconds. */
+  readonly timeoutMs?: number | undefined;
   /** Route prefix of the workflow API (`createWorkflowApiModule`). Default: "/workflows" */
   readonly workflowsPath?: string | undefined;
   /** Route prefix of the memory API (`createMemoryApiModule`). Default: "/memory" */
@@ -67,3 +76,23 @@ export interface UsePollingOptions {
   readonly pollInterval?: number | undefined;
   readonly enabled?: boolean | undefined;
 }
+
+export interface UseApiOptions<T = unknown> extends UsePollingOptions {
+  readonly initialData?: T | undefined;
+}
+
+export interface UseApiResult<T = unknown> {
+  readonly data: T | null;
+  readonly loading: boolean;
+  readonly error: Error | null;
+  readonly refetch: () => Promise<void>;
+}
+
+export interface UseMutationResult<TData = unknown, TVariables = void> {
+  readonly mutate: (variables: TVariables) => Promise<TData>;
+  readonly data: TData | null;
+  readonly loading: boolean;
+  readonly error: Error | null;
+  readonly reset: () => void;
+}
+

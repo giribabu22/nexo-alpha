@@ -32,6 +32,7 @@ export type {
 
 export type {
   NexoClientOptions,
+  NexoAuthOptions,
   NexoHealth,
   NexoKnowledge,
   NexoModuleInfo

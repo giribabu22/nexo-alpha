@@ -53,12 +53,26 @@ export type NexoAuthenticator = (
  */
 export interface NexoFieldSchema {
   readonly type: "string" | "number" | "boolean" | "object" | "array";
-  readonly required?: boolean;
+  readonly required?: boolean | readonly string[];
   readonly description?: string;
   /** For `type: "array"` only: the shape of each item. */
   readonly items?: NexoFieldSchema;
   /** For `type: "object"` only: nested field descriptors, keyed by property name. */
   readonly properties?: Readonly<Record<string, NexoFieldSchema>>;
+  /** For `type: "string"` or `type: "array"`: minimum length or items count. */
+  readonly minLength?: number;
+  /** For `type: "string"` or `type: "array"`: maximum length or items count. */
+  readonly maxLength?: number;
+  /** For `type: "string"`: regex pattern as string or RegExp. */
+  readonly pattern?: string | RegExp;
+  /** For `type: "number"`: minimum value (inclusive). */
+  readonly min?: number;
+  /** For `type: "number"`: maximum value (inclusive). */
+  readonly max?: number;
+  /** For `type: "number"`: requires integer value. */
+  readonly integer?: boolean;
+  /** Allowed enumeration values. */
+  readonly enum?: readonly (string | number | boolean)[];
 }
 
 /**

@@ -7,6 +7,7 @@ import {
   isValidProjectId,
   runInProject,
   missingScopes,
+  validateSchema,
   type NexoApi,
   type NexoApplication,
   type NexoAuthenticator,
@@ -19,6 +20,19 @@ import { randomUUID } from "node:crypto";
 
 /** Header carrying the per-request correlation ID (also visible to handlers via `context.headers`). */
 export const REQUEST_ID_HEADER = "x-request-id";
+
+export interface SecurityHeadersOptions {
+  /** Add `X-Content-Type-Options: nosniff`. Default: true */
+  readonly noSniff?: boolean;
+  /** Add `X-Frame-Options: DENY` | `SAMEORIGIN` | false. Default: "DENY" */
+  readonly xframe?: "DENY" | "SAMEORIGIN" | false;
+  /** Add `Referrer-Policy`. Default: "strict-origin-when-cross-origin" */
+  readonly referrerPolicy?: string | false;
+  /** Add `X-XSS-Protection: 0`. Default: true */
+  readonly xssProtection?: boolean;
+  /** Add `Strict-Transport-Security`. Default: false */
+  readonly hsts?: string | false;
+}
 
 export interface HapiProjectOptions {
   /**
@@ -81,6 +95,11 @@ export interface CreateHapiServerOptions {
    * handler with DSC timing + payload-size tracking.
    */
   readonly dscInstrument?: boolean;
+  /**
+   * Automatically attach security headers (nosniff, X-Frame-Options, Referrer-Policy, etc.).
+   * Default: false (opt-in for backwards compatibility).
+   */
+  readonly securityHeaders?: boolean | SecurityHeadersOptions;
 }
 
 export function toHapiPath(path: string): string {
@@ -149,8 +168,19 @@ export async function createHapiServer(
     const requestId = (request.app as { requestId?: string }).requestId;
     const rateLimitHeaders = (request.app as { rateLimitHeaders?: Record<string, string> }).rateLimitHeaders ?? {};
     const response = request.response as any;
+    const securityHeaders: Record<string, string> = {};
+    if (options.securityHeaders) {
+      const sec = typeof options.securityHeaders === "object" ? options.securityHeaders : {};
+      if (sec.noSniff !== false) securityHeaders["x-content-type-options"] = "nosniff";
+      if (sec.xframe !== false) securityHeaders["x-frame-options"] = sec.xframe ?? "DENY";
+      if (sec.referrerPolicy !== false) securityHeaders["referrer-policy"] = sec.referrerPolicy ?? "strict-origin-when-cross-origin";
+      if (sec.xssProtection !== false) securityHeaders["x-xss-protection"] = "0";
+      if (sec.hsts) securityHeaders["strict-transport-security"] = sec.hsts;
+    }
+
     const extraHeaders: Record<string, string> = {
       ...rateLimitHeaders,
+      ...securityHeaders,
       ...(requestId !== undefined ? { [REQUEST_ID_HEADER]: requestId } : {})
     };
     for (const [name, value] of Object.entries(extraHeaders)) {
@@ -285,6 +315,11 @@ export async function createHapiServer(
             if (!outcome.valid) {
               return respond(400, { error: "Validation failed", errors: outcome.errors ?? [] });
             }
+          } else if (api.schema) {
+            const outcome = validateSchema(api.schema, context);
+            if (!outcome.valid) {
+              return respond(400, { error: "Validation failed", errors: outcome.errors ?? [] });
+            }
           }
 
           let result: unknown;
@@ -356,3 +391,11 @@ export async function startHapiServer(
 
   return server;
 }
+
+export async function stopHapiServer(
+  server: Hapi.Server,
+  options: { readonly timeoutMs?: number } = {}
+): Promise<void> {
+  await server.stop({ timeout: options.timeoutMs ?? 5000 });
+}
+

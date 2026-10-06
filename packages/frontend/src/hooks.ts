@@ -4,7 +4,10 @@ import type {
   NexoHealth,
   NexoKnowledge,
   NexoModuleInfo,
-  UsePollingOptions
+  UsePollingOptions,
+  UseApiOptions,
+  UseApiResult,
+  UseMutationResult
 } from "./types.js";
 
 export interface UseNexoHealthResult {
@@ -331,3 +334,111 @@ export function useNexoRpcMutation<TInput = void, TOutput = unknown>(
     error
   };
 }
+
+/**
+ * Generic reactive hook for fetching data from any Nexo API path.
+ */
+export function useApi<T = unknown>(path: string, options: UseApiOptions<T> = {}): UseApiResult<T> {
+  const client = useNexoClient();
+  const [data, setData] = useState<T | null>(options.initialData ?? null);
+  const [loading, setLoading] = useState(options.initialData === undefined);
+  const [error, setError] = useState<Error | null>(null);
+  const mountedRef = useRef(true);
+
+  const fetchData = useCallback(async () => {
+    try {
+      const result = await client.get<T>(path);
+      if (mountedRef.current) {
+        setData(result);
+        setError(null);
+      }
+    } catch (err) {
+      if (mountedRef.current) {
+        setError(err instanceof Error ? err : new Error(String(err)));
+      }
+    } finally {
+      if (mountedRef.current) {
+        setLoading(false);
+      }
+    }
+  }, [client, path]);
+
+  useEffect(() => {
+    mountedRef.current = true;
+    if (options.enabled === false) {
+      setLoading(false);
+      return;
+    }
+
+    void fetchData();
+
+    if (options.pollInterval && options.pollInterval > 0) {
+      const intervalId = setInterval(() => {
+        void fetchData();
+      }, options.pollInterval);
+
+      return () => {
+        mountedRef.current = false;
+        clearInterval(intervalId);
+      };
+    }
+
+    return () => {
+      mountedRef.current = false;
+    };
+  }, [fetchData, options.enabled, options.pollInterval]);
+
+  return {
+    data,
+    loading,
+    error,
+    refetch: fetchData
+  };
+}
+
+/**
+ * Generic mutation hook for executing POST/PUT/PATCH/DELETE calls with state tracking.
+ */
+export function useMutation<TData = unknown, TVariables = void>(
+  mutationFn: (vars: TVariables) => Promise<TData>
+): UseMutationResult<TData, TVariables> {
+  const [data, setData] = useState<TData | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<Error | null>(null);
+  const mountedRef = useRef(true);
+
+  const mutate = useCallback(async (vars: TVariables): Promise<TData> => {
+    setLoading(true);
+    setError(null);
+    try {
+      const result = await mutationFn(vars);
+      if (mountedRef.current) {
+        setData(result);
+        setLoading(false);
+      }
+      return result;
+    } catch (err) {
+      const errorObj = err instanceof Error ? err : new Error(String(err));
+      if (mountedRef.current) {
+        setError(errorObj);
+        setLoading(false);
+      }
+      throw errorObj;
+    }
+  }, [mutationFn]);
+
+  const reset = useCallback(() => {
+    setData(null);
+    setError(null);
+    setLoading(false);
+  }, []);
+
+  return {
+    mutate,
+    data,
+    loading,
+    error,
+    reset
+  };
+}
+

@@ -8,7 +8,11 @@ export type {
   NexoDevelopmentState,
   NexoKnowledge,
   NexoClientOptions,
-  UsePollingOptions
+  UsePollingOptions,
+  NexoAuthOptions,
+  UseApiOptions,
+  UseApiResult,
+  UseMutationResult
 } from "./types.js";
 
 // Client & RPC
@@ -77,6 +81,8 @@ export {
   useNexoApi,
   useNexoRpcQuery,
   useNexoRpcMutation,
+  useApi,
+  useMutation,
   type UseNexoHealthResult,
   type UseNexoKnowledgeResult,
   type UseNexoModuleGraphResult,

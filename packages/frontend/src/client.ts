@@ -63,66 +63,114 @@ export class NexoClient {
     return `${this.baseUrl}${cleanPath}`;
   }
 
-  async api<T = unknown>(path: string, init?: RequestInit): Promise<T> {
+  async api<T = unknown>(path: string, init?: RequestInit & { timeoutMs?: number }): Promise<T> {
     const url = this.resolveUrl(path);
+    const authHeaders: Record<string, string> = {};
+
+    if (this.options.auth?.token !== undefined) {
+      const token = typeof this.options.auth.token === "function"
+        ? await this.options.auth.token()
+        : this.options.auth.token;
+      if (token) authHeaders["Authorization"] = `Bearer ${token}`;
+    }
+
+    if (this.options.auth?.apiKey !== undefined) {
+      const apiKey = typeof this.options.auth.apiKey === "function"
+        ? await this.options.auth.apiKey()
+        : this.options.auth.apiKey;
+      if (apiKey) authHeaders["x-api-key"] = apiKey;
+    }
+
     const headers = {
       ...this.defaultHeaders,
+      ...authHeaders,
       ...(init?.headers as Record<string, string> | undefined)
     };
 
-    const response = await this.fetchFn(url, {
+    const timeout = init?.timeoutMs ?? this.options.timeoutMs;
+    let timer: NodeJS.Timeout | undefined;
+
+    const requestInit: RequestInit = {
       ...init,
       headers
-    });
+    };
 
-    if (!response.ok) {
-      let errorPayload: unknown;
-      let errorMessage = `HTTP ${response.status} ${response.statusText}`;
-      try {
-        errorPayload = await response.json();
-        if (errorPayload && typeof errorPayload === "object" && "error" in errorPayload) {
-          errorMessage = String((errorPayload as { error: unknown }).error);
-        } else if (errorPayload && typeof errorPayload === "object" && "message" in errorPayload) {
-          errorMessage = String((errorPayload as { message: unknown }).message);
+    if (init?.signal !== undefined) {
+      requestInit.signal = init.signal;
+    } else if (timeout && timeout > 0) {
+      const controller = new AbortController();
+      requestInit.signal = controller.signal;
+      timer = setTimeout(() => controller.abort(new Error(`Request timeout after ${timeout}ms`)), timeout);
+    }
+
+    try {
+      const response = await this.fetchFn(url, requestInit);
+
+      if (!response.ok) {
+        let errorPayload: unknown;
+        let errorMessage = `HTTP ${response.status} ${response.statusText}`;
+        try {
+          errorPayload = await response.json();
+          if (errorPayload && typeof errorPayload === "object" && "error" in errorPayload) {
+            errorMessage = String((errorPayload as { error: unknown }).error);
+          } else if (errorPayload && typeof errorPayload === "object" && "message" in errorPayload) {
+            errorMessage = String((errorPayload as { message: unknown }).message);
+          }
+        } catch {
+          // response is not JSON
         }
-      } catch {
-        // response is not JSON
+        throw new NexoApiError(errorMessage, response.status, errorPayload);
       }
-      throw new NexoApiError(errorMessage, response.status, errorPayload);
-    }
 
-    // Handle 204 No Content
-    if (response.status === 204) {
-      return undefined as T;
-    }
+      // Handle 204 No Content
+      if (response.status === 204) {
+        return undefined as T;
+      }
 
-    return (await response.json()) as T;
+      return (await response.json()) as T;
+    } finally {
+      if (timer !== undefined) clearTimeout(timer);
+    }
   }
 
   get<T = unknown>(path: string): Promise<T> {
     return this.api<T>(path, { method: "GET" });
   }
 
-  post<T = unknown>(path: string, body?: unknown): Promise<T> {
-    const init: RequestInit = {
+  post<T = unknown>(path: string, body?: unknown, init?: RequestInit): Promise<T> {
+    const requestInit: RequestInit = {
+      ...init,
       method: "POST",
-      headers: { "Content-Type": "application/json" }
+      headers: { "Content-Type": "application/json", ...(init?.headers as Record<string, string> | undefined) }
     };
     if (body !== undefined) {
-      init.body = JSON.stringify(body);
+      requestInit.body = JSON.stringify(body);
     }
-    return this.api<T>(path, init);
+    return this.api<T>(path, requestInit);
   }
 
-  put<T = unknown>(path: string, body?: unknown): Promise<T> {
-    const init: RequestInit = {
+  put<T = unknown>(path: string, body?: unknown, init?: RequestInit): Promise<T> {
+    const requestInit: RequestInit = {
+      ...init,
       method: "PUT",
-      headers: { "Content-Type": "application/json" }
+      headers: { "Content-Type": "application/json", ...(init?.headers as Record<string, string> | undefined) }
     };
     if (body !== undefined) {
-      init.body = JSON.stringify(body);
+      requestInit.body = JSON.stringify(body);
     }
-    return this.api<T>(path, init);
+    return this.api<T>(path, requestInit);
+  }
+
+  patch<T = unknown>(path: string, body?: unknown, init?: RequestInit): Promise<T> {
+    const requestInit: RequestInit = {
+      ...init,
+      method: "PATCH",
+      headers: { "Content-Type": "application/json", ...(init?.headers as Record<string, string> | undefined) }
+    };
+    if (body !== undefined) {
+      requestInit.body = JSON.stringify(body);
+    }
+    return this.api<T>(path, requestInit);
   }
 
   delete<T = unknown>(path: string): Promise<T> {

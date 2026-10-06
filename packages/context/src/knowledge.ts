@@ -3,11 +3,14 @@ export interface NexoDecision {
   readonly reason?: string;
   readonly alternatives?: string;
   readonly status?: string;
+  readonly tags?: readonly string[];
+  readonly category?: string;
 }
 
 export interface NexoConstraint {
   readonly description: string;
   readonly reason?: string;
+  readonly category?: string;
 }
 
 export interface DevelopmentState {
@@ -28,61 +31,66 @@ export interface NexoHistoryEntry {
   readonly detail?: string;
 }
 
-/**
- * What kind of thing a {@link NexoIntent} is attached to. `"component"` and
- * `"function"` have no corresponding structural node anywhere else in Nexo
- * (there is no frontend/component concept in `@nexo-alpha/core`, and
- * functions below the top-level-symbol scan aren't individually addressable)
- * — recording intent for them here doesn't require inventing that structural
- * concept, it just gives an entity a name an intent can point at.
- */
 export type IntentEntityKind = "module" | "api" | "service" | "job" | "component" | "function" | "file";
 
-/** Where an intent's subject actually lives, so an agent can jump straight to it. */
 export interface NexoIntentEvidence {
   readonly file: string;
   readonly line?: number;
 }
 
-/**
- * The "why" behind a piece of the application — PRD section 13's Intent
- * concept. Distinct from a {@link NexoDecision} (a point-in-time architectural
- * choice, often not tied to one entity) and a {@link NexoConstraint} (a rule
- * that must hold): an intent explains why one named entity exists at all.
- * Recording these is opt-in and entity-scoped by design — the framework
- * should never require documenting every function, only the ones worth
- * explaining to a future reader (human or AI).
- */
 export interface NexoIntent {
   readonly entityKind: IntentEntityKind;
-  /** The entity's own name — e.g. a module/API/service/job name, a component name, or a bare function name. */
   readonly entityName: string;
   readonly purpose: string;
-  /** Why it exists from a business/product standpoint, if different from `purpose`. */
   readonly businessReason?: string;
-  /** Names of other entities (modules, services, external systems) this one depends on. Informational, like `NexoModule.dependencies`. */
   readonly dependencies?: readonly string[];
   readonly evidence?: NexoIntentEvidence;
 }
 
-/**
- * Human-authored knowledge about an application.
- *
- * Distinct from the structural model in @nexo-alpha/core, which describes
- * what the application IS (modules, APIs, services, lifecycle). Knowledge
- * describes what we know ABOUT the application: architectural decisions,
- * constraints, current development state, and an audit history of operations.
- *
- * Create with createKnowledge() and pass to buildContext() to include in the
- * application manifest, or to createReadInterface()/createWriteInterface() in
- * @nexo-alpha/tools so the AI interface can read and write it.
- */
+export interface KnowledgeSearchDecisionsOptions {
+  readonly status?: string;
+  readonly query?: string;
+  readonly tag?: string;
+  readonly category?: string;
+}
+
+export interface KnowledgeSearchConstraintsOptions {
+  readonly query?: string;
+  readonly category?: string;
+}
+
+export interface KnowledgeSearchIntentsOptions {
+  readonly entityKind?: IntentEntityKind;
+  readonly entityName?: string;
+  readonly query?: string;
+  readonly dependency?: string;
+}
+
+export interface KnowledgeSummary {
+  readonly totalDecisions: number;
+  readonly decisionsByStatus: Readonly<Record<string, number>>;
+  readonly totalConstraints: number;
+  readonly totalIntents: number;
+  readonly intentsByKind: Readonly<Record<string, number>>;
+  readonly totalHistoryEntries: number;
+  readonly developmentState: {
+    readonly objective?: string | undefined;
+    readonly completedCount: number;
+    readonly inProgressCount: number;
+    readonly blockedCount: number;
+    readonly knownIssuesCount: number;
+    readonly progressRatio: number;
+  };
+}
+
 export interface ApplicationKnowledge {
   addDecision(decision: NexoDecision): this;
   getDecisions(): readonly NexoDecision[];
+  searchDecisions(options?: KnowledgeSearchDecisionsOptions): readonly NexoDecision[];
 
   addConstraint(constraint: NexoConstraint): this;
   getConstraints(): readonly NexoConstraint[];
+  searchConstraints(options?: KnowledgeSearchConstraintsOptions): readonly NexoConstraint[];
 
   /**
    * Shallow-merges a partial patch into the current development state.
@@ -99,6 +107,11 @@ export interface ApplicationKnowledge {
   getIntents(): readonly NexoIntent[];
   /** Looks up the most recently recorded intent for one entity, or `undefined` if none was recorded. */
   getIntent(entityKind: IntentEntityKind, entityName: string): NexoIntent | undefined;
+  searchIntents(options?: KnowledgeSearchIntentsOptions): readonly NexoIntent[];
+  getIntentsByDependency(dependencyName: string): readonly NexoIntent[];
+
+  /** High-level metrics and health snapshot of the documented application knowledge. */
+  getKnowledgeSummary(): KnowledgeSummary;
 }
 
 export function createKnowledge(): ApplicationKnowledge {
@@ -123,6 +136,26 @@ export function createKnowledge(): ApplicationKnowledge {
       return [...decisions];
     },
 
+    searchDecisions(options = {}) {
+      const q = options.query?.toLowerCase();
+      const status = options.status?.toLowerCase();
+      const tag = options.tag?.toLowerCase();
+      const category = options.category?.toLowerCase();
+
+      return decisions.filter((d) => {
+        if (status !== undefined && (d.status?.toLowerCase() ?? "") !== status) return false;
+        if (category !== undefined && (d.category?.toLowerCase() ?? "") !== category) return false;
+        if (tag !== undefined && !(d.tags?.some((t) => t.toLowerCase() === tag) ?? false)) return false;
+        if (q !== undefined) {
+          const matchTitle = d.title.toLowerCase().includes(q);
+          const matchReason = d.reason?.toLowerCase().includes(q) ?? false;
+          const matchAlts = d.alternatives?.toLowerCase().includes(q) ?? false;
+          if (!matchTitle && !matchReason && !matchAlts) return false;
+        }
+        return true;
+      });
+    },
+
     addConstraint(constraint) {
       constraints.push(constraint);
       return knowledge;
@@ -130,6 +163,21 @@ export function createKnowledge(): ApplicationKnowledge {
 
     getConstraints() {
       return [...constraints];
+    },
+
+    searchConstraints(options = {}) {
+      const q = options.query?.toLowerCase();
+      const category = options.category?.toLowerCase();
+
+      return constraints.filter((c) => {
+        if (category !== undefined && (c.category?.toLowerCase() ?? "") !== category) return false;
+        if (q !== undefined) {
+          const matchDesc = c.description.toLowerCase().includes(q);
+          const matchReason = c.reason?.toLowerCase().includes(q) ?? false;
+          if (!matchDesc && !matchReason) return false;
+        }
+        return true;
+      });
     },
 
     setDevelopmentState(patch) {
@@ -163,6 +211,70 @@ export function createKnowledge(): ApplicationKnowledge {
       return [...intents]
         .reverse()
         .find((intent) => intent.entityKind === entityKind && intent.entityName === entityName);
+    },
+
+    searchIntents(options = {}) {
+      const q = options.query?.toLowerCase();
+      const kind = options.entityKind;
+      const name = options.entityName?.toLowerCase();
+      const dep = options.dependency?.toLowerCase();
+
+      return intents.filter((i) => {
+        if (kind !== undefined && i.entityKind !== kind) return false;
+        if (name !== undefined && i.entityName.toLowerCase() !== name) return false;
+        if (dep !== undefined && !(i.dependencies?.some((d: string) => d.toLowerCase() === dep) ?? false)) return false;
+        if (q !== undefined) {
+          const matchName = i.entityName.toLowerCase().includes(q);
+          const matchPurpose = i.purpose.toLowerCase().includes(q);
+          const matchBiz = i.businessReason?.toLowerCase().includes(q) ?? false;
+          if (!matchName && !matchPurpose && !matchBiz) return false;
+        }
+        return true;
+      });
+    },
+
+    getIntentsByDependency(dependencyName: string) {
+      const target = dependencyName.toLowerCase();
+      return intents.filter((i) => i.dependencies?.some((d: string) => d.toLowerCase() === target) ?? false);
+    },
+
+    getKnowledgeSummary() {
+      const decisionsByStatus: Record<string, number> = {};
+      for (const d of decisions) {
+        const s = d.status ?? "unspecified";
+        decisionsByStatus[s] = (decisionsByStatus[s] ?? 0) + 1;
+      }
+
+      const intentsByKind: Record<string, number> = {};
+      for (const i of intents) {
+        intentsByKind[i.entityKind] = (intentsByKind[i.entityKind] ?? 0) + 1;
+      }
+
+      const totalWorkItems =
+        developmentState.completed.length +
+        developmentState.inProgress.length +
+        developmentState.blocked.length;
+      const progressRatio =
+        totalWorkItems > 0
+          ? Math.round((developmentState.completed.length / totalWorkItems) * 100) / 100
+          : 0;
+
+      return {
+        totalDecisions: decisions.length,
+        decisionsByStatus,
+        totalConstraints: constraints.length,
+        totalIntents: intents.length,
+        intentsByKind,
+        totalHistoryEntries: history.length,
+        developmentState: {
+          objective: developmentState.currentObjective,
+          completedCount: developmentState.completed.length,
+          inProgressCount: developmentState.inProgress.length,
+          blockedCount: developmentState.blocked.length,
+          knownIssuesCount: developmentState.knownIssues.length,
+          progressRatio
+        }
+      };
     }
   };
 

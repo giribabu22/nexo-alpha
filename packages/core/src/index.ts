@@ -38,6 +38,14 @@ export type {
 export { httpResponse, isHttpResponse } from "./api.js";
 
 export {
+  validateField,
+  validateSchema,
+  createSchemaValidator,
+  assertValid,
+  isApiSchema
+} from "./validation.js";
+
+export {
   scopeMatches,
   missingScopes,
   apiKeyAuthenticator,

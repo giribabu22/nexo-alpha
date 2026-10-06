@@ -499,3 +499,86 @@ test("project: requests run inside the resolved project; missing, invalid or den
   const optional = await createHapiServer(app, { logging: false, project: { resolve: () => "BAD ID", required: false } });
   assert.equal((await optional.inject({ method: "GET", url: "/where" })).statusCode, 400);
 });
+
+test("validation: automatically validates against api.schema when api.validate is omitted", async () => {
+  const app = createApplication({ name: "schema-app" });
+  app.module({
+    name: "users",
+    apis: [
+      {
+        name: "createUser",
+        method: "POST",
+        path: "/users",
+        schema: {
+          body: {
+            type: "object",
+            required: ["email", "age"],
+            properties: {
+              email: { type: "string" },
+              age: { type: "number", min: 18 }
+            }
+          }
+        },
+        handler: async (ctx) => ({ user: ctx.payload })
+      }
+    ]
+  });
+
+  const server = await createHapiServer(app, { logging: false });
+
+  // Valid payload
+  const okResp = await server.inject({
+    method: "POST",
+    url: "/users",
+    payload: { email: "alice@example.com", age: 25 }
+  });
+  assert.equal(okResp.statusCode, 200);
+  assert.deepEqual(JSON.parse(okResp.payload), { user: { email: "alice@example.com", age: 25 } });
+
+  // Missing required field
+  const invalidResp = await server.inject({
+    method: "POST",
+    url: "/users",
+    payload: { email: "bob@example.com" }
+  });
+  assert.equal(invalidResp.statusCode, 400);
+  const errBody = JSON.parse(invalidResp.payload);
+  assert.equal(errBody.error, "Validation failed");
+  assert.ok(errBody.errors.some((e) => (typeof e === "string" ? e.includes("age") : e.field?.includes("age"))));
+
+  // Value below min constraint
+  const underageResp = await server.inject({
+    method: "POST",
+    url: "/users",
+    payload: { email: "carol@example.com", age: 16 }
+  });
+  assert.equal(underageResp.statusCode, 400);
+});
+
+test("securityHeaders: attaches default and customized security headers", async () => {
+  const app = createApplication({ name: "sec-app" });
+  app.module({
+    name: "ping",
+    apis: [{ name: "ping", method: "GET", path: "/ping", handler: async () => ({ pong: true }) }]
+  });
+
+  const server = await createHapiServer(app, { logging: false, securityHeaders: true });
+  const resp = await server.inject({ method: "GET", url: "/ping" });
+  assert.equal(resp.statusCode, 200);
+  assert.equal(resp.headers["x-content-type-options"], "nosniff");
+  assert.equal(resp.headers["x-frame-options"], "DENY");
+  assert.equal(resp.headers["referrer-policy"], "strict-origin-when-cross-origin");
+  assert.equal(resp.headers["x-xss-protection"], "0");
+});
+
+test("stopHapiServer: cleanly stops a running server", async () => {
+  const { stopHapiServer } = await import("../dist/index.js");
+  const app = createApplication({ name: "stop-app" });
+  const server = await createHapiServer(app, { logging: false, port: 0 });
+  await server.start();
+  assert.ok(server.info.started > 0);
+
+  await stopHapiServer(server, { timeoutMs: 1000 });
+  assert.equal(server.info.started, 0);
+});
+
