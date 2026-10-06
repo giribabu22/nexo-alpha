@@ -44,11 +44,13 @@
 
 **Templates (`create-nexo-app`)**
 - `backend-api` projects start with a `notes` resource (`src/notes/`) stored in `data/app.json`.
+- `fullstack-react` projects share one `Todo` model between backend and frontend through a `shared/` workspace: the backend serves it with `resource()` (stored in `backend/data/app.json`, seeded on first start), and the frontend uses `useResource()` instead of hand-written fetch and state code. The Dockerfile installs through the workspace.
 - Templates depend on `^0.7.0`.
 
 ### Fixed
 
 - `NexoProvider` ignored its `auth` and `timeoutMs` props.
+- Projects generated from the `fullstack-react` template failed `npm run build`: the frontend type check rejected an unused `React` import in `KnowledgeInspector.tsx`.
 - The README's hapi example accepted any `Authorization` header as signed in. It now uses `jwtAuthenticator`.
 
 ## 0.6.0

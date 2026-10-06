@@ -44,18 +44,30 @@ test("creates fullstack-react project files with customized project name and pro
 
     const appTs = await fs.readFile(path.join(appDir, "backend", "src", "app.ts"), "utf8");
     assert.match(appTs, /name: "super-app-backend"/);
-    assert.match(appTs, /registerTodosModule\(app\)/);
+    assert.match(appTs, /app\.module\(todos\)/);
 
-    const todoServiceTs = await fs.readFile(
-      path.join(appDir, "backend", "src", "modules", "todos", "service.ts"),
-      "utf8"
-    );
-    assert.match(todoServiceTs, /class TodoService implements NexoService/);
+    // One Todo model in the shared workspace, used by both sides.
+    assert.deepEqual(rootPkg.workspaces, ["shared", "backend", "frontend"]);
+    const sharedPkg = JSON.parse(await fs.readFile(path.join(appDir, "shared", "package.json"), "utf8"));
+    assert.equal(sharedPkg.name, "super-app-shared");
+    const todoModel = await fs.readFile(path.join(appDir, "shared", "src", "todo.model.ts"), "utf8");
+    assert.match(todoModel, /export const Todo = model\("todos"/);
+    assert.match(todoModel, /from "@nexo-alpha\/core\/model"/);
+    assert.equal(backendPkg.dependencies["super-app-shared"], "*");
+
+    const todosApi = await fs.readFile(path.join(appDir, "backend", "src", "todos", "todos.api.ts"), "utf8");
+    assert.match(todosApi, /resource\(Todo, \{ store/);
+    assert.match(todosApi, /from "super-app-shared"/);
+    await assert.rejects(fs.access(path.join(appDir, "backend", "src", "modules", "todos")));
+    assert.match(dockerfile, /npm install --omit=dev --workspace=backend/);
 
     // Check frontend files
     const frontendPkg = JSON.parse(await fs.readFile(path.join(appDir, "frontend", "package.json"), "utf8"));
     assert.equal(frontendPkg.name, "super-app-frontend");
     assert.ok(frontendPkg.dependencies["react"]);
+    assert.equal(frontendPkg.dependencies["super-app-shared"], "*");
+    const todoApp = await fs.readFile(path.join(appDir, "frontend", "src", "components", "TodoApp.tsx"), "utf8");
+    assert.match(todoApp, /useResource\(Todo/);
 
     const indexHtml = await fs.readFile(path.join(appDir, "frontend", "index.html"), "utf8");
     assert.match(indexHtml, /super-app — Powered by Nexo/);

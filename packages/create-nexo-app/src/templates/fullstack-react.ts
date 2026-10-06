@@ -9,6 +9,7 @@ export const fullstackReactTemplate: Template = {
         path: ".gitignore",
         content: `node_modules
 dist
+data
 .env
 *.log
 .DS_Store
@@ -18,6 +19,7 @@ dist
         path: ".dockerignore",
         content: `node_modules
 dist
+data
 .git
 .env
 *.log
@@ -37,6 +39,7 @@ FROM node:20-alpine AS builder
 WORKDIR /app
 
 COPY package*.json ./
+COPY shared/package*.json ./shared/
 COPY backend/package*.json ./backend/
 COPY frontend/package*.json ./frontend/
 
@@ -54,10 +57,18 @@ ENV NODE_ENV=production
 ENV PORT=4000
 
 COPY --from=builder /app/package*.json ./
-COPY --from=builder /app/backend ./backend
+COPY --from=builder /app/shared/package.json ./shared/
+COPY --from=builder /app/shared/dist ./shared/dist
+COPY --from=builder /app/backend/package.json ./backend/
+COPY --from=builder /app/backend/dist ./backend/dist
+COPY --from=builder /app/frontend/package.json ./frontend/
 COPY --from=builder /app/frontend/dist ./frontend/dist
 
-RUN cd backend && npm install --omit=dev
+# Installs the backend's dependencies and links the shared workspace.
+RUN npm install --omit=dev --workspace=backend
+
+# Records are stored in /app/data: mount a volume there to keep them.
+VOLUME /app/data
 
 EXPOSE 4000
 
@@ -102,8 +113,13 @@ docker run -p 4000:4000 ${projectName}
 
 ## Architecture
 
-- \`backend/\`: Nexo application model with modules, APIs, services, and lifecycle.
-- \`frontend/\`: React 18 + Vite client interacting with Nexo backend APIs.
+- \`shared/\`: data models used by both sides (\`shared/src/todo.model.ts\`). One definition drives the backend's validation and REST API and the frontend's types and forms.
+- \`backend/\`: Nexo application: \`src/todos/\` serves the Todo model as a REST API with \`resource()\`; records are stored in \`backend/data/app.json\`.
+- \`frontend/\`: React 18 + Vite client; \`useResource(Todo)\` loads and changes todos with no hand-written fetch code.
+
+## Add a field or a model
+
+Add a field to \`shared/src/todo.model.ts\` and it is validated by the API, typed on both sides, and shown by generated forms and tables. For a new model, add it to \`shared/src/\`, export it from \`shared/src/index.ts\`, and serve it from the backend with \`resource(Model, { store })\`.
 
 ## Nexo CLI
 
@@ -124,14 +140,16 @@ npx nexo freshness --source-root src
             version: "0.1.0",
             private: true,
             workspaces: [
+              "shared",
               "backend",
               "frontend"
             ],
             scripts: {
-              dev: "concurrently --kill-others \"npm run dev:backend\" \"npm run dev:frontend\"",
+              dev: "npm --workspace=shared run build && concurrently --kill-others \"npm run dev:shared\" \"npm run dev:backend\" \"npm run dev:frontend\"",
+              "dev:shared": "npm --workspace=shared run dev",
               "dev:backend": "npm --workspace=backend run dev",
               "dev:frontend": "npm --workspace=frontend run dev",
-              build: "npm --workspace=backend run build && npm --workspace=frontend run build",
+              build: "npm --workspace=shared run build && npm --workspace=backend run build && npm --workspace=frontend run build",
               start: "npm --workspace=backend start",
               inspect: "nexo inspect"
             },
@@ -154,6 +172,79 @@ npx nexo freshness --source-root src
           2
         ) + "\n"
       },
+      // Shared models: one definition used by the backend and the frontend
+      {
+        path: "shared/package.json",
+        content: JSON.stringify(
+          {
+            name: `${projectName}-shared`,
+            version: "0.1.0",
+            private: true,
+            type: "module",
+            main: "./dist/index.js",
+            types: "./dist/index.d.ts",
+            exports: {
+              ".": {
+                types: "./dist/index.d.ts",
+                import: "./dist/index.js"
+              }
+            },
+            scripts: {
+              build: "tsc",
+              dev: "tsc --watch --preserveWatchOutput"
+            },
+            dependencies: {
+              "@nexo-alpha/core": "^0.7.0"
+            },
+            devDependencies: {
+              typescript: "^5.4.0"
+            }
+          },
+          null,
+          2
+        ) + "\n"
+      },
+      {
+        path: "shared/tsconfig.json",
+        content: JSON.stringify(
+          {
+            compilerOptions: {
+              target: "ES2022",
+              module: "NodeNext",
+              moduleResolution: "NodeNext",
+              strict: true,
+              skipLibCheck: true,
+              declaration: true,
+              outDir: "./dist",
+              rootDir: "./src"
+            },
+            include: ["src/**/*"]
+          },
+          null,
+          2
+        ) + "\n"
+      },
+      {
+        path: "shared/src/index.ts",
+        content: `export { Todo } from "./todo.model.js";
+`
+      },
+      {
+        path: "shared/src/todo.model.ts",
+        content: `import { field, model, type Infer } from "@nexo-alpha/core/model";
+
+/**
+ * A todo. The backend serves it with resource(Todo) and the frontend loads it
+ * with useResource(Todo): validation, API schema and types all come from here.
+ * Imports only "@nexo-alpha/core/model", which is safe to bundle for browsers.
+ */
+export const Todo = model("todos", {
+  text: field.string({ minLength: 1, maxLength: 200 }),
+  completed: field.boolean().default(false)
+});
+export type Todo = Infer<typeof Todo>;
+`
+      },
       // Backend files
       {
         path: "backend/package.json",
@@ -170,6 +261,7 @@ npx nexo freshness --source-root src
               graph: "nexo graph --source-root src --out .nexo/knowledge-graph.json"
             },
             dependencies: {
+              [`${projectName}-shared`]: "*",
               "@nexo-alpha/core": "^0.7.0",
               "@nexo-alpha/context": "^0.7.0",
               "@nexo-alpha/decision": "^0.7.0",
@@ -228,8 +320,9 @@ npx nexo freshness --source-root src
         path: "backend/src/app.ts",
         content: `import { createApplication } from "@nexo-alpha/core";
 import { createKnowledge } from "@nexo-alpha/context";
-import { registerTodosModule } from "./modules/todos/index.js";
 import { registerSystemModule } from "./modules/system/index.js";
+import { store } from "./store.js";
+import { todosResource } from "./todos/todos.api.js";
 
 export const app = createApplication({
   name: "${projectName}-backend",
@@ -281,7 +374,7 @@ knowledge.addIntent({
 knowledge.addIntent({
   entityKind: "component",
   entityName: "TodoApp",
-  purpose: "Interactive fullstack task management demonstrating reactive state and Nexo API calls.",
+  purpose: "Task manager built on the shared Todo model: useResource(Todo) in the browser, resource(Todo) on the server.",
   evidence: { file: "frontend/src/components/TodoApp.tsx", line: 3 }
 });
 
@@ -305,106 +398,40 @@ knowledge.setDevelopmentState({
   ]
 });
 
-// Each module lives in its own folder under src/modules — see that folder
-// for the actual app.module({...}) registration and any services it needs.
 registerSystemModule(app, knowledge);
-registerTodosModule(app);
+
+// GET/POST /api/todos, GET/PATCH/DELETE /api/todos/:id, from the shared Todo model.
+export const todos = todosResource(store);
+app.module(todos);
 `
       },
       {
-        path: "backend/src/modules/todos/service.ts",
-        content: `import type { NexoService } from "@nexo-alpha/core";
+        path: "backend/src/store.ts",
+        content: `import { createFileDocumentStore } from "@nexo-alpha/core";
 
-export interface TodoItem {
-  id: number;
-  text: string;
-  completed: boolean;
-  createdAt: string;
-}
-
-// Example Service: Encapsulates business logic & database/state management
-export class TodoService implements NexoService {
-  readonly name = "todo-service";
-  readonly description = "Todo state and persistence service";
-
-  private items: TodoItem[] = [
-    { id: 1, text: "Explore Nexo Core Architecture", completed: true, createdAt: new Date().toISOString() },
-    { id: 2, text: "Connect React Frontend to Nexo Backend", completed: true, createdAt: new Date().toISOString() },
-    { id: 3, text: "Build your first autonomous Nexo module", completed: false, createdAt: new Date().toISOString() }
-  ];
-
-  async getAll(): Promise<TodoItem[]> {
-    return [...this.items];
-  }
-
-  async add(text: string): Promise<TodoItem> {
-    const newItem: TodoItem = {
-      id: Date.now(),
-      text,
-      completed: false,
-      createdAt: new Date().toISOString()
-    };
-    this.items.push(newItem);
-    return newItem;
-  }
-
-  async toggle(id: number): Promise<TodoItem | null> {
-    const item = this.items.find((t) => t.id === id);
-    if (!item) return null;
-    item.completed = !item.completed;
-    return item;
-  }
-}
+/**
+ * Where records are stored: one JSON file, fine for one process and modest
+ * data. For more, use createSqliteDocumentStore (Node.js 22.5 or later).
+ */
+export const store = createFileDocumentStore(process.env.DATA_FILE ?? "data/app.json");
 `
       },
       {
-        path: "backend/src/modules/todos/index.ts",
-        content: `import type { NexoApplication } from "@nexo-alpha/core";
-import { TodoService } from "./service.js";
+        path: "backend/src/todos/todos.api.ts",
+        content: `import { resource, type NexoDocumentStore, type NexoResource } from "@nexo-alpha/core";
+import { Todo } from "${projectName}-shared";
 
-export function registerTodosModule(app: NexoApplication): void {
-  const todoService = new TodoService();
+/** CRUD API at /api/todos, e.g. GET /api/todos?completed=false&sort=-createdAt */
+export function todosResource(store: NexoDocumentStore): NexoResource<typeof Todo> {
+  return resource(Todo, { store, searchable: ["text"] });
+}
 
-  app.module({
-    name: "todos",
-    description: "Todo and Task management module",
-    dependencies: ["system"],
-    externalDependencies: [],
-    services: [todoService],
-
-    apis: [
-      {
-        name: "getTodos",
-        method: "GET",
-        path: "/api/todos",
-        description: "List all todos",
-        handler: async () => todoService.getAll()
-      },
-      {
-        name: "addTodo",
-        method: "POST",
-        path: "/api/todos",
-        description: "Create a new todo",
-        handler: async (request: any) => {
-          const payload = (request.payload || {}) as { text?: string };
-          const text = payload.text?.trim() || "New Task";
-          return todoService.add(text);
-        }
-      },
-      {
-        name: "toggleTodo",
-        method: "POST",
-        path: "/api/todos/{id}/toggle",
-        description: "Toggle todo completion status",
-        handler: async (request: any) => {
-          const id = Number(request.params.id);
-          const item = await todoService.toggle(id);
-          if (item) return item;
-          return { error: "Todo not found" };
-        }
-      }
-    ]
-  });
+/** Adds sample todos the first time the app starts. */
+export async function seedTodos(todos: NexoResource<typeof Todo>): Promise<void> {
+  if ((await todos.list({ limit: 1 })).total > 0) return;
+  await todos.create({ text: "Explore Nexo Core Architecture", completed: true });
+  await todos.create({ text: "Connect React Frontend to Nexo Backend", completed: true });
+  await todos.create({ text: "Build your first Nexo resource" });
 }
 `
       },
@@ -458,11 +485,13 @@ export function registerSystemModule(app: NexoApplication, knowledge?: Applicati
       },
       {
         path: "backend/src/index.ts",
-        content: `import { app } from "./app.js";
+        content: `import { app, todos } from "./app.js";
+import { seedTodos } from "./todos/todos.api.js";
 import { startHapiServer } from "@nexo-alpha/hapi";
 
 async function main() {
   await app.start();
+  await seedTodos(todos);
 
   const PORT = Number(process.env.PORT) || 4000;
   const server = await startHapiServer(app, {
@@ -511,6 +540,7 @@ main().catch((err) => {
               preview: "vite preview"
             },
             dependencies: {
+              [`${projectName}-shared`]: "*",
               "@nexo-alpha/frontend": "^0.7.0",
               react: "^18.3.1",
               "react-dom": "^18.3.1"
@@ -648,13 +678,17 @@ export default defineConfig({
         path: "frontend/src/main.tsx",
         content: `import React from "react";
 import ReactDOM from "react-dom/client";
+import { NexoProvider } from "@nexo-alpha/frontend";
 import { App } from "./App";
 import "@nexo-alpha/frontend/styles.css";
 import "./index.css";
 
+// In development, Vite proxies /api to the backend (see vite.config.ts).
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
-    <App />
+    <NexoProvider baseUrl={window.location.origin}>
+      <App />
+    </NexoProvider>
   </React.StrictMode>
 );
 `
@@ -976,72 +1010,70 @@ export const ServerStatus = ServerStatusComp;
       {
         path: "frontend/src/components/TodoApp.tsx",
         content: `import React, { useState } from "react";
-import { nexoComp, NexoCard, NexoButton, NexoInput, NexoBadge } from "@nexo-alpha/frontend";
-
-export interface Todo {
-  id: number;
-  text: string;
-  completed: boolean;
-  createdAt: string;
-}
+import { nexoComp, useResource, NexoCard, NexoButton, NexoInput, NexoBadge, NexoErrorState } from "@nexo-alpha/frontend";
+import { Todo } from "${projectName}-shared";
 
 export const TodoAppComp = nexoComp({
   name: "TodoApp",
-  purpose: "Interactive tasks manager with DAG reactive tracking",
-  render: ({
-    todos,
-    onAdd,
-    onToggle,
-    loading
-  }: {
-    todos: Todo[];
-    onAdd: (text: string) => void;
-    onToggle: (id: number) => void;
-    loading: boolean;
-  }) => {
+  purpose: "Task manager on the shared Todo model: useResource loads, creates and updates todos",
+  render: () => {
+    // Loading, errors, and refreshing after every change come with the hook.
+    const todos = useResource(Todo, { sort: "createdAt" });
     const [text, setText] = useState("");
+    const [saveError, setSaveError] = useState<string | null>(null);
 
-    const handleSubmit = (e: React.FormEvent) => {
+    const handleSubmit = async (e: React.FormEvent) => {
       e.preventDefault();
       if (!text.trim()) return;
-      onAdd(text.trim());
-      setText("");
+      try {
+        await todos.create({ text: text.trim() });
+        setText("");
+        setSaveError(null);
+      } catch (error) {
+        setSaveError(error instanceof Error ? error.message : String(error));
+      }
+    };
+
+    const toggle = (todo: Todo) => {
+      void todos.update(todo.id, { completed: !todo.completed });
     };
 
     return (
       <NexoCard
         title="Interactive Demo"
-        subtitle="Fullstack reactive operations connected to backend todos module"
-        badge={<NexoBadge variant="cyan">{todos.length} items</NexoBadge>}
+        subtitle="Todos served by resource(Todo) and loaded with useResource(Todo)"
+        badge={<NexoBadge variant="cyan">{todos.total} items</NexoBadge>}
         icon="📋"
         variant="glow"
       >
-        <form onSubmit={handleSubmit} style={{ display: "flex", gap: "10px", marginBottom: "20px" }}>
+        <form onSubmit={(e) => void handleSubmit(e)} style={{ display: "flex", gap: "10px", marginBottom: "20px" }}>
           <NexoInput
             placeholder="What's your next task?"
             value={text}
             onChange={(e) => setText(e.target.value)}
-            disabled={loading}
+            error={saveError ?? undefined}
           />
-          <NexoButton type="submit" variant="primary" loading={loading} icon="＋">
+          <NexoButton type="submit" variant="primary" icon="＋">
             Add
           </NexoButton>
         </form>
 
-        {loading && todos.length === 0 ? (
+        {todos.error ? (
+          <NexoErrorState error={todos.error} onRetry={() => void todos.refetch()} />
+        ) : todos.loading && todos.items.length === 0 ? (
           <div style={{ textAlign: "center", padding: "30px", color: "var(--nexo-text-secondary, #94a3b8)" }}>
             Loading tasks...
           </div>
-        ) : todos.length === 0 ? (
+        ) : todos.items.length === 0 ? (
           <div style={{ textAlign: "center", padding: "30px", color: "var(--nexo-text-secondary, #94a3b8)", fontStyle: "italic" }}>
             No tasks found. Create one above!
           </div>
         ) : (
           <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
-            {todos.map((todo) => (
+            {todos.items.map((todo) => (
               <div
                 key={todo.id}
-                onClick={() => onToggle(todo.id)}
+                onClick={() => toggle(todo)}
                 style={{
                   display: "flex",
                   alignItems: "center",
@@ -1049,7 +1081,7 @@ export const TodoAppComp = nexoComp({
                   padding: "12px 16px",
                   borderRadius: "10px",
                   background: todo.completed ? "rgba(255, 255, 255, 0.02)" : "rgba(255, 255, 255, 0.05)",
-                  border: \`1px solid \${todo.completed ? "rgba(255, 255, 255, 0.04)" : "rgba(255, 255, 255, 0.08)"}\`,
+                  border: todo.completed ? "1px solid rgba(255, 255, 255, 0.04)" : "1px solid rgba(255, 255, 255, 0.08)",
                   cursor: "pointer",
                   transition: "all 0.2s ease"
                 }}
@@ -1058,7 +1090,7 @@ export const TodoAppComp = nexoComp({
                   <input
                     type="checkbox"
                     checked={todo.completed}
-                    onChange={() => onToggle(todo.id)}
+                    onChange={() => toggle(todo)}
                     onClick={(e) => e.stopPropagation()}
                     style={{ cursor: "pointer", width: "18px", height: "18px", accentColor: "#38bdf8" }}
                   />
@@ -1074,14 +1106,9 @@ export const TodoAppComp = nexoComp({
                   </span>
                 </div>
 
-                <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-                  <NexoBadge variant={todo.completed ? "success" : "neutral"} size="sm">
-                    {todo.completed ? "Completed" : "In Progress"}
-                  </NexoBadge>
-                  <span style={{ fontSize: "0.75rem", color: "var(--nexo-text-secondary, #94a3b8)" }}>
-                    #{todo.id}
-                  </span>
-                </div>
+                <NexoBadge variant={todo.completed ? "success" : "neutral"} size="sm">
+                  {todo.completed ? "Completed" : "In Progress"}
+                </NexoBadge>
               </div>
             ))}
           </div>
@@ -1096,8 +1123,7 @@ export const TodoApp = TodoAppComp;
       },
       {
         path: "frontend/src/components/KnowledgeInspector.tsx",
-        content: `import React from "react";
-import { NexoKnowledgeInspector, nexoComp } from "@nexo-alpha/frontend";
+        content: `import { NexoKnowledgeInspector, nexoComp } from "@nexo-alpha/frontend";
 import type { NexoKnowledge, NexoModuleInfo } from "@nexo-alpha/frontend";
 
 export interface KnowledgeInspectorProps {
@@ -1131,26 +1157,28 @@ import {
   NexoPage,
   NexoBadge,
   NexoMetric,
-  createNexoClient,
+  useNexoClient,
+  useResource,
   type NexoHealth,
   type NexoKnowledge
 } from "@nexo-alpha/frontend";
+import { Todo } from "${projectName}-shared";
 import { Header } from "./components/Header";
 import { ServerStatus } from "./components/ServerStatus";
-import { TodoApp, type Todo } from "./components/TodoApp";
+import { TodoApp } from "./components/TodoApp";
 import { KnowledgeInspector } from "./components/KnowledgeInspector";
-
-const client = createNexoClient({ baseUrl: window.location.origin });
 
 export const AppComp = nexoComp({
   name: "App",
   purpose: "Root page coordinating multiple nexoComps with React in the background",
   render: () => {
+    const client = useNexoClient();
+    // Counts only (limit 1): the server reports the total. Both refresh when TodoApp changes a todo.
+    const allTodos = useResource(Todo, { limit: 1 });
+    const doneTodos = useResource(Todo, { where: { completed: true }, limit: 1 });
     const [activeTab, setActiveTab] = useState<"demo" | "knowledge">("demo");
-    const [todos, setTodos] = useState<Todo[]>([]);
     const [health, setHealth] = useState<NexoHealth | null>(null);
     const [knowledge, setKnowledge] = useState<NexoKnowledge | null>(null);
-    const [loading, setLoading] = useState(true);
     const [knowledgeLoading, setKnowledgeLoading] = useState(true);
 
     const fetchHealth = async () => {
@@ -1173,21 +1201,9 @@ export const AppComp = nexoComp({
       }
     };
 
-    const fetchTodos = async () => {
-      try {
-        const data = await client.get<Todo[]>("/api/todos");
-        setTodos(data);
-      } catch (e) {
-        console.error("Failed to load todos", e);
-      } finally {
-        setLoading(false);
-      }
-    };
-
     useEffect(() => {
       fetchHealth();
       fetchKnowledge();
-      fetchTodos();
       const interval = setInterval(() => {
         fetchHealth();
         fetchKnowledge();
@@ -1195,25 +1211,6 @@ export const AppComp = nexoComp({
       return () => clearInterval(interval);
     }, []);
 
-    const handleAdd = async (text: string) => {
-      try {
-        const newTodo = await client.post<Todo>("/api/todos", { text });
-        setTodos((prev) => [...prev, newTodo]);
-      } catch (e) {
-        console.error("Failed to add todo", e);
-      }
-    };
-
-    const handleToggle = async (id: number) => {
-      try {
-        const updated = await client.post<Todo>(\`/api/todos/\${id}/toggle\`);
-        setTodos((prev) => prev.map((t) => (t.id === id ? updated : t)));
-      } catch (e) {
-        console.error("Failed to toggle todo", e);
-      }
-    };
-
-    const completedCount = todos.filter((t) => t.completed).length;
 
     return (
       <NexoPage
@@ -1237,7 +1234,7 @@ export const AppComp = nexoComp({
           />
           <NexoMetric
             label="Completed Tasks"
-            value={\`\${completedCount}/\${todos.length}\`}
+            value={\`\${doneTodos.total}/\${allTodos.total}\`}
             icon="✅"
             accentColor="#4ade80"
           />
@@ -1278,7 +1275,7 @@ export const AppComp = nexoComp({
         </div>
 
         {activeTab === "demo" ? (
-          <TodoApp todos={todos} onAdd={handleAdd} onToggle={handleToggle} loading={loading} />
+          <TodoApp />
         ) : (
           <KnowledgeInspector knowledge={knowledge} moduleGraph={health?.moduleGraph} loading={knowledgeLoading} />
         )}
