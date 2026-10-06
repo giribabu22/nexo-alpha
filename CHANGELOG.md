@@ -1,5 +1,56 @@
 # Changelog
 
+## 0.7.0
+
+0.7.0 makes Nexo a full-stack framework. A domain object is declared once and drives storage, validation, the REST API, TypeScript types, forms and tables. It also adds built-in sign-in, file uploads, and SQL-backed lists on SQLite. See [Full-stack primitives](./docs/primitives.md) and the [upgrade notes](./docs/architecture/full-stack-report.md#f-migration).
+
+### Changed
+
+- **`resource()` list sorting no longer uses `localeCompare`.** It now uses one rule on every store: numbers sort numerically and strings case-insensitively (ASCII letters only), missing values sort last in both directions, and ties keep creation order.
+- **A `resource()` create or update with several problems answers one 400 listing all of them**, unknown fields included, in the same words as browser-side validation.
+- **`resource({ searchable })` accepts only text fields** (string, text, email, enum, date, ref).
+
+- **`@nexo-alpha/hapi` answers 400 when a handler throws `NexoValidationError`** (`{ error: "Validation failed", errors }`, the same body as schema validation failures). It used to answer 500.
+- **`@nexo-alpha/frontend` depends on `@nexo-alpha/core`** (previously a dev dependency). Browser code imports only the Node-free `@nexo-alpha/core/model` entry.
+
+### Added
+
+**Core (`@nexo-alpha/core`)**
+- `model(name, fields)` and `field.*`: one declaration gives `Infer`/`InferInput`/`InferPatch` types, validation that rejects unknown fields, defaults, labels and API schemas. Browser-safe entry point: `@nexo-alpha/core/model`.
+- `resource(model, { store })`: a `NexoModule` serving `GET/POST /api/<name>` and `GET/PATCH/DELETE /api/<name>/:id`, and the same operations for server code. It provides paging, sorting, search, typed filters, reference checks for `field.ref()`, compare-and-swap updates (409 on persistent conflicts), auth scopes per read/write, and `beforeWrite`.
+- `api.get/post/put/patch/delete(path, handler, options?)` for one-line endpoints.
+- `resource({ onChange })` runs after every stored create, update and delete (for webhooks, audit logs and notifications). `auth` accepts per-operation scopes (e.g. `{ write: [...], delete: [...] }`). `field.*().describe(text)` adds descriptions to API schemas.
+- `NexoRequestContext.auth`: the authenticated caller, on APIs with `auth.required`.
+
+- `createAuth({ store, secret })`: email and password accounts. Passwords are scrypt-hashed, emails are unique and claimed atomically, sessions are revocable, failed sign-ins are limited, and scopes are read per request. It provides `/api/auth/register|login|logout|me` and an `authenticate` for `createHapiServer`.
+- `createFiles({ store, blobs })`: uploads, downloads and file metadata at `/api/files`, with `createDiskBlobStore` and `createInMemoryBlobStore`. Downloads are served safely: `nosniff`, a sandboxing CSP, and HTML/SVG always downloaded. Size limits answer 413 and type limits 415. `field.file({ accept })` references an uploaded file, and `resource()` checks that it exists and has an accepted type.
+- `NexoApi.rawBody`: receive the request body as bytes (any content type, up to `maxBytes`); `@nexo-alpha/hapi` supports it.
+- `NexoDocumentStore.insert` (optional, atomic insert-if-absent; implemented by all built-in stores and forwarded by `scopeByProject`) and `insertDocument()`.
+- `scopeMatches` and `missingScopes` are also exported from the browser-safe `@nexo-alpha/core/model`.
+- Lists on SQLite run in SQL: `NexoDocumentStore.query` (optional) filters, searches, sorts and pages in the store, and `NexoDocumentStore.index` (optional) adds expression indexes. `resource()` uses both, and indexes `ref` fields by default (`indexes` option). Other stores use `queryDocuments()`, which follows the same rules, and a randomized test checks the two give identical results. On 50,000 rows, one customer's orders take 3 ms instead of 160 ms.
+
+**Frontend (`@nexo-alpha/frontend`)**
+- `client.session` (`NexoSession`, persisted in localStorage in browsers) and `client.auth` (login, register, logout, me). The session token is sent on every request, and a 401 for it signs the client out.
+- `client.files` (`NexoFilesClient`: upload, url, info, download, delete) and `client.request(path, init, read)` for non-JSON responses. `NexoForm` renders `field.file()` as a file picker that uploads on selection, and `NexoTable` links to the file.
+- `NexoResourceTable` asks before deleting (`confirmDelete`, default true) and shows delete errors.
+- `useAuth()` and `NexoLoginForm` (sign in or sign up, then return to `?next=`, same-site paths only).
+- `client.resource(model)`: typed CRUD with client-side validation and change notifications.
+- `useResource`, `useRecord`, `useResourceClient`, and `createQuery` (the React-free state behind them).
+- `NexoForm` / `useForm`, `NexoTable`, `NexoResourceTable`, `NexoStack`, `NexoGrid`, `NexoLoader`, `NexoErrorState`, `NexoEmptyState`.
+- `page()` and `NexoApp`: routing, layouts, protected pages and not-found in one component. Protected pages follow the session by default.
+
+**CLI (`@nexo-alpha/cli`)**
+- `nexo generate resource <name>` (`--no-page` for backend-only projects) and `nexo generate page <name>`.
+
+**Templates (`create-nexo-app`)**
+- `backend-api` projects start with a `notes` resource (`src/notes/`) stored in `data/app.json`.
+- Templates depend on `^0.7.0`.
+
+### Fixed
+
+- `NexoProvider` ignored its `auth` and `timeoutMs` props.
+- The README's hapi example accepted any `Authorization` header as signed in. It now uses `jwtAuthenticator`.
+
 ## 0.6.0
 
 0.6.0 adds a production runtime: workflows over HTTP, a persistent job queue, authentication and role-based access, multi-tenant projects, webhooks, observability, and a frontend for all of it. See the [Developer Guide](./docs/DEVELOPER_GUIDE.md), sections 13–22.
