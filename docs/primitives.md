@@ -382,6 +382,12 @@ const Profile = model("profiles", { name: field.string(), photo: field.file({ ac
 | `maxBytes` | 10 MB | larger uploads get 413 before the handler runs |
 | `accept` | any | MIME patterns; others get 415 |
 | `auth` | none | like `resource()`: `true` or `{ read, write }` scopes |
+| `cleanup` | on | `{ removeDetachedAfterMs: 1h, removeUnattachedAfterMs: never, everyMs: 15 min }`, or `false` |
+
+**Cleanup.**
+- `resource()` records which record uses each file (`attachedTo`). A file belongs to one record; using it in a second record answers 409.
+- When a record replaces or deletes a file, the file is released and removed an hour later. The timer runs between `app.start()` and `app.stop()`, and `files.sweep()` runs it by hand.
+- Uploads no record ever used are kept by default. Set `removeUnattachedAfterMs` (e.g. 24 hours) once every reference goes through `resource()`. If your own code stores file ids, call `files.attach(id, "invoices/42")` and `files.detach(id)`.
 
 Browser: `client.files.upload(file)` returns a `NexoFile` (`id`, `name`, `type`, `size`,
 `sha256`, `url`); `client.files.url(id)` gives a link or `<img src>`;

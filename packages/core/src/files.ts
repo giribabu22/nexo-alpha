@@ -15,6 +15,13 @@
  * be safe to display (so an uploaded HTML or SVG file cannot run scripts on
  * your site). File ids are random UUIDs; without `auth.read`, anyone with a
  * file's URL can download it.
+ *
+ * Cleanup: `resource()` records which record uses each file (`field.file()`)
+ * and releases a file when the record replaces or deletes it. Released files
+ * are removed an hour later, by a timer that runs while the app is started.
+ * Files that were uploaded but never used by a record are kept unless you set
+ * `cleanup.removeUnattachedAfterMs` — set it when every file reference goes
+ * through `resource()` (or `files.attach`), since other references are invisible.
  */
 
 import { createHash, randomUUID } from "node:crypto";
@@ -26,6 +33,7 @@ import { FILES_PATH, mimeMatches, type NexoFile } from "./files-contract.js";
 import type { NexoModule } from "./module.js";
 import type { ResourceAuth } from "./resource.js";
 import type { NexoDocumentStore } from "./storage.js";
+import { FILES_COLLECTION, attachFile, detachFile } from "./file-attachments.js";
 
 // ---------------------------------------------------------------------------
 // Blob stores
@@ -118,6 +126,17 @@ export interface CreateFilesOptions {
   readonly accept?: readonly string[];
   /** Like `resource()`: `true`, or scopes for `read` (download, info) and `write` (upload, delete). */
   readonly auth?: boolean | ResourceAuth;
+  /** Removing files nothing uses any more; `false` turns the timer off (`sweep()` still works). */
+  readonly cleanup?: FilesCleanupOptions | false;
+}
+
+export interface FilesCleanupOptions {
+  /** Remove a file this long after its record released it. Default: 1 hour */
+  readonly removeDetachedAfterMs?: number;
+  /** Remove a file no record ever used, this long after upload. Default: never (see above). */
+  readonly removeUnattachedAfterMs?: number;
+  /** How often the timer sweeps while the app is started. Default: 15 minutes */
+  readonly everyMs?: number;
 }
 
 export interface UploadInput {
@@ -136,9 +155,15 @@ export interface NexoFiles extends NexoModule {
   read(id: string): Promise<{ readonly file: NexoFile; readonly data: Uint8Array } | undefined>;
   /** Throws 404 if there is no such file. */
   delete(id: string): Promise<void>;
+  /** Marks a file as used by `owner` (e.g. "invoices/42") when your own code stores the reference. */
+  attach(id: string, owner: string): Promise<void>;
+  /** Releases a file so cleanup can remove it. */
+  detach(id: string, owner?: string): Promise<void>;
+  /** Removes files nothing uses any more, per `cleanup`. Returns the removed ids. */
+  sweep(now?: number): Promise<string[]>;
 }
 
-const COLLECTION = "files";
+const COLLECTION = FILES_COLLECTION;
 const DEFAULT_MAX_BYTES = 10 * 1024 * 1024;
 
 /** Types browsers display without running scripts; everything else is downloaded. */
@@ -211,6 +236,30 @@ export function createFiles(options: CreateFilesOptions): NexoFiles {
     if (options.auth === true) return { auth: { required: true } };
     const scopes = options.auth[group];
     return scopes === undefined ? {} : { auth: { required: true, scopes } };
+  }
+
+  const cleanup = options.cleanup === false ? undefined : options.cleanup ?? {};
+  const removeDetachedAfterMs = cleanup?.removeDetachedAfterMs ?? 60 * 60 * 1000;
+  let timer: ReturnType<typeof setInterval> | undefined;
+
+  async function sweep(now = Date.now()): Promise<string[]> {
+    const removed: string[] = [];
+    for (const file of await store.list<NexoFile>(COLLECTION)) {
+      if (file.attachedTo !== undefined) continue;
+      const due = file.detachedAt !== undefined
+        ? Date.parse(file.detachedAt) + removeDetachedAfterMs
+        : cleanup?.removeUnattachedAfterMs !== undefined
+          ? Date.parse(file.createdAt) + cleanup.removeUnattachedAfterMs
+          : Number.POSITIVE_INFINITY;
+      if (due > now) continue;
+      // Only if still unused: it may have been attached since it was listed.
+      if (await store.replaceIf(COLLECTION, file.id, file, { ...file, detachedAt: file.detachedAt ?? file.createdAt, removing: true })) {
+        await blobs.delete(file.id);
+        await store.delete(COLLECTION, file.id);
+        removed.push(file.id);
+      }
+    }
+    return removed;
   }
 
   const notFound = (id: string) => new NexoHttpError(404, "NOT_FOUND", `File "${id}" not found.`);
@@ -289,6 +338,18 @@ export function createFiles(options: CreateFilesOptions): NexoFiles {
     upload,
     info,
     read,
-    delete: remove
+    delete: remove,
+    attach: (id, owner) => attachFile(store, id, owner),
+    detach: (id, owner) => detachFile(store, id, owner),
+    sweep,
+    start() {
+      if (cleanup === undefined || timer !== undefined) return;
+      timer = setInterval(() => void sweep().catch(() => undefined), cleanup.everyMs ?? 15 * 60 * 1000);
+      timer.unref?.();
+    },
+    stop() {
+      if (timer !== undefined) clearInterval(timer);
+      timer = undefined;
+    }
   };
 }

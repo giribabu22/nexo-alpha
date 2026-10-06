@@ -24,6 +24,7 @@
 
 - `createAuth({ store, secret })`: email and password accounts. Passwords are scrypt-hashed, emails are unique and claimed atomically, sessions are revocable, failed sign-ins are limited, and scopes are read per request. It provides `/api/auth/register|login|logout|me` and an `authenticate` for `createHapiServer`.
 - `createFiles({ store, blobs })`: uploads, downloads and file metadata at `/api/files`, with `createDiskBlobStore` and `createInMemoryBlobStore`. Downloads are served safely: `nosniff`, a sandboxing CSP, and HTML/SVG always downloaded. Size limits answer 413 and type limits 415. `field.file({ accept })` references an uploaded file, and `resource()` checks that it exists and has an accepted type.
+- File cleanup: `resource()` tracks which record uses each file (one record per file; a second use answers 409 `FILE_IN_USE`) and releases files a record replaces or deletes. `createFiles` removes released files after `cleanup.removeDetachedAfterMs` (default 1 hour) on a timer tied to `app.start()`/`stop()`; never-used uploads are removed only with `cleanup.removeUnattachedAfterMs`. Also available: `files.attach`, `files.detach` and `files.sweep`.
 - `NexoApi.rawBody`: receive the request body as bytes (any content type, up to `maxBytes`); `@nexo-alpha/hapi` supports it.
 - `NexoDocumentStore.insert` (optional, atomic insert-if-absent; implemented by all built-in stores and forwarded by `scopeByProject`) and `insertDocument()`.
 - `scopeMatches` and `missingScopes` are also exported from the browser-safe `@nexo-alpha/core/model`.

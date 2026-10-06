@@ -231,6 +231,7 @@ hooks and components keep working.
    search still scans every row. Full-text search (SQLite FTS5) would be the next step there.
 3. Unique constraints, backed by a store-level index.
 4. ~~File upload~~: done (`createFiles`, `field.file`, disk and memory blob stores).
+   Files are cleaned up when records release them (`attachedTo`, `cleanup`).
    Still open: an S3-compatible blob store, image thumbnails, and signed URLs for
    `<img src>` on files behind `auth.read`.
 5. Consolidate the older data hooks (`useApi`, `useNexoApi`, `useNexoRpcQuery`)

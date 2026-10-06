@@ -27,6 +27,7 @@ import type { NexoModule } from "./module.js";
 import type { NexoDocumentStore } from "./storage.js";
 import { queryDocuments, type DocumentQuery, type DocumentScalar } from "./document-query.js";
 import { mimeMatches } from "./files-contract.js";
+import { attachFile, detachFile } from "./file-attachments.js";
 import { NexoConfigurationError, NexoHttpError, NexoValidationError } from "./errors.js";
 import type { FieldName, Infer, InferInput, InferPatch, NexoModel } from "./model.js";
 import {
@@ -133,6 +134,8 @@ export interface NexoResource<M extends NexoModel> extends NexoModule {
 }
 
 const MAX_UPDATE_ATTEMPTS = 5;
+/** Thrown inside a write to mean "the record changed meanwhile; try again" (and undo file claims). */
+const RETRY = Symbol("retry");
 
 const SEARCHABLE_KINDS = new Set(["string", "text", "email", "enum", "date", "ref"]);
 
@@ -170,6 +173,39 @@ export function resource<M extends NexoModel>(model: M, options: ResourceOptions
   }
 
   const refFields = Object.entries(model.fields).filter(([, f]) => f.ref !== undefined);
+  const fileFields = Object.entries(model.fields)
+    .filter(([, f]) => f.kind === "file" || (f.kind === "array" && f.item?.kind === "file"))
+    .map(([key]) => key);
+
+  /** The uploaded files a record references. */
+  function fileIds(record: Record<string, unknown> | undefined): Set<string> {
+    const ids = new Set<string>();
+    for (const key of fileFields) {
+      const value = record?.[key];
+      for (const id of Array.isArray(value) ? value : [value]) if (typeof id === "string") ids.add(id);
+    }
+    return ids;
+  }
+  const ownerOf = (id: unknown): string => `${name}/${String(id)}`;
+
+  /**
+   * Claims `added` files for the record before it is stored, so a crash can only
+   * leave a file claimed, never remove one that is in use. Claims are undone if
+   * the write then fails.
+   */
+  async function claimFiles<T>(owner: string, added: Iterable<string>, write: () => Promise<T>): Promise<T> {
+    const claimed: string[] = [];
+    try {
+      for (const id of added) {
+        await attachFile(store, id, owner);
+        claimed.push(id);
+      }
+      return await write();
+    } catch (error) {
+      await Promise.all(claimed.map((id) => detachFile(store, id, owner).catch(() => undefined)));
+      throw error;
+    }
+  }
   const indexed: readonly string[] = options.indexes
     ?? refFields.filter(([, f]) => f.kind === "ref" || f.kind === "file").map(([key]) => key);
   for (const key of indexed) {
@@ -288,7 +324,7 @@ export function resource<M extends NexoModel>(model: M, options: ResourceOptions
       { operation: "create", existing: undefined, request }
     );
     await checkRefs(record);
-    await store.put(name, record.id as string, record);
+    await claimFiles(ownerOf(record.id), fileIds(record), () => store.put(name, record.id as string, record));
     await options.onChange?.({ operation: "create", record: record as Infer<M>, previous: undefined, request });
     return record as Infer<M>;
   }
@@ -306,7 +342,17 @@ export function resource<M extends NexoModel>(model: M, options: ResourceOptions
       }
       const next = await finalize(merged, { operation: "update", existing, request });
       await checkRefs(next, existing as Record<string, unknown>);
-      if (await store.replaceIf(name, id, current, next)) {
+      const before = fileIds(existing as Record<string, unknown>);
+      const after = fileIds(next);
+      const stored = await claimFiles(ownerOf(id), [...after].filter((f) => !before.has(f)), async () => {
+        if (await store.replaceIf(name, id, current, next)) return true;
+        throw RETRY;
+      }).catch((error: unknown) => {
+        if (error === RETRY) return false;
+        throw error;
+      });
+      if (stored) {
+        for (const file of before) if (!after.has(file)) await detachFile(store, file, ownerOf(id));
         await options.onChange?.({ operation: "update", record: next as Infer<M>, previous: existing, request });
         return next as Infer<M>;
       }
@@ -315,8 +361,11 @@ export function resource<M extends NexoModel>(model: M, options: ResourceOptions
   }
 
   async function remove(id: string, request?: NexoRequestContext): Promise<void> {
-    const existing = options.onChange === undefined ? undefined : await store.get(name, id);
+    const existing = options.onChange === undefined && fileFields.length === 0
+      ? undefined
+      : await store.get<Record<string, unknown>>(name, id);
     if (!(await store.delete(name, id))) throw notFound(id);
+    for (const file of fileIds(existing)) await detachFile(store, file, ownerOf(id));
     if (options.onChange !== undefined && existing !== undefined) {
       await options.onChange({ operation: "delete", record: model.hydrate(existing) as Infer<M>, previous: undefined, request });
     }

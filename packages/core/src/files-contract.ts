@@ -28,6 +28,10 @@ export interface NexoFile {
   readonly url: string;
   /** Who uploaded it (the authenticated user's `sub`), when known. */
   readonly uploadedBy?: string;
+  /** The record that uses it, e.g. "profiles/6f1c…" (set by `resource()` or `files.attach`). */
+  readonly attachedTo?: string;
+  /** When its record let go of it; cleanup removes it after `removeDetachedAfterMs`. */
+  readonly detachedAt?: string;
   readonly createdAt: string;
 }
 

@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import {
+  createApplication,
   createFiles,
   createDiskBlobStore,
   createInMemoryBlobStore,
@@ -95,4 +96,105 @@ test("field.file() must reference an uploaded file of an accepted type", async (
   await assert.rejects(() => profiles.create({ photo: "no-such-file" }), /missing files record/);
   assert.equal(Profile.fields.photo.kind, "file");
   assert.deepEqual(Profile.fields.photo.accept, ["image/*"]);
+});
+
+// ---------------------------------------------------------------------------
+// Attachments and cleanup
+// ---------------------------------------------------------------------------
+
+function attachmentSetup(cleanup) {
+  const store = createInMemoryDocumentStore();
+  const blobs = createInMemoryBlobStore();
+  const files = createFiles({ store, blobs, ...(cleanup !== undefined ? { cleanup } : {}) });
+  const Profile = model("profiles", { name: field.string(), photo: field.file().optional() });
+  const profiles = resource(Profile, { store });
+  const upload = () => files.upload(bytes("img"), { name: "a.png", type: "image/png" });
+  return { store, blobs, files, profiles, upload };
+}
+
+test("records claim their files; a file belongs to one record", async () => {
+  const { files, profiles, upload } = attachmentSetup();
+  const photo = await upload();
+  const ann = await profiles.create({ name: "Ann", photo: photo.id });
+  assert.equal((await files.info(photo.id)).attachedTo, `profiles/${ann.id}`);
+
+  await assert.rejects(() => profiles.create({ name: "Bob", photo: photo.id }), (error) => {
+    assert.equal(error.statusCode, 409);
+    assert.equal(error.code, "FILE_IN_USE");
+    return true;
+  });
+  assert.equal((await profiles.list()).total, 1, "the second record was not stored");
+});
+
+test("replacing or deleting releases files; cleanup removes them after the delay", async () => {
+  const { files, blobs, profiles, upload } = attachmentSetup({ removeDetachedAfterMs: 1000 });
+  const first = await upload();
+  const second = await upload();
+  const ann = await profiles.create({ name: "Ann", photo: first.id });
+
+  await profiles.update(ann.id, { photo: second.id });
+  const released = await files.info(first.id);
+  assert.equal(released.attachedTo, undefined);
+  assert.ok(released.detachedAt);
+  assert.equal((await files.info(second.id)).attachedTo, `profiles/${ann.id}`);
+
+  assert.deepEqual(await files.sweep(Date.now()), [], "not before the delay");
+  assert.deepEqual(await files.sweep(Date.now() + 2000), [first.id]);
+  assert.equal(await files.info(first.id), undefined);
+  assert.equal(await blobs.get(first.id), undefined, "content removed too");
+
+  await profiles.update(ann.id, { photo: null });
+  await profiles.create({ name: "Cy", photo: (await upload()).id });
+  const cy = (await profiles.list({ where: { name: "Cy" } })).items[0];
+  await profiles.delete(cy.id);
+  assert.equal((await files.sweep(Date.now() + 2000)).length, 2, "cleared and deleted records release their files");
+});
+
+test("never-used uploads are kept unless removeUnattachedAfterMs is set", async () => {
+  const kept = attachmentSetup();
+  const orphan = await kept.upload();
+  assert.deepEqual(await kept.files.sweep(Date.now() + 365 * 24 * 3600 * 1000), []);
+  assert.ok(await kept.files.info(orphan.id));
+
+  const strict = attachmentSetup({ removeUnattachedAfterMs: 1000 });
+  const stale = await strict.upload();
+  const used = await strict.upload();
+  await strict.profiles.create({ name: "Ann", photo: used.id });
+  assert.deepEqual(await strict.files.sweep(Date.now() + 2000), [stale.id]);
+});
+
+test("a failed record write gives its file claims back", async () => {
+  const store = createInMemoryDocumentStore();
+  const files = createFiles({ store, blobs: createInMemoryBlobStore() });
+  const failing = { ...store, put: async (collection, id, doc) => { if (collection === "profiles") throw new Error("disk full"); return store.put(collection, id, doc); } };
+  const profiles = resource(model("profiles", { photo: field.file() }), { store: failing });
+  const photo = await files.upload(bytes("x"), { type: "image/png" });
+  await assert.rejects(() => profiles.create({ photo: photo.id }), /disk full/);
+  assert.equal((await files.info(photo.id)).attachedTo, undefined);
+});
+
+test("attach/detach for references kept by your own code; files being removed cannot be attached", async () => {
+  const { files, store, upload } = attachmentSetup({ removeDetachedAfterMs: 0 });
+  const file = await upload();
+  await files.attach(file.id, "invoices/42");
+  await assert.rejects(() => files.attach(file.id, "invoices/43"), (e) => e.code === "FILE_IN_USE");
+  await files.detach(file.id, "invoices/43"); // not the owner: no effect
+  assert.equal((await files.info(file.id)).attachedTo, "invoices/42");
+  await files.detach(file.id);
+  assert.equal((await files.info(file.id)).attachedTo, undefined);
+
+  const doc = await store.get("files", file.id);
+  await store.put("files", file.id, { ...doc, removing: true });
+  await assert.rejects(() => files.attach(file.id, "invoices/44"), (e) => e.statusCode === 404);
+});
+
+test("the cleanup timer follows the app lifecycle", async () => {
+  const { files } = attachmentSetup({ everyMs: 10 });
+  const app = createApplication({ name: "files-lifecycle" });
+  app.module(files);
+  await app.start();
+  await app.stop();
+  const off = createFiles({ store: createInMemoryDocumentStore(), blobs: createInMemoryBlobStore(), cleanup: false });
+  off.start();
+  off.stop();
 });
