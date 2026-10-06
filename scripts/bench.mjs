@@ -17,7 +17,10 @@ import { performance } from "node:perf_hooks";
 import {
   createFileDocumentStore,
   createInMemoryDocumentStore,
-  createSqliteDocumentStore
+  createSqliteDocumentStore,
+  field,
+  model,
+  resource
 } from "../packages/core/dist/index.js";
 import { createJobQueue } from "../packages/scheduler/dist/index.js";
 import { createDocumentWorkflowStore } from "../packages/agent/dist/index.js";
@@ -58,6 +61,48 @@ try {
       for (let i = 0; i < n; i++) await store.get("docs", `d${i}`);
     });
     await store.close();
+  }
+
+  // --- resource().list on SQLite: in SQL vs in memory -------------------------
+  try {
+    const Product = model("products", {
+      name: field.string(),
+      price: field.number(),
+      category: field.enum(["tools", "toys", "books"])
+    });
+    const sqlite = await createSqliteDocumentStore(join(dir, "products.sqlite"));
+    const records = scale(50000);
+    const categories = ["tools", "toys", "books"];
+    for (let i = 0; i < records; i++) {
+      const id = `p${i}`;
+      await sqlite.put("products", id, { id, name: `Product ${i}`, price: i % 997, category: categories[i % 3], createdAt: "t", updatedAt: "t" });
+    }
+    // The same store without query(): resource() falls back to list() + in-memory filtering.
+    const { query: _sql, ...withoutQuery } = sqlite;
+    const query = { where: { category: "toys" }, sort: "-price", search: "9", limit: 20, offset: 40 };
+    const pages = scale(50);
+    for (const [label, store] of [["in SQL", sqlite], ["in memory", withoutQuery]]) {
+      const products = resource(Product, { store, searchable: ["name"] });
+      await bench(`resource.list on ${records} SQLite rows (${label})`, pages, async () => {
+        for (let i = 0; i < pages; i++) await products.list(query);
+      });
+    }
+
+    // Orders of one customer: a selective filter on a ref field, which resource() indexes.
+    const Order = model("orders", { customerId: field.ref("customers"), total: field.number() });
+    for (let i = 0; i < records; i++) {
+      const id = `o${i}`;
+      await sqlite.put("orders", id, { id, customerId: `c${i % 1000}`, total: i % 500, createdAt: "t", updatedAt: "t" });
+    }
+    for (const [label, store] of [["in SQL, indexed", sqlite], ["in memory", withoutQuery]]) {
+      const orders = resource(Order, { store });
+      await bench(`orders of 1 customer, ${records} rows (${label})`, pages, async () => {
+        for (let i = 0; i < pages; i++) await orders.list({ where: { customerId: `c${i}` }, sort: "-total", limit: 20 });
+      });
+    }
+    await sqlite.close();
+  } catch (error) {
+    results.push({ benchmark: "resource.list (SQLite)", ops: 0, "total ms": 0, "ops/sec": `n/a (${error.message})` });
   }
 
   // --- Workflows ------------------------------------------------------------

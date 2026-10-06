@@ -1,0 +1,26 @@
+{
+  "name": "@nexo/benchmark-code-to-intent",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "The same features written with Nexo's lower-level APIs (before) and with model/resource (after), measured and tested for equal behavior.",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "node --test",
+    "measure": "node measure.mjs"
+  },
+  "dependencies": {
+    "@nexo-alpha/core": "workspace:*",
+    "@nexo-alpha/frontend": "workspace:*",
+    "@nexo-alpha/hapi": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "@types/react": "^18.3.5",
+    "@types/react-dom": "^18.3.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "typescript": "^5.0.0"
+  }
+}
