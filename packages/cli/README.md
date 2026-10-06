@@ -45,6 +45,17 @@ The CLI resolves your Nexo application in one of two ways:
 
 ---
 
+## Generators
+
+```bash
+nexo generate resource invoice             # src/invoices/{invoice.model.ts, invoices.api.ts, invoices.page.tsx}
+nexo generate resource invoice --no-page   # backend-only projects: model and API only
+nexo generate page settings                # src/pages/settings.page.tsx
+nexo generate module billing               # also: tool, workflow
+```
+
+Existing files are never overwritten without `--force`.
+
 ## Command Reference
 
 ### 1. `nexo init`

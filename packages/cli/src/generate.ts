@@ -5,6 +5,9 @@
  * - tool:     src/tools/<name>.ts      an agent tool (the ACT layer)
  * - workflow: src/workflows/<name>.ts  an agent + workflow wiring
  * - module:   src/modules/<name>/index.ts  a NexoModule with one API
+ * - resource: src/<plural>/<name>.model.ts, <plural>.api.ts, <plural>.page.tsx
+ *             a model, its CRUD API and a page with a form and a table
+ * - page:     src/pages/<name>.page.tsx    a page component for `page()`
  *
  * Generation is pure ({@link generateFiles}); writing is separate
  * ({@link writeGeneratedFiles}) and refuses to overwrite without `force`.
@@ -13,9 +16,9 @@
 import { mkdir, stat, writeFile } from "node:fs/promises";
 import { dirname, join, relative } from "node:path";
 
-export type GeneratorKind = "tool" | "workflow" | "module";
+export type GeneratorKind = "tool" | "workflow" | "module" | "resource" | "page";
 
-export const GENERATOR_KINDS: readonly GeneratorKind[] = ["tool", "workflow", "module"];
+export const GENERATOR_KINDS: readonly GeneratorKind[] = ["tool", "workflow", "module", "resource", "page"];
 
 export interface GeneratedFile {
   /** Path relative to the project root. */
@@ -38,7 +41,23 @@ const camel = (parts: readonly string[]): string =>
   parts.map((word, index) => (index === 0 ? word : word[0]!.toUpperCase() + word.slice(1))).join("");
 const pascal = (parts: readonly string[]): string => parts.map((word) => word[0]!.toUpperCase() + word.slice(1)).join("");
 
-export function generateFiles(kind: GeneratorKind, name: string): GeneratedFile[] {
+/** English plural of the last word, by simple rules ("invoice" → "invoices", "category" → "categories"). */
+export function pluralize(parts: readonly string[]): string[] {
+  const last = parts[parts.length - 1]!;
+  const plural = /[^aeiou]y$/.test(last)
+    ? `${last.slice(0, -1)}ies`
+    : /(s|x|z|ch|sh)$/.test(last)
+      ? `${last}es`
+      : `${last}s`;
+  return [...parts.slice(0, -1), plural];
+}
+
+export interface GenerateOptions {
+  /** For `resource`: also write a page with a form and a table. Default: true (false for backend-only projects). */
+  readonly page?: boolean;
+}
+
+export function generateFiles(kind: GeneratorKind, name: string, options: GenerateOptions = {}): GeneratedFile[] {
   const parts = words(name);
   if (parts.length === 0 || !/^[a-z]/.test(parts[0]!)) {
     throw new Error(`Invalid name "${name}": use letters and digits, starting with a letter (e.g. "refund-order").`);
@@ -115,6 +134,74 @@ export function ${fn}(): NexoWorkflow {
     // Replace with an LLM-backed IntentParser to plan steps from the goal.
     parser: createStepIntentParser([])
   });
+}
+`
+        }
+      ];
+    }
+
+    case "resource": {
+      const plural = pluralize(parts);
+      const folder = kebab(plural);
+      const Model = pascal(parts);
+      const Page = `${pascal(plural)}Page`;
+      const files: GeneratedFile[] = [
+        {
+          path: `src/${folder}/${file}.model.ts`,
+          content: `import { field, model, type Infer } from "@nexo-alpha/core/model";
+
+/** The ${Model} model: its types, validation, API schema, forms and tables all follow from this definition. */
+export const ${Model} = model("${folder}", {
+  // TODO: replace with the real fields. See docs/primitives.md#model for field types.
+  name: field.string({ minLength: 1 })
+});
+export type ${Model} = Infer<typeof ${Model}>;
+`
+        },
+        {
+          path: `src/${folder}/${folder}.api.ts`,
+          content: `import { resource, type NexoDocumentStore } from "@nexo-alpha/core";
+import { ${Model} } from "./${file}.model.js";
+
+/** CRUD API at /api/${folder}. Register it with app.module(${camel(plural)}Resource(store)). */
+export function ${camel(plural)}Resource(store: NexoDocumentStore) {
+  return resource(${Model}, { store });
+}
+`
+        },
+        {
+          path: `src/${folder}/${folder}.page.tsx`,
+          content: `import React from "react";
+import { NexoForm, NexoResourceTable, NexoStack } from "@nexo-alpha/frontend";
+import { ${Model} } from "./${file}.model.js";
+
+/** Create and list ${folder.replace(/-/g, " ")}. Add it to the app with page("/${folder}", ${Page}). */
+export function ${Page}(): React.JSX.Element {
+  return (
+    <NexoStack>
+      <NexoForm model={${Model}} />
+      <NexoResourceTable model={${Model}} allowDelete />
+    </NexoStack>
+  );
+}
+`
+        }
+      ];
+      return options.page === false ? files.filter((file) => !file.path.endsWith(".page.tsx")) : files;
+    }
+
+    case "page": {
+      const Page = `${pascal(parts)}Page`;
+      return [
+        {
+          path: `src/pages/${file}.page.tsx`,
+          content: `import React from "react";
+import type { NexoPageRouteProps } from "@nexo-alpha/frontend";
+
+/** Add it to the app with page("/${file}", ${Page}); path parameters arrive in \`params\`. */
+export function ${Page}({ params }: NexoPageRouteProps): React.JSX.Element {
+  void params;
+  return <h1>${pascal(parts).replace(/([a-z])([A-Z])/g, "$1 $2")}</h1>;
 }
 `
         }

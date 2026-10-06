@@ -37,7 +37,7 @@ test("creates fullstack-react project files with customized project name and pro
     // Check backend files
     const backendPkg = JSON.parse(await fs.readFile(path.join(appDir, "backend", "package.json"), "utf8"));
     assert.equal(backendPkg.name, "super-app-backend");
-    assert.equal(backendPkg.dependencies["@nexo-alpha/tools"], "^0.6.0");
+    assert.equal(backendPkg.dependencies["@nexo-alpha/tools"], "^0.7.0");
     assert.ok(backendPkg.dependencies["@nexo-alpha/behavior"]);
     assert.ok(backendPkg.dependencies["@nexo-alpha/agent"]);
     assert.equal(backendPkg.scripts.graph, "nexo graph --source-root src --out .nexo/knowledge-graph.json");
@@ -96,7 +96,7 @@ test("creates backend-api project files with customized project name", async () 
     assert.equal(pkg.name, "order-service");
     assert.ok(pkg.dependencies["@nexo-alpha/core"]);
     assert.ok(pkg.dependencies["@nexo-alpha/hapi"]);
-    assert.equal(pkg.dependencies["@nexo-alpha/tools"], "^0.6.0");
+    assert.equal(pkg.dependencies["@nexo-alpha/tools"], "^0.7.0");
     assert.ok(pkg.dependencies["@nexo-alpha/behavior"]);
     assert.ok(pkg.dependencies["@nexo-alpha/agent"]);
     assert.equal(pkg.scripts.graph, "nexo graph --source-root src --out .nexo/knowledge-graph.json");
@@ -118,7 +118,7 @@ test("creates backend-api project files with customized project name", async () 
   }
 });
 
-test("creates agent-service project files on the 0.6 runtime", async () => {
+test("creates agent-service project files on the 0.7 runtime", async () => {
   const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "nexo-agent-service-"));
   const appDir = path.join(tempDir, "support-bot");
 
@@ -128,7 +128,7 @@ test("creates agent-service project files on the 0.6 runtime", async () => {
 
     const pkg = JSON.parse(await fs.readFile(path.join(appDir, "package.json"), "utf8"));
     for (const name of ["agent", "core", "decision", "hapi", "scheduler", "tools"]) {
-      assert.equal(pkg.dependencies[`@nexo-alpha/${name}`], "^0.6.0");
+      assert.equal(pkg.dependencies[`@nexo-alpha/${name}`], "^0.7.0");
     }
     assert.equal(pkg.scripts.test, "tsc && node --test");
 

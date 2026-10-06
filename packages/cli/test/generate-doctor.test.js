@@ -43,6 +43,34 @@ test("generateFiles: derives file, action and identifier names from any casing",
   assert.match(module.content, /path: "\/billing-reports\/status"/);
 });
 
+test("generateFiles: resource scaffolds a model, its API and a page in one feature folder", () => {
+  const files = generateFiles("resource", "Category");
+  assert.deepEqual(files.map((f) => f.path), [
+    "src/categories/category.model.ts",
+    "src/categories/categories.api.ts",
+    "src/categories/categories.page.tsx"
+  ]);
+  assert.match(files[0].content, /export const Category = model\("categories", \{/);
+  assert.match(files[0].content, /export type Category = Infer<typeof Category>;/);
+  assert.match(files[1].content, /export function categoriesResource\(store: NexoDocumentStore\)/);
+  assert.match(files[1].content, /resource\(Category, \{ store \}\)/);
+  assert.match(files[2].content, /export function CategoriesPage\(\)/);
+  assert.match(files[2].content, /<NexoForm model=\{Category\} \/>/);
+
+  assert.equal(generateFiles("resource", "order item")[0].path, "src/order-items/order-item.model.ts");
+  assert.equal(generateFiles("resource", "box")[1].path, "src/boxes/boxes.api.ts");
+  assert.deepEqual(generateFiles("resource", "invoice", { page: false }).map((f) => f.path), [
+    "src/invoices/invoice.model.ts",
+    "src/invoices/invoices.api.ts"
+  ]);
+});
+
+test("generateFiles: page scaffolds a component that receives route params", () => {
+  const [file] = generateFiles("page", "user profile");
+  assert.equal(file.path, "src/pages/user-profile.page.tsx");
+  assert.match(file.content, /export function UserProfilePage\(\{ params \}: NexoPageRouteProps\)/);
+});
+
 test("generateFiles: rejects names without a leading letter", () => {
   assert.throws(() => generateFiles("tool", "123"), /Invalid name/);
   assert.throws(() => generateFiles("tool", "--"), /Invalid name/);

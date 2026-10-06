@@ -9,6 +9,7 @@ export const backendApiTemplate: Template = {
         path: ".gitignore",
         content: `node_modules
 dist
+data
 .env
 *.log
 `
@@ -17,6 +18,7 @@ dist
         path: ".dockerignore",
         content: `node_modules
 dist
+data
 .git
 .env
 *.log
@@ -86,6 +88,22 @@ docker build -t ${projectName} .
 docker run -p 3000:3000 ${projectName}
 \`\`\`
 
+## Your first resource: notes
+
+\`src/notes/\` declares a model once and serves it as a REST API, with
+validation, paging, search and sorting built in. Records are stored in
+\`data/app.json\` (see \`src/store.ts\`).
+
+\`\`\`bash
+curl -X POST localhost:3000/api/notes -H "content-type: application/json" -d '{"title":"Hello"}'
+curl "localhost:3000/api/notes?search=hello&sort=-createdAt"
+\`\`\`
+
+Add another resource, then register it in \`src/app.ts\`:
+\`\`\`bash
+npx nexo generate resource invoice --no-page
+\`\`\`
+
 ## Nexo CLI
 
 Inspect your application architecture:
@@ -120,16 +138,16 @@ npx nexo freshness --source-root src
               graph: "nexo graph --source-root src --out .nexo/knowledge-graph.json"
             },
             dependencies: {
-              "@nexo-alpha/core": "^0.6.0",
-              "@nexo-alpha/context": "^0.6.0",
-              "@nexo-alpha/decision": "^0.6.0",
-              "@nexo-alpha/behavior": "^0.6.0",
-              "@nexo-alpha/agent": "^0.6.0",
-              "@nexo-alpha/web": "^0.6.0",
-              "@nexo-alpha/hapi": "^0.6.0",
-              "@nexo-alpha/scheduler": "^0.6.0",
-              "@nexo-alpha/tools": "^0.6.0",
-              "@nexo-alpha/cli": "^0.6.0"
+              "@nexo-alpha/core": "^0.7.0",
+              "@nexo-alpha/context": "^0.7.0",
+              "@nexo-alpha/decision": "^0.7.0",
+              "@nexo-alpha/behavior": "^0.7.0",
+              "@nexo-alpha/agent": "^0.7.0",
+              "@nexo-alpha/web": "^0.7.0",
+              "@nexo-alpha/hapi": "^0.7.0",
+              "@nexo-alpha/scheduler": "^0.7.0",
+              "@nexo-alpha/tools": "^0.7.0",
+              "@nexo-alpha/cli": "^0.7.0"
             },
             devDependencies: {
               "@types/node": "^20.11.0",
@@ -180,6 +198,8 @@ npx nexo freshness --source-root src
 import { createKnowledge } from "@nexo-alpha/context";
 import { registerGreetingModule } from "./modules/greeting/index.js";
 import { registerHealthModule } from "./modules/health/index.js";
+import { notesResource } from "./notes/notes.api.js";
+import { store } from "./store.js";
 
 export const app = createApplication({
   name: "${projectName}",
@@ -230,6 +250,13 @@ knowledge.addIntent({
 
 knowledge.addIntent({
   entityKind: "module",
+  entityName: "notes",
+  purpose: "Notes CRUD API generated from the Note model.",
+  evidence: { file: "src/notes/note.model.ts", line: 4 }
+});
+
+knowledge.addIntent({
+  entityKind: "module",
   entityName: "health",
   purpose: "System operational health checks and live architecture knowledge introspection.",
   evidence: { file: "src/modules/health/index.ts", line: 4 }
@@ -244,7 +271,7 @@ knowledge.setDevelopmentState({
     "Application knowledge journal configured"
   ],
   inProgress: [
-    "External database persistence"
+    "Domain resources beyond notes"
   ]
 });
 
@@ -252,6 +279,42 @@ knowledge.setDevelopmentState({
 // for the actual app.module({...}) registration and any services it needs.
 registerGreetingModule(app);
 registerHealthModule(app, knowledge);
+app.module(notesResource(store));
+`
+      },
+      {
+        path: "src/store.ts",
+        content: `import { createFileDocumentStore } from "@nexo-alpha/core";
+
+/**
+ * Where records are stored: one JSON file, fine for one process and modest
+ * data. For more, use createSqliteDocumentStore (Node.js 22.5 or later).
+ */
+export const store = createFileDocumentStore(process.env.DATA_FILE ?? "data/app.json");
+`
+      },
+      {
+        path: "src/notes/note.model.ts",
+        content: `import { field, model, type Infer } from "@nexo-alpha/core/model";
+
+/** A note. Its types, validation and API all follow from this definition. */
+export const Note = model("notes", {
+  title: field.string({ minLength: 1, maxLength: 200 }),
+  body: field.text().optional(),
+  pinned: field.boolean().default(false)
+});
+export type Note = Infer<typeof Note>;
+`
+      },
+      {
+        path: "src/notes/notes.api.ts",
+        content: `import { resource, type NexoDocumentStore } from "@nexo-alpha/core";
+import { Note } from "./note.model.js";
+
+/** CRUD API at /api/notes, e.g. GET /api/notes?pinned=true&search=hello&sort=-createdAt */
+export function notesResource(store: NexoDocumentStore) {
+  return resource(Note, { store, searchable: ["title", "body"] });
+}
 `
       },
       {
