@@ -2,6 +2,7 @@ import Hapi from "@hapi/hapi";
 import {
   NexoEvent,
   NexoHttpError,
+  NexoValidationError,
   createRateLimiter,
   isHttpResponse,
   isValidProjectId,
@@ -279,6 +280,9 @@ export async function createHapiServer(
     server.route({
       method: api.method,
       path: toHapiPath(api.path),
+      ...(api.rawBody !== undefined
+        ? { options: { payload: { parse: false, output: "data" as const, maxBytes: api.rawBody.maxBytes ?? 10 * 1024 * 1024 } } }
+        : {}),
       handler: async (request, h) => {
         const startedAt = Date.now();
 
@@ -295,7 +299,7 @@ export async function createHapiServer(
             : h.response(body as Hapi.ResponseValue).code(statusCode);
         };
 
-        const context: NexoRequestContext = {
+        let context: NexoRequestContext = {
           params: request.params as Record<string, string>,
           query: request.query as Record<string, unknown>,
           payload: request.payload,
@@ -307,6 +311,7 @@ export async function createHapiServer(
           if (!authResult.authenticated) return respond(401, { error: "Unauthorized" });
           const missing = missingScopes(authResult.scopes, api.auth.scopes ?? []);
           if (missing.length > 0) return respond(403, { error: "Forbidden", missingScopes: missing });
+          context = { ...context, auth: authResult };
         }
 
         const execute = async () => {
@@ -328,6 +333,9 @@ export async function createHapiServer(
           } catch (error) {
             if (error instanceof NexoHttpError && error.statusCode >= 400 && error.statusCode < 500) {
               return respond(error.statusCode, { error: error.message, code: error.code });
+            }
+            if (error instanceof NexoValidationError) {
+              return respond(400, { error: "Validation failed", errors: error.errors.length > 0 ? error.errors : [error.message] });
             }
             app.events.emit(NexoEvent.API_ERROR, {
               api: api.name,

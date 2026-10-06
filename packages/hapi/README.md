@@ -20,6 +20,17 @@ pnpm add @nexo-alpha/hapi @nexo-alpha/core @hapi/hapi
 
 ---
 
+## What the Adapter Handles
+
+`createHapiServer(app, options)` serves every declared API, including `resource()`, `createAuth()` and `createFiles()` modules:
+
+- **Validation:** `api.validate` or `api.schema` runs before the handler. A thrown `NexoValidationError` answers 400 `{ error, errors }`.
+- **Auth:** `authenticate` checks `auth.required` APIs (401/403 with missing scopes). Handlers get the caller as `context.auth`.
+- **Uploads:** APIs with `rawBody` receive the request body as bytes, up to `maxBytes` (413 beyond that).
+- **Errors:** `NexoHttpError` answers its 4xx status; `httpResponse()` sets the success status and headers.
+- **Operations:** request IDs, `rateLimit`, `securityHeaders`, structured `logger`, multi-tenant `project`.
+- **Browsers on another origin:** set `cors: true`.
+
 ## How to Use
 
 ### 1. Basic Server Setup
