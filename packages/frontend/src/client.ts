@@ -8,6 +8,11 @@ import { NexoWorkflowsClient } from "./workflows.js";
 import { NexoMemoryClient } from "./memory.js";
 import { NexoProjectsClient } from "./projects.js";
 import type { NexoMetricsSnapshot } from "./metrics.js";
+import type { NexoModel } from "@nexo-alpha/core/model";
+import { NexoResourceClient, type NexoResourceClientOptions } from "./resource.js";
+import { NexoSession } from "./session.js";
+import { NexoAuthClient } from "./auth.js";
+import { NexoFilesClient } from "./files.js";
 
 export class NexoApiError extends Error {
   readonly status: number;
@@ -29,11 +34,18 @@ export class NexoClient {
   readonly memory: NexoMemoryClient;
   /** Projects API: list, create and manage members of projects (tenants). */
   readonly projects: NexoProjectsClient;
+  /** The signed-in session; its token is sent on every request (unless `auth.token` is set). */
+  readonly session: NexoSession;
+  /** Sign-in API of a server `createAuth()` module: login, register, logout, me. */
+  readonly auth: NexoAuthClient;
+  /** Uploads and download URLs of a server `createFiles()` module. */
+  readonly files: NexoFilesClient;
   /** The active project, sent as `x-project-id` on every request. */
   readonly projectId: string | undefined;
   private readonly options: NexoClientOptions;
   private readonly defaultHeaders: Record<string, string>;
   private readonly fetchFn: typeof fetch;
+  private readonly resources = new Map<string, NexoResourceClient<NexoModel>>();
 
   constructor(options: NexoClientOptions = {}) {
     this.options = options;
@@ -42,6 +54,9 @@ export class NexoClient {
     this.workflows = new NexoWorkflowsClient(this, options.workflowsPath);
     this.memory = new NexoMemoryClient(this, options.memoryPath);
     this.projects = new NexoProjectsClient(this, options.projectsPath);
+    this.session = options.session ?? new NexoSession();
+    this.auth = new NexoAuthClient(this, options.authPath);
+    this.files = new NexoFilesClient(this, options.filesPath);
     this.defaultHeaders = {
       "Accept": "application/json",
       ...(options.headers ?? {}),
@@ -50,9 +65,24 @@ export class NexoClient {
     this.fetchFn = options.fetch ?? (typeof globalThis.fetch === "function" ? globalThis.fetch.bind(globalThis) : fetch);
   }
 
+  /**
+   * Typed client for the server `resource()` of `model`. The same instance is
+   * returned for the same model and path, so change notifications reach every
+   * list showing it.
+   */
+  resource<M extends NexoModel>(model: M, options: NexoResourceClientOptions = {}): NexoResourceClient<M> {
+    const key = `${model.name} ${options.path ?? ""}`;
+    let resource = this.resources.get(key);
+    if (resource === undefined || resource.model !== model) {
+      resource = new NexoResourceClient<NexoModel>(this, model, options);
+      this.resources.set(key, resource);
+    }
+    return resource as unknown as NexoResourceClient<M>;
+  }
+
   /** A client with the same settings that works in another project. */
   forProject(projectId: string | undefined): NexoClient {
-    return new NexoClient({ ...this.options, projectId });
+    return new NexoClient({ ...this.options, projectId, session: this.session });
   }
 
   private resolveUrl(path: string): string {
@@ -64,6 +94,22 @@ export class NexoClient {
   }
 
   async api<T = unknown>(path: string, init?: RequestInit & { timeoutMs?: number }): Promise<T> {
+    return this.request(path, init, async (response) =>
+      // 204 No Content has no body.
+      response.status === 204 ? (undefined as T) : ((await response.json()) as T)
+    );
+  }
+
+  /**
+   * Sends a request with the client's auth, session, project and timeout, and
+   * reads a successful response with `read` (e.g. `(r) => r.blob()`). Failed
+   * responses throw NexoApiError, as with `api()`.
+   */
+  async request<T>(
+    path: string,
+    init: (RequestInit & { timeoutMs?: number }) | undefined,
+    read: (response: Response) => Promise<T>
+  ): Promise<T> {
     const url = this.resolveUrl(path);
     const authHeaders: Record<string, string> = {};
 
@@ -73,6 +119,9 @@ export class NexoClient {
         : this.options.auth.token;
       if (token) authHeaders["Authorization"] = `Bearer ${token}`;
     }
+
+    const sessionToken = authHeaders["Authorization"] === undefined ? this.session.token : undefined;
+    if (sessionToken !== undefined) authHeaders["Authorization"] = `Bearer ${sessionToken}`;
 
     if (this.options.auth?.apiKey !== undefined) {
       const apiKey = typeof this.options.auth.apiKey === "function"
@@ -107,6 +156,10 @@ export class NexoClient {
       const response = await this.fetchFn(url, requestInit);
 
       if (!response.ok) {
+        // The server no longer accepts this session (expired, signed out elsewhere).
+        if (response.status === 401 && sessionToken !== undefined && this.session.token === sessionToken) {
+          this.session.clear();
+        }
         let errorPayload: unknown;
         let errorMessage = `HTTP ${response.status} ${response.statusText}`;
         try {
@@ -122,12 +175,7 @@ export class NexoClient {
         throw new NexoApiError(errorMessage, response.status, errorPayload);
       }
 
-      // Handle 204 No Content
-      if (response.status === 204) {
-        return undefined as T;
-      }
-
-      return (await response.json()) as T;
+      return await read(response);
     } finally {
       if (timer !== undefined) clearTimeout(timer);
     }

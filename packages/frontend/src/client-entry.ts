@@ -7,6 +7,15 @@ export { NexoClient, createNexoClient, NexoApiError } from "./client.js";
 export { NexoWorkflowsClient } from "./workflows.js";
 export { NexoMemoryClient } from "./memory.js";
 export { NexoProjectsClient } from "./projects.js";
+export { NexoResourceClient } from "./resource.js";
+export { NexoSession } from "./session.js";
+export type { NexoSessionOptions, SessionStorageLike } from "./session.js";
+export { NexoAuthClient } from "./auth.js";
+export { NexoFilesClient } from "./files.js";
+export type { NexoRegisterInput } from "./auth.js";
+export type { NexoResourceClientOptions } from "./resource.js";
+export { createQuery } from "./query.js";
+export type { NexoQuery, NexoQueryState, CreateQueryOptions } from "./query.js";
 export type { NexoProject } from "./projects.js";
 export { summarizeMetrics } from "./metrics.js";
 

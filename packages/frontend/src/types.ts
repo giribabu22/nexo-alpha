@@ -1,3 +1,5 @@
+import type { NexoSession } from "./session.js";
+
 export interface NexoModuleInfo {
   readonly name: string;
   readonly description?: string | undefined;
@@ -70,6 +72,12 @@ export interface NexoClientOptions {
   readonly projectId?: string | undefined;
   /** Route prefix of the projects API (`createProjectApiModule`). Default: "/projects" */
   readonly projectsPath?: string | undefined;
+  /** Route prefix of the sign-in API (`createAuth`). Default: "/api/auth" */
+  readonly authPath?: string | undefined;
+  /** Route prefix of the files API (`createFiles`). Default: "/api/files" */
+  readonly filesPath?: string | undefined;
+  /** Session to use, e.g. one shared by several clients. Default: a new one (persisted in localStorage in browsers). */
+  readonly session?: NexoSession | undefined;
 }
 
 export interface UsePollingOptions {

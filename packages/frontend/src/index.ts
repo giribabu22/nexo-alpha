@@ -66,6 +66,46 @@ export {
   type InferRpcOutput
 } from "./rpc.js";
 
+// Resources: typed CRUD for server resource() models
+export {
+  NexoResourceClient,
+  type NexoResourceClientOptions
+} from "./resource.js";
+
+export {
+  createQuery,
+  type NexoQuery,
+  type NexoQueryState,
+  type CreateQueryOptions
+} from "./query.js";
+
+export {
+  useResource,
+  useRecord,
+  useResourceClient,
+  type UseResourceResult,
+  type UseRecordResult
+} from "./resource-hooks.js";
+
+// Sign-in: sessions and the createAuth() client
+export {
+  NexoSession,
+  type NexoSessionOptions,
+  type SessionStorageLike
+} from "./session.js";
+
+export {
+  NexoAuthClient,
+  type NexoRegisterInput
+} from "./auth.js";
+
+export {
+  useAuth,
+  type UseAuthResult
+} from "./auth-hooks.js";
+
+export { NexoFilesClient } from "./files.js";
+
 // Context & Provider
 export {
   NexoProvider,
@@ -236,6 +276,46 @@ export {
   type UseAgentMemoryResult
 } from "./components/NexoMemoryBrowser.js";
 
+// Forms, tables, layout and feedback
+export {
+  NexoForm,
+  useForm,
+  type NexoFormProps,
+  type UseFormOptions,
+  type UseFormResult
+} from "./components/NexoForm.js";
+
+export {
+  NexoTable,
+  NexoResourceTable,
+  formatCell,
+  type NexoTableProps,
+  type NexoTableColumn,
+  type NexoResourceTableProps
+} from "./components/NexoTable.js";
+
+export {
+  NexoStack,
+  NexoGrid,
+  type NexoStackProps,
+  type NexoGridProps
+} from "./components/NexoLayout.js";
+
+export {
+  NexoLoader,
+  NexoErrorState,
+  NexoEmptyState,
+  type NexoLoaderProps,
+  type NexoErrorStateProps,
+  type NexoEmptyStateProps
+} from "./components/NexoFeedback.js";
+
+export {
+  NexoLoginForm,
+  safeRedirectPath,
+  type NexoLoginFormProps
+} from "./components/NexoLoginForm.js";
+
 // DSA (Data Structures & Algorithms) Optimization Layer
 // --- Core Structures ---
 export {
@@ -309,3 +389,12 @@ export {
   type NexoRouteProps,
   type NexoLinkProps
 } from "./router/components.js";
+
+export {
+  NexoApp,
+  page,
+  type NexoAppProps,
+  type NexoPageRoute,
+  type NexoPageOptions,
+  type NexoPageRouteProps
+} from "./router/app.js";

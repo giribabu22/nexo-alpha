@@ -31,14 +31,19 @@ export function NexoProvider({
   memoryPath,
   projectId,
   projectsPath,
+  auth,
+  timeoutMs,
+  authPath,
+  session,
+  filesPath,
   children
 }: NexoProviderProps): React.JSX.Element {
   const resolvedClient = useMemo(() => {
     if (client) {
       return projectId !== undefined ? client.forProject(projectId) : client;
     }
-    return createNexoClient({ baseUrl, headers, fetch: customFetch, workflowsPath, memoryPath, projectId, projectsPath });
-  }, [client, baseUrl, headers, customFetch, workflowsPath, memoryPath, projectId, projectsPath]);
+    return createNexoClient({ baseUrl, headers, fetch: customFetch, workflowsPath, memoryPath, projectId, projectsPath, auth, timeoutMs, authPath, session, filesPath });
+  }, [client, baseUrl, headers, customFetch, workflowsPath, memoryPath, projectId, projectsPath, auth, timeoutMs, authPath, session, filesPath]);
 
   return (
     <NexoContext.Provider value={{ client: resolvedClient }}>

@@ -29,6 +29,37 @@ npm install @nexo-alpha/frontend
 pnpm add @nexo-alpha/frontend
 ```
 
+## Full-Stack Apps (0.7)
+
+Share a model file with the server and get typed data access, forms and tables:
+
+```tsx
+import { NexoApp, NexoForm, NexoLoginForm, NexoResourceTable, NexoStack, page, useAuth, useResource } from "@nexo-alpha/frontend";
+import { User } from "./users/user.model.js"; // model("users", ...) from @nexo-alpha/core/model
+
+function UsersPage() {
+  return (
+    <NexoStack>
+      <NexoForm model={User} />                              {/* creates through the API */}
+      <NexoResourceTable model={User} search allowDelete />  {/* fetch, search, paging, delete */}
+    </NexoStack>
+  );
+}
+
+<NexoApp
+  baseUrl="http://localhost:3000"
+  pages={[page("/login", () => <NexoLoginForm />, { layout: null }), page("/users", UsersPage, { protect: true })]}
+/>
+```
+
+- `client.resource(model)`: typed `list/get/create/update/delete`, validated in the browser before sending.
+- `useResource(model, query)` and `useRecord(model, id)`: data, loading and error state; lists refresh after any write.
+- `client.auth`, `useAuth()`, `NexoLoginForm`: sign-in against `createAuth()`; the session persists and every request sends its token.
+- `client.files`: uploads to `createFiles()`; `field.file()` renders as a file picker in `NexoForm`.
+- `NexoApp` + `page()`: routing, layouts, protected pages.
+
+Reference: [Full-stack primitives](https://github.com/giribabu22/nexo-alpha/blob/main/docs/primitives.md).
+
 ## Quick Start (React)
 
 ### 1. Setup Provider
