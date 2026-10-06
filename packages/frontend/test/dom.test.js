@@ -16,6 +16,8 @@ const {
   NexoLoginForm,
   NexoProvider,
   NexoResourceTable,
+  NexoResetPasswordForm,
+  NexoVerifyEmail,
   NexoSession,
   page,
   useAuth
@@ -30,10 +32,14 @@ const Product = core.model("products", {
   manual: core.field.file({ accept: ["application/pdf"] }).optional()
 });
 
-async function startServer({ withAuth = false } = {}) {
+async function startServer({ withAuth = false, sent } = {}) {
   const store = core.createInMemoryDocumentStore();
   const app = core.createApplication({ name: "dom-test" });
-  const auth = core.createAuth({ store, secret: "dom-test-secret-0123456789abcdefghijklm" });
+  const auth = core.createAuth({
+    store,
+    secret: "dom-test-secret-0123456789abcdefghijklm",
+    ...(sent ? { appUrl: "http://localhost", sendEmail: (email) => void sent.push(email) } : {})
+  });
   if (withAuth) app.module(auth);
   app.module(core.createFiles({ store, blobs: core.createInMemoryBlobStore() }));
   app.module(core.resource(Product, { store, searchable: ["name"] }));
@@ -44,7 +50,7 @@ async function startServer({ withAuth = false } = {}) {
     ...(withAuth ? { authenticate: auth.authenticate } : {})
   });
   const client = createNexoClient({ baseUrl: server.info.uri, session: new NexoSession({ storage: null }) });
-  return { server, client };
+  return { server, client, auth };
 }
 
 const input = (container, name) => container.querySelector(`[name="${name}"]`);
@@ -172,4 +178,55 @@ test("a protected page sends you to sign in, then back where you were going", as
   await click(byText(view.container, "Sign out", "button"));
   await waitFor(() => window.location.pathname === "/login", { message: "back to /login after signing out" });
   assert.equal(client.session.signedIn, false);
+});
+
+test("forgot password: request a link, open it, choose a new password, signed in", async (t) => {
+  const sent = [];
+  const { server, client, auth } = await startServer({ withAuth: true, sent });
+  t.after(() => server.stop());
+  await auth.register({ email: "ann@example.com", password: "correct horse" });
+
+  window.history.replaceState({}, "", "/login");
+  const form = await render(h(NexoProvider, { client }, h(NexoLoginForm, { forgotPassword: true })));
+  await click(byText(form.container, "Forgot password?", "button"));
+  assert.equal(input(form.container, "password"), null, "the reset form asks only for the email");
+  await type(input(form.container, "email"), "ann@example.com");
+  await click(byText(form.container, "Send reset link", "button"));
+  await waitFor(() => byText(form.container, "a link to reset the password is on its way"), { message: "confirmation" });
+  await form.unmount();
+
+  const email = await waitFor(() => sent.find((e) => e.kind === "password-reset"), { message: "reset email" });
+  const link = new URL(email.link);
+  assert.equal(link.pathname, "/reset-password");
+
+  window.history.replaceState({}, "", `${link.pathname}${link.search}`);
+  const reset = await render(h(NexoApp, { client, pages: [
+    page("/reset-password", () => h(NexoResetPasswordForm, { redirectTo: "/home" }), { layout: null }),
+    page("/home", () => h("h1", null, "Home"))
+  ] }));
+  t.after(() => reset.unmount());
+  await type(input(reset.container, "password"), "brand new password");
+  await click(byText(reset.container, "Set password", "button"));
+  await waitFor(() => byText(reset.container, "Home"), { message: "redirect after reset" });
+  assert.equal(client.session.signedIn, true);
+  await auth.login("ann@example.com", "brand new password");
+});
+
+test("the verification page confirms the emailed token once", async (t) => {
+  const sent = [];
+  const { server, client, auth } = await startServer({ withAuth: true, sent });
+  t.after(() => server.stop());
+  await auth.register({ email: "ann@example.com", password: "correct horse" });
+  const email = await waitFor(() => sent.find((e) => e.kind === "verify-email"), { message: "verification email" });
+  const link = new URL(email.link);
+
+  window.history.replaceState({}, "", `${link.pathname}${link.search}`);
+  const first = await render(h(NexoProvider, { client }, h(React.StrictMode, null, h(NexoVerifyEmail))));
+  await waitFor(() => byText(first.container, "Email confirmed"), { message: "confirmed (once, even in StrictMode)" });
+  await first.unmount();
+  assert.equal((await auth.findUserByEmail("ann@example.com")).emailVerified, true);
+
+  const again = await render(h(NexoProvider, { client }, h(NexoVerifyEmail)));
+  t.after(() => again.unmount());
+  await waitFor(() => byText(again.container, "invalid or has expired"), { message: "used link rejected" });
 });

@@ -312,8 +312,12 @@ export {
 
 export {
   NexoLoginForm,
+  NexoResetPasswordForm,
+  NexoVerifyEmail,
   safeRedirectPath,
-  type NexoLoginFormProps
+  type NexoLoginFormProps,
+  type NexoResetPasswordFormProps,
+  type NexoVerifyEmailProps
 } from "./components/NexoLoginForm.js";
 
 // DSA (Data Structures & Algorithms) Optimization Layer

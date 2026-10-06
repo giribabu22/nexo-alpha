@@ -223,8 +223,8 @@ hooks and components keep working.
 
 ## Next steps, in order of value
 
-1. ~~Login/session flow~~: done (`createAuth`, `useAuth`, `NexoLoginForm`).
-   Still open: password reset by email, and email verification. Both need an email primitive.
+1. ~~Login/session flow~~: done (`createAuth`, `useAuth`, `NexoLoginForm`), including
+   password reset and email verification through a pluggable `sendEmail`.
 2. ~~Query pushdown~~: done (`store.query`, `store.index`, `resource({ indexes })`).
    Measured on 50,000 SQLite rows: one customer's orders take 3.3 ms instead of 160 ms;
    a broad filter + search + sort takes 110 ms instead of 160 ms, because substring

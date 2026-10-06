@@ -53,6 +53,30 @@ export class NexoAuthClient {
     }
   };
 
+  /** Asks for a password-reset email. Resolves the same way whether or not the account exists. */
+  readonly requestPasswordReset = async (email: string): Promise<void> => {
+    await this.client.post(`${this.path}/password-reset`, { email });
+  };
+
+  /** Sets a new password with the token from a reset link, then signs in. Rejects with NexoApiError 400 for a bad or used link. */
+  readonly resetPassword = async (token: string, password: string): Promise<AuthUser> => {
+    const session = await this.client.post<AuthSession>(`${this.path}/password-reset/confirm`, { token, password });
+    this.client.session.set(session);
+    return session.user;
+  };
+
+  /** Confirms the email address with the token from a verification link. */
+  readonly verifyEmail = async (token: string): Promise<AuthUser> => {
+    const { user } = await this.client.post<{ user: AuthUser }>(`${this.path}/verify-email/confirm`, { token });
+    if (this.client.session.user?.id === user.id) this.client.session.setUser(user);
+    return user;
+  };
+
+  /** Emails the signed-in user a new verification link. */
+  readonly resendVerification = async (): Promise<void> => {
+    await this.client.post(`${this.path}/verify-email`);
+  };
+
   /** Fetches the signed-in user again (fresh scopes); null when signed out or the session ended. */
   readonly me = async (): Promise<AuthUser | null> => {
     if (!this.client.session.signedIn) return null;

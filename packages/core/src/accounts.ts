@@ -16,9 +16,12 @@
  * - Scopes are read from the account on every request, so `setScopes` takes
  *   effect immediately.
  * - Failed sign-ins are limited per email (default 10 per 15 minutes).
+ * - With `sendEmail`, users can reset a forgotten password and verify their
+ *   email address. Links carry single-use tokens (only their SHA-256 is
+ *   stored) that expire after 1 hour (reset) or 7 days (verification).
  */
 
-import { randomBytes, randomUUID, scrypt, timingSafeEqual } from "node:crypto";
+import { createHash, randomBytes, randomUUID, scrypt, timingSafeEqual } from "node:crypto";
 import type { NexoApi, NexoAuthenticator, NexoRequestContext } from "./api.js";
 import { httpResponse } from "./api.js";
 import { signToken, verifyToken } from "./auth.js";
@@ -33,6 +36,8 @@ export interface AuthUser {
   readonly email: string;
   readonly name?: string;
   readonly scopes: readonly string[];
+  /** Whether the user proved they own the email address (verification link or password reset). */
+  readonly emailVerified: boolean;
   readonly createdAt: string;
   readonly updatedAt: string;
 }
@@ -43,7 +48,19 @@ export interface AuthIdentity {
   readonly sub: string;
   readonly email: string;
   readonly name?: string;
+  readonly emailVerified: boolean;
   readonly sessionId: string;
+}
+
+/** An email `createAuth` asks `sendEmail` to deliver. `subject` and `text` are ready to send; build your own from `link` if you like. */
+export interface AuthEmail {
+  readonly kind: "password-reset" | "verify-email";
+  readonly to: string;
+  readonly subject: string;
+  readonly text: string;
+  /** The link to put in the email; it opens your app with `?token=…`. */
+  readonly link: string;
+  readonly user: AuthUser;
 }
 
 /** Answer of register and login: the user and a bearer token for `Authorization: Bearer <token>`. */
@@ -72,6 +89,21 @@ export interface CreateAuthOptions {
   readonly maxFailedLogins?: number;
   /** Scopes a request gets, e.g. from roles. Default: the account's `scopes`. */
   readonly resolveScopes?: (user: AuthUser) => readonly string[] | Promise<readonly string[]>;
+  /**
+   * Delivers account emails (SMTP, an email API, …). Turns on password reset
+   * and email verification; without it, those routes do not exist.
+   */
+  readonly sendEmail?: (email: AuthEmail) => void | Promise<void>;
+  /** Your web app's address, for links in emails, e.g. "https://app.example.com". Required with `sendEmail`. */
+  readonly appUrl?: string;
+  /** App page that resets a password (reads `?token=`). Default: "/reset-password" */
+  readonly resetPasswordPath?: string;
+  /** App page that verifies an email address (reads `?token=`). Default: "/verify-email" */
+  readonly verifyEmailPath?: string;
+  /** Email a verification link after sign-up. Default: true when `sendEmail` is set */
+  readonly verifyEmailOnRegister?: boolean;
+  /** Emails sent in the background (so answers do not reveal which accounts exist) report failures here. Default: console.error */
+  readonly onEmailError?: (error: unknown, email: AuthEmail["kind"]) => void;
 }
 
 export interface RegisterInput {
@@ -98,10 +130,28 @@ export interface NexoAuth extends NexoModule {
   setScopes(userId: string, scopes: readonly string[]): Promise<AuthUser>;
   /** Changes the password and ends every session of the user. */
   setPassword(userId: string, password: string): Promise<void>;
+  /** Emails a password-reset link if an account exists for `email` (never says whether one does). Needs `sendEmail`. */
+  requestPasswordReset(email: string): Promise<void>;
+  /** Sets a new password from a reset link's token, ends every other session, and signs in. Throws 400 for a bad token. */
+  resetPassword(token: string, password: string): Promise<AuthSession>;
+  /** Emails a verification link to the user, unless already verified. Needs `sendEmail`. */
+  requestEmailVerification(userId: string): Promise<void>;
+  /** Marks the email address verified from a verification link's token. Throws 400 for a bad token. */
+  verifyEmail(token: string): Promise<AuthUser>;
 }
 
-interface StoredUser extends AuthUser {
+interface StoredUser extends Omit<AuthUser, "emailVerified"> {
   readonly passwordHash: string;
+  /** Absent on accounts stored before verification existed: treated as false. */
+  readonly emailVerified?: boolean;
+}
+
+interface StoredToken {
+  /** SHA-256 of the token; the token itself is only in the email. */
+  readonly id: string;
+  readonly userId: string;
+  readonly kind: AuthEmail["kind"];
+  readonly expiresAt: string;
 }
 
 interface StoredSession {
@@ -114,6 +164,9 @@ interface StoredSession {
 const USERS = "auth-users";
 const EMAILS = "auth-emails";
 const SESSIONS = "auth-sessions";
+const TOKENS = "auth-tokens";
+const RESET_TOKEN_MS = 60 * 60 * 1000;
+const VERIFY_TOKEN_MS = 7 * 24 * 60 * 60 * 1000;
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const MAX_PASSWORD_LENGTH = 256;
 const SCRYPT = { N: 16384, r: 8, p: 1, keyLength: 64 } as const;
@@ -143,8 +196,11 @@ async function verifyPassword(password: string, stored: string): Promise<boolean
 const normalizeEmail = (email: string): string => email.trim().toLowerCase();
 
 function publicUser({ passwordHash: _hash, ...user }: StoredUser): AuthUser {
-  return user;
+  return { ...user, emailVerified: user.emailVerified === true };
 }
+
+const sha256 = (value: string): string => createHash("sha256").update(value).digest("hex");
+const INVALID_TOKEN = () => new NexoHttpError(400, "INVALID_TOKEN", "This link is invalid or has expired.");
 
 const INVALID_CREDENTIALS = () => new NexoHttpError(401, "INVALID_CREDENTIALS", "Invalid email or password.");
 
@@ -157,6 +213,14 @@ export function createAuth(options: CreateAuthOptions): NexoAuth {
   const sessionSeconds = options.sessionSeconds ?? 7 * 24 * 60 * 60;
   const minPasswordLength = options.minPasswordLength ?? 8;
   const failedLogins = createRateLimiter({ windowMs: 15 * 60 * 1000, max: options.maxFailedLogins ?? 10 });
+  // Reset emails per address per hour; more requests are dropped silently.
+  const resetRequests = createRateLimiter({ windowMs: 60 * 60 * 1000, max: 5 });
+  const sendEmail = options.sendEmail;
+  if (sendEmail !== undefined && !/^https?:[/][/][^/]/.test(options.appUrl ?? "")) {
+    throw new NexoConfigurationError('createAuth(): sendEmail needs appUrl, e.g. "https://app.example.com".');
+  }
+  const appUrl = (options.appUrl ?? "").replace(/[/]+$/, "");
+  const reportEmailError = options.onEmailError ?? ((error: unknown, kind: string) => console.error(`createAuth: sending the ${kind} email failed:`, error));
   // Compared against when the email is unknown, so both cases take the same time.
   const dummyHash = hashPassword(randomUUID());
 
@@ -206,12 +270,102 @@ export function createAuth(options: CreateAuthOptions): NexoAuth {
       email,
       ...(input.name !== undefined && input.name !== "" ? { name: input.name } : {}),
       scopes: [...(input.scopes ?? options.defaultScopes ?? [])],
+      emailVerified: false,
       passwordHash: await hashPassword(input.password),
       createdAt: now,
       updatedAt: now
     };
     await store.put(USERS, id, user);
+    if (sendEmail !== undefined && options.verifyEmailOnRegister !== false) {
+      inBackground("verify-email", () => requestEmailVerification(id));
+    }
     return startSession(user);
+  }
+
+  /** Runs an email-sending task without making the caller wait for (or learn from) it. */
+  function inBackground(kind: AuthEmail["kind"], task: () => Promise<void>): void {
+    void task().catch((error: unknown) => reportEmailError(error, kind));
+  }
+
+  function needEmail(): NonNullable<CreateAuthOptions["sendEmail"]> {
+    if (sendEmail === undefined) throw new NexoConfigurationError("createAuth(): this needs the sendEmail option.");
+    return sendEmail;
+  }
+
+  /** A new single-use token for `userId`; only its hash is stored. */
+  async function issueToken(userId: string, kind: StoredToken["kind"], lifetimeMs: number): Promise<string> {
+    const token = randomBytes(32).toString("base64url");
+    const record: StoredToken = { id: sha256(token), userId, kind, expiresAt: new Date(Date.now() + lifetimeMs).toISOString() };
+    await store.put(TOKENS, record.id, record);
+    return token;
+  }
+
+  /** The user a token belongs to, consuming it (the delete is what makes it single-use). */
+  async function consumeToken(token: unknown, kind: StoredToken["kind"]): Promise<string> {
+    if (typeof token !== "string" || token.length < 20 || token.length > 200) throw INVALID_TOKEN();
+    const id = sha256(token);
+    const record = await store.get<StoredToken>(TOKENS, id);
+    if (record === undefined || record.kind !== kind) throw INVALID_TOKEN();
+    if (!(await store.delete(TOKENS, id))) throw INVALID_TOKEN();
+    if (Date.parse(record.expiresAt) <= Date.now()) throw INVALID_TOKEN();
+    return record.userId;
+  }
+
+  async function requestPasswordReset(email: string): Promise<void> {
+    const send = needEmail();
+    const key = typeof email === "string" ? normalizeEmail(email) : "";
+    if (!resetRequests.hit(key).allowed) return;
+    const stored = await findStored(key);
+    if (stored === undefined) return;
+    const user = publicUser(stored);
+    const link = `${appUrl}${options.resetPasswordPath ?? "/reset-password"}?token=${await issueToken(user.id, "password-reset", RESET_TOKEN_MS)}`;
+    await send({
+      kind: "password-reset",
+      to: user.email,
+      subject: "Reset your password",
+      text: `Someone asked to reset the password for ${user.email}. To choose a new password, open:\n\n${link}\n\nThe link works once and expires in 1 hour. If you did not ask for this, ignore this email.`,
+      link,
+      user
+    });
+  }
+
+  async function resetPassword(token: string, password: string): Promise<AuthSession> {
+    // Check the password first, so a rejected one does not use up the link.
+    const errors = checkPassword(password);
+    if (errors.length > 0) throw new NexoValidationError(`Invalid password: ${errors.join("; ")}`, errors);
+    const userId = await consumeToken(token, "password-reset");
+    const passwordHash = await hashPassword(password);
+    // Following the emailed link proves the address, too.
+    const user = await updateUser(userId, (current) => ({ ...current, passwordHash, emailVerified: true }));
+    await endSessions(userId);
+    return startSession(user);
+  }
+
+  async function requestEmailVerification(userId: string): Promise<void> {
+    const send = needEmail();
+    const stored = await store.get<StoredUser>(USERS, userId);
+    if (stored === undefined) throw new NexoHttpError(404, "NOT_FOUND", `User "${userId}" not found.`);
+    const user = publicUser(stored);
+    if (user.emailVerified) return;
+    const link = `${appUrl}${options.verifyEmailPath ?? "/verify-email"}?token=${await issueToken(userId, "verify-email", VERIFY_TOKEN_MS)}`;
+    await send({
+      kind: "verify-email",
+      to: user.email,
+      subject: "Confirm your email address",
+      text: `To confirm that ${user.email} is your email address, open:\n\n${link}\n\nThe link works once and expires in 7 days.`,
+      link,
+      user
+    });
+  }
+
+  async function verifyEmail(token: string): Promise<AuthUser> {
+    const userId = await consumeToken(token, "verify-email");
+    return publicUser(await updateUser(userId, (current) => ({ ...current, emailVerified: true })));
+  }
+
+  async function endSessions(userId: string): Promise<void> {
+    const sessions = await store.list<StoredSession>(SESSIONS);
+    await Promise.all(sessions.filter((s) => s.userId === userId).map((s) => store.delete(SESSIONS, s.id)));
   }
 
   async function login(email: unknown, password: unknown): Promise<AuthSession> {
@@ -273,6 +427,7 @@ export function createAuth(options: CreateAuthOptions): NexoAuth {
       sub: user.id,
       email: user.email,
       ...(user.name !== undefined ? { name: user.name } : {}),
+      emailVerified: user.emailVerified,
       sessionId: session.id
     };
     const scopes = options.resolveScopes ? await options.resolveScopes(user) : user.scopes;
@@ -323,6 +478,52 @@ export function createAuth(options: CreateAuthOptions): NexoAuth {
     }
   ];
 
+  if (sendEmail !== undefined) {
+    apis.push(
+      {
+        name: "auth.passwordReset",
+        method: "POST",
+        path: `${path}/password-reset`,
+        description: "Email a password-reset link. Always answers 204, so it does not reveal which emails have accounts.",
+        schema: { body: { type: "object", required: ["email"], properties: { email: { type: "string" } } } },
+        handler: (context) => {
+          inBackground("password-reset", () => requestPasswordReset((context.payload as { email: string }).email));
+          return undefined;
+        }
+      },
+      {
+        name: "auth.passwordResetConfirm",
+        method: "POST",
+        path: `${path}/password-reset/confirm`,
+        description: "Set a new password with a reset link's token; signs in. Answers { user, token, expiresAt }; 400 for a bad token.",
+        schema: { body: { type: "object", required: ["token", "password"], properties: { token: { type: "string" }, password: { type: "string" } } } },
+        handler: (context) => {
+          const body = context.payload as { token: string; password: string };
+          return resetPassword(body.token, body.password);
+        }
+      },
+      {
+        name: "auth.verifyEmail",
+        method: "POST",
+        path: `${path}/verify-email`,
+        description: "Email the signed-in user a verification link (no-op if already verified).",
+        auth: { required: true },
+        handler: async (context) => {
+          await requestEmailVerification(identityOf(context).sub);
+          return undefined;
+        }
+      },
+      {
+        name: "auth.verifyEmailConfirm",
+        method: "POST",
+        path: `${path}/verify-email/confirm`,
+        description: "Mark the email verified with a verification link's token. Answers { user }; 400 for a bad token.",
+        schema: { body: { type: "object", required: ["token"], properties: { token: { type: "string" } } } },
+        handler: async (context) => ({ user: await verifyEmail((context.payload as { token: string }).token) })
+      }
+    );
+  }
+
   if (options.allowRegistration !== false) {
     apis.unshift({
       name: "auth.register",
@@ -359,8 +560,11 @@ export function createAuth(options: CreateAuthOptions): NexoAuth {
       if (errors.length > 0) throw new NexoValidationError(`Invalid password: ${errors.join("; ")}`, errors);
       const passwordHash = await hashPassword(password);
       await updateUser(userId, (user) => ({ ...user, passwordHash }));
-      const sessions = await store.list<StoredSession>(SESSIONS);
-      await Promise.all(sessions.filter((s) => s.userId === userId).map((s) => store.delete(SESSIONS, s.id)));
-    }
+      await endSessions(userId);
+    },
+    requestPasswordReset,
+    resetPassword,
+    requestEmailVerification,
+    verifyEmail
   };
 }

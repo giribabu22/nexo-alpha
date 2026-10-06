@@ -22,6 +22,11 @@
 - `resource({ onChange })` runs after every stored create, update and delete (for webhooks, audit logs and notifications). `auth` accepts per-operation scopes (e.g. `{ write: [...], delete: [...] }`). `field.*().describe(text)` adds descriptions to API schemas.
 - `NexoRequestContext.auth`: the authenticated caller, on APIs with `auth.required`.
 
+- Password reset and email verification in `createAuth`, when given `sendEmail` and `appUrl`:
+  - Emailed single-use links, stored only as a hash, expiring after 1 hour (reset) or 7 days (verification).
+  - A reset request answers the same way whether or not the account exists, and is limited per address.
+  - A reset ends every session.
+  - `user.emailVerified` and `identity.emailVerified` show the result.
 - `createAuth({ store, secret })`: email and password accounts. Passwords are scrypt-hashed, emails are unique and claimed atomically, sessions are revocable, failed sign-ins are limited, and scopes are read per request. It provides `/api/auth/register|login|logout|me` and an `authenticate` for `createHapiServer`.
 - `createFiles({ store, blobs })`: uploads, downloads and file metadata at `/api/files`, with `createDiskBlobStore` and `createInMemoryBlobStore`. Downloads are served safely: `nosniff`, a sandboxing CSP, and HTML/SVG always downloaded. Size limits answer 413 and type limits 415. `field.file({ accept })` references an uploaded file, and `resource()` checks that it exists and has an accepted type.
 - File cleanup: `resource()` tracks which record uses each file (one record per file; a second use answers 409 `FILE_IN_USE`) and releases files a record replaces or deletes. `createFiles` removes released files after `cleanup.removeDetachedAfterMs` (default 1 hour) on a timer tied to `app.start()`/`stop()`; never-used uploads are removed only with `cleanup.removeUnattachedAfterMs`. Also available: `files.attach`, `files.detach` and `files.sweep`.
@@ -34,7 +39,7 @@
 - `client.session` (`NexoSession`, persisted in localStorage in browsers) and `client.auth` (login, register, logout, me). The session token is sent on every request, and a 401 for it signs the client out.
 - `client.files` (`NexoFilesClient`: upload, url, info, download, delete) and `client.request(path, init, read)` for non-JSON responses. `NexoForm` renders `field.file()` as a file picker that uploads on selection, and `NexoTable` links to the file.
 - `NexoResourceTable` asks before deleting (`confirmDelete`, default true) and shows delete errors.
-- `useAuth()` and `NexoLoginForm` (sign in or sign up, then return to `?next=`, same-site paths only).
+- `useAuth()` and `NexoLoginForm` (sign in or sign up, then return to `?next=`, same-site paths only; `forgotPassword` adds a reset-link mode); `NexoResetPasswordForm` and `NexoVerifyEmail` for the emailed links.
 - `client.resource(model)`: typed CRUD with client-side validation and change notifications.
 - `useResource`, `useRecord`, `useResourceClient`, and `createQuery` (the React-free state behind them).
 - `NexoForm` / `useForm`, `NexoTable`, `NexoResourceTable`, `NexoStack`, `NexoGrid`, `NexoLoader`, `NexoErrorState`, `NexoEmptyState`.

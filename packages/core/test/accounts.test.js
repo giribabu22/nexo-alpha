@@ -84,7 +84,7 @@ test("register creates a signed-in account; the password is stored only as a scr
   const result = await auth.authenticate(bearer(session.token));
   assert.equal(result.authenticated, true);
   assert.deepEqual(result.scopes, ["notes:read"]);
-  assert.deepEqual(result.identity, { sub: session.user.id, email: "ann@example.com", name: "Ann", sessionId: result.identity.sessionId });
+  assert.deepEqual(result.identity, { sub: session.user.id, email: "ann@example.com", name: "Ann", emailVerified: false, sessionId: result.identity.sessionId });
 });
 
 test("register rejects bad input and duplicate emails (case-insensitive), even when racing", async () => {
@@ -186,4 +186,100 @@ test("createAuth exposes register/login/logout/me APIs and refuses short secrets
     "GET /api/auth/me"
   ]);
   assert.equal(setup({ allowRegistration: false }).auth.apis.some((a) => a.name === "auth.register"), false);
+});
+
+// ---------------------------------------------------------------------------
+// Password reset and email verification
+// ---------------------------------------------------------------------------
+
+function emailSetup(extra = {}) {
+  const sent = [];
+  const store = createInMemoryDocumentStore();
+  const auth = createAuth({
+    store,
+    secret: SECRET,
+    appUrl: "https://app.example.com/",
+    sendEmail: (email) => void sent.push(email),
+    onEmailError: (error) => { throw error; },
+    ...extra
+  });
+  const tokenOf = (email) => new URL(email.link).searchParams.get("token");
+  return { store, auth, sent, tokenOf };
+}
+const settle = () => new Promise((resolve) => setTimeout(resolve, 10));
+
+test("password reset: emailed single-use link, sessions ended, signed in with the new password", async () => {
+  const { auth, sent, tokenOf, store } = emailSetup({ verifyEmailOnRegister: false });
+  const before = await auth.register({ email: "ann@example.com", password: "correct horse" });
+
+  await auth.requestPasswordReset("ANN@example.com");
+  assert.equal(sent.length, 1);
+  assert.equal(sent[0].kind, "password-reset");
+  assert.equal(sent[0].to, "ann@example.com");
+  assert.match(sent[0].link, /^https:\/\/app\.example\.com\/reset-password\?token=/);
+  const token = tokenOf(sent[0]);
+  assert.ok(!JSON.stringify(await store.list("auth-tokens")).includes(token), "only a hash is stored");
+
+  await assert.rejects(() => auth.resetPassword(token, "short"), NexoValidationError);
+  const session = await auth.resetPassword(token, "brand new password");
+  assert.equal(session.user.emailVerified, true, "the emailed link proves the address");
+  assert.equal((await auth.authenticate(bearer(before.token))).authenticated, false, "old sessions end");
+  assert.equal((await auth.authenticate(bearer(session.token))).authenticated, true);
+  await auth.login("ann@example.com", "brand new password");
+  await assert.rejects(() => auth.resetPassword(token, "another password"), (e) => e.code === "INVALID_TOKEN", "single use");
+});
+
+test("password reset does not reveal accounts, expires, and is rate limited", async () => {
+  const { auth, sent, tokenOf, store } = emailSetup({ verifyEmailOnRegister: false });
+  await auth.requestPasswordReset("nobody@example.com");
+  assert.equal(sent.length, 0);
+
+  await auth.register({ email: "ann@example.com", password: "correct horse" });
+  await auth.requestPasswordReset("ann@example.com");
+  const token = tokenOf(sent[0]);
+  const [stored] = await store.list("auth-tokens");
+  await store.put("auth-tokens", stored.id, { ...stored, expiresAt: new Date(Date.now() - 1).toISOString() });
+  await assert.rejects(() => auth.resetPassword(token, "brand new password"), (e) => e.code === "INVALID_TOKEN");
+  await assert.rejects(() => auth.resetPassword("made-up-token-1234567890", "brand new password"), (e) => e.statusCode === 400);
+
+  for (let i = 0; i < 10; i++) await auth.requestPasswordReset("ann@example.com");
+  assert.equal(sent.length, 5, "5 emails per address per hour");
+});
+
+test("email verification: sent on sign-up, confirmed by link, visible to the app", async () => {
+  const { auth, sent, tokenOf } = emailSetup();
+  const session = await auth.register({ email: "ann@example.com", password: "correct horse" });
+  assert.equal(session.user.emailVerified, false);
+  await settle();
+  assert.equal(sent.length, 1);
+  assert.equal(sent[0].kind, "verify-email");
+  assert.match(sent[0].link, /^https:\/\/app\.example\.com\/verify-email\?token=/);
+
+  const verified = await auth.verifyEmail(tokenOf(sent[0]));
+  assert.equal(verified.emailVerified, true);
+  assert.equal((await auth.authenticate(bearer(session.token))).identity.emailVerified, true);
+  await auth.requestEmailVerification(session.user.id);
+  assert.equal(sent.length, 1, "no email once verified");
+  await assert.rejects(() => auth.verifyEmail(tokenOf(sent[0])), (e) => e.code === "INVALID_TOKEN");
+});
+
+test("tokens are bound to their purpose", async () => {
+  const { auth, sent, tokenOf } = emailSetup();
+  await auth.register({ email: "ann@example.com", password: "correct horse" });
+  await settle();
+  await assert.rejects(() => auth.resetPassword(tokenOf(sent[0]), "brand new password"), (e) => e.code === "INVALID_TOKEN");
+});
+
+test("without sendEmail there are no reset or verification routes; sendEmail needs appUrl", () => {
+  const plain = createAuth({ store: createInMemoryDocumentStore(), secret: SECRET });
+  assert.equal(plain.apis.some((a) => a.path.includes("password-reset") || a.path.includes("verify-email")), false);
+  assert.rejects(() => plain.requestPasswordReset("a@example.com"), NexoConfigurationError);
+  assert.throws(() => createAuth({ store: createInMemoryDocumentStore(), secret: SECRET, sendEmail: () => {} }), /needs appUrl/);
+  const { auth } = emailSetup();
+  assert.deepEqual(auth.apis.map((a) => `${a.method} ${a.path}`).filter((r) => /reset|verify/.test(r)), [
+    "POST /api/auth/password-reset",
+    "POST /api/auth/password-reset/confirm",
+    "POST /api/auth/verify-email",
+    "POST /api/auth/verify-email/confirm"
+  ]);
 });

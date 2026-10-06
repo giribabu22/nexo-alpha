@@ -345,13 +345,35 @@ await startHapiServer(app, { authenticate: auth.authenticate }); // checks auth 
 | `resolveScopes` | account scopes | map roles to scopes per request |
 | `maxFailedLogins` | 10 | per email per 15 minutes, then 429 |
 | `path` | `/api/auth` | the client then needs `authPath` |
+| `sendEmail`, `appUrl` | off | turn on password reset and email verification (see below) |
+| `verifyEmailOnRegister` | `true` with `sendEmail` | email a verification link after sign-up |
 
 **Returns** a `NexoModule` plus `authenticate`, `register`, `login`, `logout(sessionId)`,
 `getUser`, `findUserByEmail`, `setScopes(userId, scopes)` and
 `setPassword(userId, password)`, which signs the user out everywhere.
 
-On requests it authenticates, `context.auth.identity` is `{ sub, email, name?, sessionId }`;
+On requests it authenticates, `context.auth.identity` is `{ sub, email, name?, emailVerified, sessionId }`;
 use `sub` (the user id) for ownership in `beforeWrite`.
+
+**Password reset and email verification.** Give `createAuth` a way to send email and your
+app's address:
+
+```ts
+createAuth({
+  store,
+  secret,
+  appUrl: "https://app.example.com",
+  sendEmail: ({ to, subject, text }) => mailer.send({ to, subject, text })   // any provider
+});
+```
+
+This adds `POST /api/auth/password-reset` (always 204, so it doesn't reveal which emails
+have accounts), `/password-reset/confirm`, `/verify-email` (signed in) and `/verify-email/confirm`.
+
+- Links open `appUrl` + `/reset-password?token=…` or `/verify-email?token=…`.
+- Tokens work once and expire after 1 hour (reset) or 7 days (verification). Only their hash is stored.
+- A reset ends every session, then signs in with the new password.
+- `user.emailVerified` lets the app decide what unverified users may do.
 
 **Behavior worth knowing.**
 - Passwords are scrypt-hashed. One account per email, claimed atomically through the store's `insert`.
@@ -408,7 +430,9 @@ Browser: `client.files.upload(file)` returns a `NexoFile` (`id`, `name`, `type`,
 ## useAuth / NexoLoginForm / client.auth (browser)
 
 ```tsx
-page("/login", () => <NexoLoginForm />, { layout: null })   // sign in or sign up, then go to ?next=
+page("/login", () => <NexoLoginForm forgotPassword />, { layout: null })   // sign in, sign up, or ask for a reset link
+page("/reset-password", () => <NexoResetPasswordForm />, { layout: null })   // the reset email's link
+page("/verify-email", () => <NexoVerifyEmail />)                              // the verification email's link
 
 function Header() {
   const { user, signedIn, logout, hasScope } = useAuth();
@@ -416,7 +440,8 @@ function Header() {
 }
 ```
 
-`client.auth.login/register/logout/me` underlie these. The session
+`client.auth.login/register/logout/me` (plus `requestPasswordReset`, `resetPassword`,
+`verifyEmail`, `resendVerification`) underlie these. The session
 (`client.session`) is kept in localStorage in browsers (`new NexoSession({ storage: null })`
 keeps it in memory only). Every request sends its token, and any 401 for that token
 signs the client out.

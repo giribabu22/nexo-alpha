@@ -72,3 +72,44 @@ test("registration cannot grant itself scopes; server code can", async () => {
   assert.equal((await call("GET", "/api/notes", undefined, body.token)).body.total, 1);
   assert.equal((await call("GET", "/api/notes")).status, 401);
 });
+
+test("password reset and email verification over HTTP", async () => {
+  const sent = [];
+  const store = createInMemoryDocumentStore();
+  const auth = createAuth({
+    store,
+    secret: "auth-http-test-secret-0123456789abcdefgh",
+    appUrl: "https://app.example.com",
+    sendEmail: (email) => void sent.push(email)
+  });
+  const app = createApplication({ name: "emails" });
+  app.module(auth);
+  const server = await createHapiServer(app, { logging: false, authenticate: auth.authenticate });
+  const call = async (method, url, payload, token) => {
+    const response = await server.inject({ method, url, ...(payload ? { payload } : {}), ...(token ? { headers: { authorization: `Bearer ${token}` } } : {}) });
+    return { status: response.statusCode, body: response.payload === "" ? undefined : JSON.parse(response.payload) };
+  };
+  const settle = () => new Promise((resolve) => setTimeout(resolve, 20));
+  const tokenOf = (email) => new URL(email.link).searchParams.get("token");
+
+  const { body: registered } = await call("POST", "/api/auth/register", { email: "ann@example.com", password: "correct horse" });
+  await settle();
+  assert.equal(sent.at(-1).kind, "verify-email");
+  const verified = await call("POST", "/api/auth/verify-email/confirm", { token: tokenOf(sent.at(-1)) });
+  assert.equal(verified.status, 200);
+  assert.equal(verified.body.user.emailVerified, true);
+
+  // Same answer whether or not the account exists.
+  assert.equal((await call("POST", "/api/auth/password-reset", { email: "nobody@example.com" })).status, 204);
+  assert.equal((await call("POST", "/api/auth/password-reset", { email: "ann@example.com" })).status, 204);
+  await settle();
+  assert.equal(sent.filter((e) => e.kind === "password-reset").length, 1);
+
+  const reset = await call("POST", "/api/auth/password-reset/confirm", { token: tokenOf(sent.at(-1)), password: "brand new password" });
+  assert.equal(reset.status, 200);
+  assert.ok(reset.body.token);
+  assert.equal((await call("GET", "/api/auth/me", undefined, registered.token)).status, 401, "old session ended");
+  assert.equal((await call("GET", "/api/auth/me", undefined, reset.body.token)).status, 200);
+  assert.equal((await call("POST", "/api/auth/password-reset/confirm", { token: "nope-nope-nope-nope-nope", password: "brand new password" })).status, 400);
+  assert.equal((await call("POST", "/api/auth/verify-email")).status, 401, "requesting verification needs sign-in");
+});

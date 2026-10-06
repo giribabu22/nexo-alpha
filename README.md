@@ -187,6 +187,7 @@ createRoot(document.getElementById("root")!).render(
   - sessions you can revoke (logout really ends them)
   - limits on failed sign-ins
   - scopes checked per request
+  - password reset and email verification through any email provider you plug in
 - **File uploads:**
   - raw binary uploads with size and type limits
   - downloads served so uploaded HTML or SVG can't run scripts on your site
