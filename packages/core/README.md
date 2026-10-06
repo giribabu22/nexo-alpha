@@ -32,6 +32,40 @@ pnpm add @nexo-alpha/core
 
 ---
 
+## Full-Stack Primitives (0.7)
+
+Declare a domain object once; storage, validation, the REST API and the TypeScript types follow from it.
+
+```ts
+import { createApplication, createAuth, createFiles, createDiskBlobStore, createSqliteDocumentStore, field, model, resource, api } from "@nexo-alpha/core";
+
+const User = model("users", {
+  name: field.string({ minLength: 1 }),
+  email: field.email(),
+  role: field.enum(["member", "admin"]).default("member")
+});
+
+const store = await createSqliteDocumentStore("data/app.db");
+const auth = createAuth({ store, secret: process.env.AUTH_SECRET! });
+
+const app = createApplication({ name: "my-app" });
+app.module(resource(User, { store, searchable: ["name", "email"] })); // GET/POST /api/users, GET/PATCH/DELETE /api/users/:id
+app.module(auth);                                                     // /api/auth/register, login, logout, me
+app.module(createFiles({ store, blobs: createDiskBlobStore("data/files") }));
+app.module({ name: "reports", apis: [api.get("/api/reports/revenue", () => revenue())] });
+```
+
+| Primitive | What it gives you |
+|---|---|
+| `model`, `field.*` | One definition: `Infer` types, validation (unknown fields rejected), defaults, API schemas. Browser-safe entry: `@nexo-alpha/core/model` |
+| `resource(model, { store })` | CRUD + REST API: paging, sort, search, typed filters, `ref`/`file` checks, safe concurrent updates, auth scopes, `beforeWrite` |
+| `api.get/post/…` | One-line custom endpoints |
+| `createAuth` | Email/password accounts: scrypt hashes, unique emails, revocable sessions, sign-in throttling |
+| `createFiles` | Uploads and safe downloads, with disk or memory blob stores |
+| Document stores | Memory, JSON file, SQLite (lists run in SQL, with indexes) |
+
+Reference: [Full-stack primitives](https://github.com/giribabu22/nexo-alpha/blob/main/docs/primitives.md).
+
 ## How to Use
 
 ### 1. Creating an Application & Defining Modules

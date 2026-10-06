@@ -22,6 +22,7 @@ import type { NexoApi, NexoApiAuth, NexoRequestContext } from "./api.js";
 import { NexoHttpError } from "./errors.js";
 import type { NexoModule } from "./module.js";
 import type { NexoDocumentStore } from "./storage.js";
+import type { DocumentQuery, DocumentScalar } from "./document-query.js";
 
 const PROJECT_ID = /^[a-z0-9][a-z0-9-]{0,62}$/;
 const context = new AsyncLocalStorage<string>();
@@ -81,6 +82,18 @@ export function scopeByProject(store: NexoDocumentStore, options: ScopeByProject
     delete: async (collection, id) => store.delete(scoped(collection), id),
     list: async (collection) => store.list(scoped(collection)),
     replaceIf: async (collection, id, expected, next) => store.replaceIf(scoped(collection), id, expected, next),
+    ...(store.insert !== undefined
+      ? { insert: async (collection: string, id: string, document: unknown) => store.insert!(scoped(collection), id, document) }
+      : {}),
+    ...(store.query !== undefined
+      ? { query: async <T>(collection: string, query: DocumentQuery) => store.query!<T>(scoped(collection), query) }
+      : {}),
+    ...(store.index !== undefined
+      ? {
+        index: async (collection: string, field: string, options?: { readonly default?: DocumentScalar | undefined }) =>
+          store.index!(scoped(collection), field, options)
+      }
+      : {}),
     close: () => store.close()
   };
 }

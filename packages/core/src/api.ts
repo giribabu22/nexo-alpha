@@ -12,6 +12,11 @@ export interface NexoRequestContext {
   readonly query: Readonly<Record<string, unknown>>;
   readonly payload: unknown;
   readonly headers: Readonly<Record<string, string>>;
+  /**
+   * Who is calling, on APIs with `auth.required` (set by the HTTP adapter
+   * after authentication succeeds). Undefined on public APIs.
+   */
+  readonly auth?: NexoAuthResult | undefined;
 }
 
 export type NexoApiHandler = (
@@ -45,11 +50,10 @@ export type NexoAuthenticator = (
 /**
  * A plain, dependency-free field descriptor — deliberately not a runtime
  * validation library's schema type (Zod/Joi/etc.). This mirrors the rest of
- * `@nexo-alpha/core`'s stance: declare the shape as data, let a caller
- * (`@nexo-alpha/hapi`'s `validate` hook, `@nexo-alpha/tools`'s OpenAPI/client
- * generators) decide what to do with it. Nexo itself never validates a
- * request against this — that's still `NexoApi.validate`'s job; this exists
- * purely to be read, not executed.
+ * `@nexo-alpha/core`'s stance: declare the shape as data, and let callers
+ * decide what to do with it. `validateField()` checks values against it;
+ * `@nexo-alpha/hapi` validates requests against `NexoApi.schema` when an API
+ * has no `validate` hook; `model()` builds these from `field.*` declarations.
  */
 export interface NexoFieldSchema {
   readonly type: "string" | "number" | "boolean" | "object" | "array";
@@ -79,8 +83,8 @@ export interface NexoFieldSchema {
  * Declared request/response shape for a {@link NexoApi} — optional, additive
  * metadata alongside `auth`/`validate`/`handler`. Absent entirely on an API
  * that doesn't declare one, same as every other optional `NexoApi` field;
- * consumers (OpenAPI generation, typed client generation) simply produce
- * less for that API rather than guessing at its shape.
+ * consumers (request validation, knowledge tooling) simply do less for that
+ * API rather than guessing at its shape.
  */
 export interface NexoApiSchema {
   readonly params?: Readonly<Record<string, NexoFieldSchema>>;
@@ -102,6 +106,12 @@ export interface NexoApi {
   readonly handler?: NexoApiHandler;
   /** Declared request/response shape. See {@link NexoApiSchema}. */
   readonly schema?: NexoApiSchema;
+  /**
+   * Receive the request body as raw bytes (`context.payload` is a Uint8Array,
+   * any content type) instead of parsed JSON — for uploads. Bodies over
+   * `maxBytes` (default 10 MB) are answered with 413 before the handler runs.
+   */
+  readonly rawBody?: { readonly maxBytes?: number };
 }
 
 const HTTP_RESPONSE = Symbol.for("nexo.httpResponse");
@@ -128,3 +138,37 @@ export function httpResponse<T>(statusCode: number, body?: T, headers: Readonly<
 export function isHttpResponse(value: unknown): value is NexoHttpResponse {
   return typeof value === "object" && value !== null && (value as Record<symbol, unknown>)[HTTP_RESPONSE] === true;
 }
+
+/** Everything a {@link NexoApi} can declare besides its method, path and handler. */
+export type NexoApiOptions = Partial<Omit<NexoApi, "method" | "path" | "handler">>;
+
+function apiFor(method: HttpMethod) {
+  return (path: string, handler: NexoApiHandler, options: NexoApiOptions = {}): NexoApi => ({
+    ...options,
+    name: options.name ?? `${method} ${path}`,
+    method,
+    path,
+    handler
+  });
+}
+
+/**
+ * One-line API declarations. The name defaults to `"<METHOD> <path>"`.
+ *
+ * ```ts
+ * app.module({
+ *   name: "reports",
+ *   apis: [
+ *     api.get("/api/reports/revenue", () => revenueByMonth()),
+ *     api.post("/api/reports/rebuild", rebuild, { auth: { required: true, scopes: ["reports:write"] } })
+ *   ]
+ * });
+ * ```
+ */
+export const api = {
+  get: apiFor("GET"),
+  post: apiFor("POST"),
+  put: apiFor("PUT"),
+  patch: apiFor("PATCH"),
+  delete: apiFor("DELETE")
+};

@@ -1,6 +1,6 @@
 {
   "name": "@nexo-alpha/core",
-  "version": "0.6.0",
+  "version": "0.7.0",
   "description": "Core runtime for the Nexo application framework",
   "keywords": [
     "nexo",
@@ -19,6 +19,10 @@
     ".": {
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
+    },
+    "./model": {
+      "types": "./dist/model-entry.d.ts",
+      "import": "./dist/model-entry.js"
     }
   },
   "publishConfig": {
@@ -30,7 +34,7 @@
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "test": "node --test",
+    "test": "node --test && tsc -p type-tests",
     "clean": "rm -rf dist"
   },
   "devDependencies": {

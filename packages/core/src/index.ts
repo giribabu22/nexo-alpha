@@ -35,7 +35,38 @@ export type {
   NexoHttpResponse
 } from "./api.js";
 
-export { httpResponse, isHttpResponse } from "./api.js";
+export { httpResponse, isHttpResponse, api } from "./api.js";
+export type { NexoApiOptions } from "./api.js";
+
+export { model, field, errorsByField, humanize, SYSTEM_FIELDS } from "./model.js";
+export type {
+  NexoModel,
+  NexoField,
+  NexoFields,
+  NexoRecordBase,
+  FieldKind,
+  FieldPresence,
+  FieldName,
+  Infer,
+  InferInput,
+  InferPatch,
+  StringFieldOptions,
+  NumberFieldOptions,
+  ValidateOptions
+} from "./model.js";
+
+export { resource, RESOURCE_OPERATIONS } from "./resource.js";
+export type {
+  NexoResource,
+  ResourceOptions,
+  ResourceAuth,
+  ResourceOperation,
+  ResourceWriteInfo,
+  ResourceChange
+} from "./resource.js";
+
+export { resourcePath, encodeListQuery, decodeListQuery, LIST_PARAMS } from "./resource-contract.js";
+export type { ResourceListQuery, ResourceListResult } from "./resource-contract.js";
 
 export {
   validateField,
@@ -57,6 +88,21 @@ export {
 } from "./auth.js";
 
 export { createRequestContext } from "./request.js";
+
+export { createFiles, createDiskBlobStore, createInMemoryBlobStore } from "./files.js";
+export type { NexoFiles, NexoBlobStore, CreateFilesOptions, UploadInput } from "./files.js";
+export { FILES_PATH, mimeMatches } from "./files-contract.js";
+export type { NexoFile } from "./files-contract.js";
+
+export { createAuth } from "./accounts.js";
+export type {
+  NexoAuth,
+  CreateAuthOptions,
+  AuthUser,
+  AuthIdentity,
+  AuthSession,
+  RegisterInput
+} from "./accounts.js";
 
 export {
   runInProject,
@@ -103,8 +149,12 @@ export type {
 export {
   createInMemoryDocumentStore,
   createFileDocumentStore,
-  createSqliteDocumentStore
+  createSqliteDocumentStore,
+  insertDocument
 } from "./storage.js";
+
+export { queryDocuments, asciiLower } from "./document-query.js";
+export type { DocumentQuery, DocumentQueryResult, DocumentScalar } from "./document-query.js";
 
 export type {
   NexoDocumentStore,

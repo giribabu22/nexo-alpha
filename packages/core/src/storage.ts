@@ -21,6 +21,13 @@
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { NexoConfigurationError } from "./errors.js";
+import {
+  asciiLower,
+  assertQueryField,
+  type DocumentQuery,
+  type DocumentQueryResult,
+  type DocumentScalar
+} from "./document-query.js";
 
 export interface NexoDocumentStore {
   /** The document stored under `(collection, id)`, if any. */
@@ -36,6 +43,25 @@ export interface NexoDocumentStore {
    * is what lets several job-queue workers share one database safely.
    */
   replaceIf(collection: string, id: string, expected: unknown, next: unknown): Promise<boolean>;
+  /**
+   * Stores the document only if `(collection, id)` is free, atomically.
+   * Returns whether it was stored. Optional, so existing custom stores keep
+   * working; call it through {@link insertDocument}, which falls back to
+   * get-then-put. Lets ids act as unique keys (e.g. one account per email).
+   */
+  insert?(collection: string, id: string, document: unknown): Promise<boolean>;
+  /**
+   * Filters, searches, sorts and pages a collection inside the store (the
+   * SQLite store does it in SQL). Optional: without it, callers use
+   * `queryDocuments(await store.list(…), query)`, which gives the same results.
+   */
+  query?<T = unknown>(collection: string, query: DocumentQuery): Promise<DocumentQueryResult<T>>;
+  /**
+   * Makes `query()` filters on `field` fast (the SQLite store creates an
+   * expression index). Pass the same `default` the queries use. Optional and
+   * idempotent; stores without it just filter by scanning.
+   */
+  index?(collection: string, field: string, options?: { readonly default?: DocumentScalar | undefined }): Promise<void>;
   /** Every document in `collection`, in first-insertion order. */
   list<T = unknown>(collection: string): Promise<T[]>;
   /** Releases resources (file handles, connections). The store must not be used afterwards. */
@@ -82,6 +108,17 @@ export function createInMemoryDocumentStore(): NexoDocumentStore {
       const nextJson = serialize(next);
       if (docs === undefined || docs.get(id) !== serialize(expected)) return false;
       docs.set(id, nextJson);
+      return true;
+    },
+    async insert(collection, id, document) {
+      const json = serialize(document);
+      let docs = collections.get(collection);
+      if (docs === undefined) {
+        docs = new Map();
+        collections.set(collection, docs);
+      }
+      if (docs.has(id)) return false;
+      docs.set(id, json);
       return true;
     },
     async list<T>(collection: string) {
@@ -207,6 +244,16 @@ export function createFileDocumentStore(filePath: string): NexoDocumentStore {
       return true;
     },
 
+    async insert(collection, id, document) {
+      const copy = clone(document);
+      const all = await data();
+      // No await between the check and the write, so this is atomic within the process.
+      if (all[collection]?.[id] !== undefined) return false;
+      all[collection] = { ...all[collection], [id]: copy };
+      await persist();
+      return true;
+    },
+
     async close() {
       await pending?.catch(() => undefined);
       await writing.catch(() => undefined);
@@ -283,10 +330,88 @@ export async function createSqliteDocumentStore(
   );
   const deleteStmt = db.prepare(`DELETE FROM ${table} WHERE collection = ? AND id = ?`);
   const listStmt = db.prepare(`SELECT data FROM ${table} WHERE collection = ? ORDER BY rowid`);
+  const insertStmt = db.prepare(
+    `INSERT INTO ${table} (collection, id, data, updated_at) VALUES (?, ?, ?, ?) ON CONFLICT (collection, id) DO NOTHING`
+  );
   // A single conditional UPDATE is atomic, even across processes sharing the file.
   const replaceIfStmt = db.prepare(
     `UPDATE ${table} SET data = ?, updated_at = ? WHERE collection = ? AND id = ? AND data = ?`
   );
+
+  // Queries are built per shape; cache the prepared statements by SQL text.
+  const queryStatements = new Map<string, SqliteStatement>();
+  function prepared(sql: string): SqliteStatement {
+    let statement = queryStatements.get(sql);
+    if (statement === undefined) {
+      if (queryStatements.size >= 200) queryStatements.clear();
+      statement = db.prepare(sql);
+      queryStatements.set(sql, statement);
+    }
+    return statement;
+  }
+
+  /** node:sqlite binds numbers, strings, null and bytes; JSON booleans read back as 1/0. */
+  const bindable = (value: unknown): unknown => (typeof value === "boolean" ? (value ? 1 : 0) : value);
+
+  /** A default as SQL text, so queries and index definitions spell the expression identically. */
+  function sqlLiteral(value: DocumentScalar): string | undefined {
+    if (typeof value === "boolean") return value ? "1" : "0";
+    if (typeof value === "number") return Number.isFinite(value) ? String(value) : undefined;
+    return `'${value.replace(/'/g, "''")}'`;
+  }
+
+  /**
+   * The SQL for a field's value, falling back to `fallback` when the document
+   * lacks it. Names are checked to be plain identifiers, so the JSON path can be
+   * written into the SQL — which lets SQLite use the indexes `index()` creates.
+   */
+  function fieldSql(name: string, fallback: unknown): string {
+    assertQueryField(name);
+    const extract = `json_extract(data, '$.${name}')`;
+    const literal = typeof fallback === "string" || typeof fallback === "number" || typeof fallback === "boolean"
+      ? sqlLiteral(fallback)
+      : undefined;
+    return literal === undefined ? extract : `COALESCE(${extract}, ${literal})`;
+  }
+
+  /** A short stable index name for an expression. */
+  function indexName(expression: string): string {
+    let hash = 5381;
+    for (let i = 0; i < expression.length; i++) hash = ((hash * 33) ^ expression.charCodeAt(i)) >>> 0;
+    return `${table}_field_${hash.toString(36)}`;
+  }
+
+  function runQuery<T>(collection: string, query: DocumentQuery): DocumentQueryResult<T> {
+    const field = (name: string): string => fieldSql(name, query.defaults?.[name]);
+    const sortKey = query.sort === undefined ? "NULL" : field(query.sort.field);
+
+    const whereParams: unknown[] = [collection];
+    const conditions = ["collection = ?"];
+    for (const [name, expected] of Object.entries(query.where ?? {})) {
+      conditions.push(`${field(name)} = ?`);
+      whereParams.push(bindable(expected));
+    }
+    if (query.search !== undefined && query.search.fields.length > 0) {
+      const text = asciiLower(query.search.text);
+      const anyField = query.search.fields.map((name) => {
+        const expression = field(name);
+        whereParams.push(text);
+        return `instr(lower(CAST(${expression} AS TEXT)), ?) > 0`;
+      });
+      conditions.push(`(${anyField.join(" OR ")})`);
+    }
+    const where = conditions.join(" AND ");
+    const direction = query.sort?.descending === true ? "DESC" : "ASC";
+    const order = query.sort === undefined ? "rid" : `sort_key IS NULL, sort_key COLLATE NOCASE ${direction}, rid`;
+
+    // The sort key is an output column, so it is extracted once per row, and a
+    // LIMIT lets SQLite keep only the top rows while sorting.
+    const rows = prepared(
+      `SELECT data, rowid AS rid, ${sortKey} AS sort_key FROM ${table} WHERE ${where} ORDER BY ${order} LIMIT ? OFFSET ?`
+    ).all(...whereParams, query.limit ?? -1, query.offset ?? 0) as { data: string }[];
+    const total = Number((prepared(`SELECT COUNT(*) AS n FROM ${table} WHERE ${where}`).get(...whereParams) as { n: number | bigint }).n);
+    return { items: rows.map((row) => JSON.parse(row.data) as T), total };
+  }
 
   let closed = false;
   function open(): void {
@@ -316,10 +441,42 @@ export async function createSqliteDocumentStore(
       const result = replaceIfStmt.run(serialize(next), new Date().toISOString(), collection, id, serialize(expected));
       return Number(result.changes) > 0;
     },
+    async insert(collection, id, document) {
+      open();
+      return Number(insertStmt.run(collection, id, serialize(document), new Date().toISOString()).changes) > 0;
+    },
+    async query<T>(collection: string, query: DocumentQuery) {
+      open();
+      return runQuery<T>(collection, query);
+    },
+    async index(_collection, fieldName, indexOptions = {}) {
+      open();
+      // (collection, value) serves every collection with this field, so it is one index per expression.
+      const expression = fieldSql(fieldName, indexOptions.default);
+      db.exec(`CREATE INDEX IF NOT EXISTS ${indexName(expression)} ON ${table} (collection, ${expression})`);
+    },
     async close() {
       if (closed) return;
       closed = true;
       db.close();
     }
   };
+}
+
+/**
+ * Stores `document` only if `(collection, id)` is free; returns whether it
+ * was stored. Atomic with the built-in stores (and across processes with
+ * SQLite). For a custom store without `insert`, it checks then writes, which
+ * is only safe when one writer at a time uses that id.
+ */
+export async function insertDocument(
+  store: NexoDocumentStore,
+  collection: string,
+  id: string,
+  document: unknown
+): Promise<boolean> {
+  if (store.insert !== undefined) return store.insert(collection, id, document);
+  if ((await store.get(collection, id)) !== undefined) return false;
+  await store.put(collection, id, document);
+  return true;
 }
