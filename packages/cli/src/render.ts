@@ -1,4 +1,5 @@
 import type { ApplicationContext, DevelopmentState, ModuleContext } from "@nexo-alpha/context";
+import type { FieldDescription, ResourceDescription } from "@nexo-alpha/core";
 
 
 function renderList(items: readonly string[]): string {
@@ -22,6 +23,12 @@ export function renderApplicationSummary(context: ApplicationContext): string {
 
   lines.push(`State: ${application.state}`, "", "Modules:");
   lines.push(renderList(modules.map((module) => module.name)));
+
+  const resources = modules.flatMap((module) => (module.resource !== undefined ? [module.resource] : []));
+  if (resources.length > 0) {
+    lines.push("", "Resources:");
+    lines.push(renderList(resources.map((resource) => `${resource.model.name}  ${resource.path}`)));
+  }
 
   return lines.join("\n");
 }
@@ -65,6 +72,43 @@ export function renderModuleDetail(module: ModuleContext): string {
   );
 
   return lines.join("\n");
+}
+
+function renderField(name: string, field: FieldDescription): string {
+  const type = field.kind === "enum" && field.values !== undefined
+    ? field.values.map((value) => JSON.stringify(value)).join(" | ")
+    : field.kind === "array" && field.item !== undefined
+      ? `${field.item.kind}[]`
+      : field.kind;
+  const details = [
+    field.presence === "required" ? "required" : field.presence === "optional" ? "optional" : `default ${JSON.stringify(field.default)}`,
+    ...(field.ref !== undefined && field.kind !== "file" ? [`→ ${field.ref}`] : []),
+    ...(field.min !== undefined ? [`min ${field.min}`] : []),
+    ...(field.max !== undefined ? [`max ${field.max}`] : []),
+    ...(field.minLength !== undefined ? [`minLength ${field.minLength}`] : []),
+    ...(field.maxLength !== undefined && field.kind !== "email" ? [`maxLength ${field.maxLength}`] : []),
+    ...(field.accept !== undefined ? [`accept ${field.accept.join(", ")}`] : [])
+  ];
+  return `${name}: ${type}  (${details.join(", ")})${field.description !== undefined ? `  ${field.description}` : ""}`;
+}
+
+export function renderResourceDetail(resource: ResourceDescription): string {
+  return [
+    `${resource.model.name}  ${resource.path}`,
+    "",
+    "Fields (plus id, createdAt, updatedAt):",
+    renderList(Object.entries(resource.model.fields).map(([name, field]) => renderField(name, field))),
+    "",
+    "Searchable:",
+    renderList(resource.searchable),
+    "",
+    "Operations:",
+    renderList(resource.operations.map((op) =>
+      `${op.operation.padEnd(6)} ${op.method} ${op.path}  ${
+        op.scopes.length > 0 ? `scopes: ${op.scopes.join(", ")}` : op.authenticated ? "signed in" : "public"
+      }`
+    ))
+  ].join("\n");
 }
 
 export function renderDevelopmentState(state: DevelopmentState): string {

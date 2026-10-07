@@ -1,7 +1,33 @@
 import { createKnowledge } from "@nexo-alpha/context";
 import { createDecisionEngine, permissionRule } from "@nexo-alpha/decision";
-import { JevBehaviorProvider } from "@nexo-alpha/behavior";
+import { LocalBehaviorProvider, type DecisionResult } from "@nexo-alpha/behavior";
 import { createAgent } from "@nexo-alpha/agent";
+import { MockWebSearchProvider } from "@nexo-alpha/web";
+
+/**
+ * Stand-in for a model-backed provider (e.g. JevBehaviorProvider with an
+ * endpoint and apiKey): answers each bounded question with a visible keyword
+ * heuristic, so the demo runs offline and its answers are explainable.
+ */
+const demoJudge = new LocalBehaviorProvider((key, question, state): DecisionResult => {
+  const text = JSON.stringify(state).toLowerCase();
+  switch (key) {
+    case "target": // route(): pick the candidate whose topic appears in the state
+      return {
+        value: text.includes("react") || text.includes("error") ? "technical-agent" : question.options[0],
+        confidence: 0.8,
+        explanation: "keyword match"
+      };
+    case "matches": // verify(): evidence mentions the query's subject
+      return { value: text.includes("react"), confidence: 0.8, explanation: "mentions React" };
+    case "quality":
+      return { value: 0.8, confidence: 0.8 };
+    case "status": // complete(): any verified evidence is enough for this demo
+      return { value: text.includes("react") ? "COMPLETE" : "VERIFY_MORE", confidence: 0.8 };
+    default:
+      return { value: false, confidence: 0, explanation: "not handled by the demo judge" };
+  }
+});
 
 async function main() {
   console.log("=== Nexo Bounded Behavior & Agent Runtime Demo ===\n");
@@ -19,12 +45,12 @@ async function main() {
     })
   );
 
-  // 3. Create NexoAgent with JevBehaviorProvider
+  // 3. Create NexoAgent with a behavior provider
   const agent = createAgent({
     name: "support-agent",
     decisionEngine,
     knowledge,
-    behaviorProvider: new JevBehaviorProvider()
+    behaviorProvider: demoJudge
   });
 
   // Register Tool Handler
@@ -41,7 +67,8 @@ async function main() {
 
   // 4. Perform Behavior-Guided Web Research
   console.log("1. Executing Web Research (Search ➔ Extract ➔ Behavior Verification)...");
-  const researchResult = await agent.research("What changed in React 20?");
+  // MockWebSearchProvider returns fixed example.com results; use a real WebSearchProvider in production.
+  const researchResult = await agent.research("What changed in React 20?", { provider: new MockWebSearchProvider() });
   console.log(`   Query: "${researchResult.query}"`);
   console.log(`   Retrieved: ${researchResult.totalRetrieved} items, Verified: ${researchResult.totalVerified} items.`);
   console.log(`   Status: ${researchResult.status}\n`);
@@ -51,7 +78,7 @@ async function main() {
   const route = await agent.behavior.route(["billing-agent", "technical-agent", "sales-agent"], {
     ticket: "React hydration issue"
   });
-  console.log(`   Selected Route: ${route}\n`);
+  console.log(`   Selected Route: ${route ?? "(the judge did not choose)"}\n`);
 
   // 6. Execute Intent through DECIDE ➔ ACT ➔ VERIFY ➔ AUDIT
   console.log("3. Executing Agent Intent...");

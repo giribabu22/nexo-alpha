@@ -26,6 +26,7 @@ import {
   renderDevelopmentState,
   renderHealth,
   renderModuleDetail,
+  renderResourceDetail,
   renderValidation
 } from "./render.js";
 
@@ -52,6 +53,38 @@ export function inspect(
   }
 
   return renderModuleDetail(module);
+}
+
+/**
+ * Describes one resource (its fields, path, search fields and operations
+ * with their scopes), or lists the resources when `name` is omitted. With
+ * `json`, prints the description as JSON: the compact form for AI tools.
+ */
+export function inspectResource(
+  app: NexoApplication,
+  knowledge: ApplicationKnowledge | undefined,
+  name: string | undefined,
+  json = false
+): string {
+  const resources = buildContext(app, knowledge).modules.flatMap((module) =>
+    module.resource !== undefined ? [module.resource] : []
+  );
+
+  if (name === undefined) {
+    return json
+      ? JSON.stringify(resources.map((resource) => ({ name: resource.model.name, path: resource.path })), null, 2)
+      : resources.length > 0
+        ? resources.map((resource) => `${resource.model.name}  ${resource.path}`).join("\n")
+        : "This application has no resources.";
+  }
+
+  const resource = resources.find((candidate) => candidate.model.name === name);
+  if (resource === undefined) {
+    const known = resources.map((candidate) => candidate.model.name);
+    const suggestion = known.length > 0 ? ` Resources: ${known.join(", ")}.` : " This application has no resources.";
+    throw new Error(`No resource named "${name}".${suggestion}`);
+  }
+  return json ? JSON.stringify(resource, null, 2) : renderResourceDetail(resource);
 }
 
 export function status(

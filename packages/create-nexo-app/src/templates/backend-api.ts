@@ -2,7 +2,7 @@ import { Template, TemplateFile } from "./types.js";
 
 export const backendApiTemplate: Template = {
   name: "backend-api",
-  description: "Standalone Nexo backend API service with Hapi, scheduler, context, and CLI support",
+  description: "Standalone Nexo backend API service with Hapi, context, and CLI support",
   getFiles(projectName: string): TemplateFile[] {
     return [
       {
@@ -140,13 +140,7 @@ npx nexo freshness --source-root src
             dependencies: {
               "@nexo-alpha/core": "^0.7.0",
               "@nexo-alpha/context": "^0.7.0",
-              "@nexo-alpha/decision": "^0.7.0",
-              "@nexo-alpha/behavior": "^0.7.0",
-              "@nexo-alpha/agent": "^0.7.0",
-              "@nexo-alpha/web": "^0.7.0",
               "@nexo-alpha/hapi": "^0.7.0",
-              "@nexo-alpha/scheduler": "^0.7.0",
-              "@nexo-alpha/tools": "^0.7.0",
               "@nexo-alpha/cli": "^0.7.0"
             },
             devDependencies: {

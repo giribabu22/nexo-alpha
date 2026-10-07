@@ -45,7 +45,7 @@ export class NexoClient {
   private readonly options: NexoClientOptions;
   private readonly defaultHeaders: Record<string, string>;
   private readonly fetchFn: typeof fetch;
-  private readonly resources = new Map<string, NexoResourceClient<NexoModel>>();
+  private readonly resourceCache = new Map<string, NexoResourceClient<NexoModel>>();
 
   constructor(options: NexoClientOptions = {}) {
     this.options = options;
@@ -72,12 +72,67 @@ export class NexoClient {
    */
   resource<M extends NexoModel>(model: M, options: NexoResourceClientOptions = {}): NexoResourceClient<M> {
     const key = `${model.name} ${options.path ?? ""}`;
-    let resource = this.resources.get(key);
+    let resource = this.resourceCache.get(key);
     if (resource === undefined || resource.model !== model) {
       resource = new NexoResourceClient<NexoModel>(this, model, options);
-      this.resources.set(key, resource);
+      this.resourceCache.set(key, resource);
     }
     return resource as unknown as NexoResourceClient<M>;
+  }
+
+  /**
+   * Typed client proxy for `@nexo-alpha/data` resources:
+   *
+   * ```ts
+   * const api = nexo.resources<{ users: typeof User }>();
+   * const page = await api.users.list();
+   * const user = await api.users.get("id");
+   * ```
+   */
+  resources<R extends Record<string, any>>(resourcesMap?: R): {
+    [K in keyof R]: {
+      readonly path: string;
+      list(query?: Record<string, any>): Promise<any>;
+      get(id: string): Promise<any>;
+      create(data: any): Promise<any>;
+      update(id: string, patch: any): Promise<any>;
+      delete(id: string): Promise<void>;
+    };
+  } {
+    const proxyCache = new Map<string, any>();
+    return new Proxy({} as any, {
+      get: (_target, prop: string | symbol) => {
+        if (typeof prop !== "string") return undefined;
+        let cached = proxyCache.get(prop);
+        if (cached) return cached;
+
+        const resDef = resourcesMap?.[prop];
+        const path = (resDef?.path ?? `/${prop.replace(/([A-Z])/g, "-$1").toLowerCase()}`).replace(/\/+$/, "");
+
+        cached = {
+          path,
+          list: (query: Record<string, any> = {}) => {
+            const params = new URLSearchParams();
+            if (query.limit !== undefined) params.set("limit", String(query.limit));
+            if (query.cursor !== undefined) params.set("cursor", String(query.cursor));
+            if (query.sort !== undefined) params.set("sort", String(query.sort));
+            if (query.where !== undefined && typeof query.where === "object" && query.where !== null) {
+              for (const [k, v] of Object.entries(query.where)) {
+                if (v !== undefined && v !== null) params.set(`where[${k}]`, String(v));
+              }
+            }
+            const qs = params.toString();
+            return this.get(qs ? `${path}?${qs}` : path);
+          },
+          get: (id: string) => this.get(`${path}/${encodeURIComponent(id)}`),
+          create: (data: unknown) => this.post(path, data),
+          update: (id: string, patch: unknown) => this.patch(`${path}/${encodeURIComponent(id)}`, patch),
+          delete: (id: string) => this.delete(`${path}/${encodeURIComponent(id)}`)
+        };
+        proxyCache.set(prop, cached);
+        return cached;
+      }
+    });
   }
 
   /** A client with the same settings that works in another project. */

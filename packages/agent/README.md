@@ -84,6 +84,12 @@ export const agent = createAgent({
 });
 ```
 
+**Agents deny by default.** If the decision engine has no rules when an intent runs, the intent is blocked (`REJECT`, code `"NO_POLICY"`) and recorded in the audit log, and no tool runs. Rules added after `createAgent()` count. For prototypes and tests, `createAgent({ decisionEngine, allowUnrestricted: true })` approves every intent while the engine has no rules.
+
+**Declared tool `permissions` are never ignored.** A tool that declares `permissions` runs only if the engine has a `toolPermissionRule` for this agent's `tools`. Otherwise the intent is blocked (`REJECT`, code `"PERMISSIONS_NOT_ENFORCED"`). If your own rule checks permissions, create the agent with `allowUnrestricted: true`.
+
+`agent.behavior.route(candidates, state)` returns the candidate the behavior provider chose, or `undefined` when it didn't choose one. It never falls back to a guess.
+
 ---
 
 ### 2. Registering Tools (`ToolRegistry`)
@@ -221,11 +227,14 @@ Run an integrated research pipeline that searches the web, extracts snippets, ve
 
 ```ts
 const researchResult = await agent.research("Latest security advisories for Node.js 22", {
+  provider: mySearchProvider, // a WebSearchProvider; required
   maxSources: 5
 });
 
 console.log(`Retrieved ${researchResult.totalRetrieved} sources, verified ${researchResult.totalVerified}.`);
 ```
+
+Results are verified by the agent's `behaviorProvider`. Without one, nothing is verified and the status is `"INSUFFICIENT"`.
 
 ---
 

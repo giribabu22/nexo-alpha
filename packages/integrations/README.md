@@ -5,11 +5,14 @@
 Each toolkit is a bundle of agent tools. Every tool declares the permissions it needs, so the Decision Engine and RBAC (`toolPermissionRule`) gate it like any other tool.
 
 ```ts
-import { installToolkit } from "@nexo-alpha/agent";
+import { installToolkit, toolPermissionRule } from "@nexo-alpha/agent";
 import { createGitHubToolkit, createSlackToolkit } from "@nexo-alpha/integrations";
 
 installToolkit(agent, createGitHubToolkit({ token: process.env.GITHUB_TOKEN!, repository: "acme/app" }));
 installToolkit(agent, createSlackToolkit({ webhookUrl: process.env.SLACK_WEBHOOK_URL! }));
+
+// Required: the agent refuses tools that declare permissions nothing enforces ("PERMISSIONS_NOT_ENFORCED").
+engine.addRule(toolPermissionRule({ access, tools: agent.tools, resolveRoles }));
 ```
 
 | Toolkit | Action | Payload | Permission |

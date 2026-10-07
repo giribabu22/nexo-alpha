@@ -264,13 +264,7 @@ export type Todo = Infer<typeof Todo>;
               [`${projectName}-shared`]: "*",
               "@nexo-alpha/core": "^0.7.0",
               "@nexo-alpha/context": "^0.7.0",
-              "@nexo-alpha/decision": "^0.7.0",
-              "@nexo-alpha/behavior": "^0.7.0",
-              "@nexo-alpha/agent": "^0.7.0",
-              "@nexo-alpha/web": "^0.7.0",
               "@nexo-alpha/hapi": "^0.7.0",
-              "@nexo-alpha/scheduler": "^0.7.0",
-              "@nexo-alpha/tools": "^0.7.0",
               "@nexo-alpha/cli": "^0.7.0"
             },
             devDependencies: {

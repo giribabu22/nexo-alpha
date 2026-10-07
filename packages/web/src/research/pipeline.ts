@@ -1,5 +1,4 @@
 import type { ResearchOptions, ResearchResult } from "../types/index.js";
-import { MockWebSearchProvider } from "../search/provider.js";
 import { extractEvidenceFromSearchResults } from "../evidence/extractor.js";
 import { verifyEvidence } from "../verification/verifier.js";
 
@@ -8,7 +7,10 @@ import { verifyEvidence } from "../verification/verifier.js";
  * Search ──► Extract ──► Behavior Verification ──► Knowledge Recording ──► Verified Evidence Data
  */
 export async function research(options: ResearchOptions): Promise<ResearchResult> {
-  const provider = options.provider ?? new MockWebSearchProvider();
+  const provider = options.provider;
+  if (provider === undefined) {
+    throw new Error("research() needs a search provider: pass { provider } (MockWebSearchProvider is for tests and demos).");
+  }
 
   // 1. Search
   const searchResults = await provider.search(options.query, {
@@ -28,11 +30,11 @@ export async function research(options: ResearchOptions): Promise<ResearchResult
 
   const verifiedCount = verification.verifiedEvidence.filter(e => e.verified).length;
 
-  const status = verifiedCount === rawEvidence.length
-    ? "SUCCESS"
-    : verifiedCount > 0
-      ? "PARTIAL"
-      : "INSUFFICIENT";
+  const status = verifiedCount === 0
+    ? "INSUFFICIENT"
+    : verifiedCount === rawEvidence.length && verification.sufficient
+      ? "SUCCESS"
+      : "PARTIAL";
 
   // 4. Record to Knowledge history if knowledge instance provided
   if (options.knowledge) {
@@ -49,6 +51,7 @@ export async function research(options: ResearchOptions): Promise<ResearchResult
     evidence: verification.verifiedEvidence,
     totalRetrieved: rawEvidence.length,
     totalVerified: verifiedCount,
+    sufficient: verification.sufficient,
     status
   };
 }

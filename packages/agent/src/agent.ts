@@ -11,6 +11,7 @@ import {
   type ExecutionStatus
 } from "./audit.js";
 import { createToolRegistry, type ToolRegistry } from "./tool-registry.js";
+import { enforcesToolPermissions } from "./tool-permissions.js";
 import { createVerifierRegistry, type VerifierRegistry } from "./verifier.js";
 import type { IntentParser } from "./understand.js";
 
@@ -20,7 +21,26 @@ import type { IntentParser } from "./understand.js";
 
 export interface AgentOptions {
   readonly name?: string | undefined;
+  /**
+   * Decides whether each intent may run. Unless `allowUnrestricted` is set,
+   * the agent blocks an intent (`REJECT`) itself when the engine has no
+   * rules (code `"NO_POLICY"`), or when the tool declares `permissions`
+   * and the engine has no `toolPermissionRule` for this agent's tools
+   * (code `"PERMISSIONS_NOT_ENFORCED"`).
+   */
   readonly decisionEngine: DecisionEngine;
+  /**
+   * Turn off the agent's own two checks: approve every intent while the
+   * engine has no rules, and run tools whose declared `permissions` no
+   * `toolPermissionRule` enforces (e.g. when a custom rule checks them).
+   * Default: false, so an agent never acts without a policy by accident.
+   */
+  readonly allowUnrestricted?: boolean | undefined;
+  /**
+   * Answers the agent's judgment questions (`agent.behavior.*`, whether to
+   * retry a failed step, research verification). Without one, those questions
+   * go unanswered: retries follow the verifier's recovery alone.
+   */
   readonly behaviorProvider?: BehaviorProvider | undefined;
   readonly behaviorEngine?: BehaviorEngine | undefined;
   readonly parser?: IntentParser | undefined;
@@ -57,7 +77,11 @@ export interface RunOptions extends ExecuteOptions {
 
 export interface AgentBehaviorCapabilities {
   readonly engine: BehaviorEngine;
-  route<T extends string>(candidates: readonly T[], state?: unknown): Promise<T>;
+  /**
+   * The candidate the behavior provider chose, or `undefined` when it didn't
+   * choose one (no provider, no answer, or zero confidence) — never a guess.
+   */
+  route<T extends string>(candidates: readonly T[], state?: unknown): Promise<T | undefined>;
   shouldRetry(error: Error | string, attempt: number, maxAttempts: number): Promise<boolean>;
   checkGoal(goal: string, history?: unknown[]): Promise<string>;
   checkEscalation(state: unknown): Promise<boolean>;
@@ -78,10 +102,10 @@ export interface NexoAgent {
   run(input: string, options?: RunOptions): Promise<ExecutionRecord>;
   /**
    * Executes a behavior-guided web research pipeline.
-   * Searches, extracts evidence, verifies validity using the agent's behavior engine,
+   * Searches with `options.provider`, verifies validity using the agent's behavior engine,
    * and records results into ApplicationKnowledge.
    */
-  research(query: string, options?: Omit<ResearchOptions, "query">): Promise<ResearchResult>;
+  research(query: string, options: Omit<ResearchOptions, "query">): Promise<ResearchResult>;
 }
 
 // ---------------------------------------------------------------------------
@@ -97,9 +121,13 @@ export function createAgent(options: AgentOptions): NexoAgent {
   const confidenceThreshold = options.confidenceThreshold ?? 0.75;
   const agentExtras = options.extras;
 
+  const allowUnrestricted = options.allowUnrestricted ?? false;
+
   const behaviorEngine = options.behaviorEngine ?? createBehaviorEngine({
     provider: options.behaviorProvider
   });
+  /** Whether someone configured a judge for retries; otherwise the verifier's recovery decides alone. */
+  const hasBehaviorJudge = options.behaviorEngine !== undefined || options.behaviorProvider !== undefined;
 
   const tools = createToolRegistry();
   const verifiers = createVerifierRegistry();
@@ -122,7 +150,7 @@ export function createAgent(options: AgentOptions): NexoAgent {
     engine: behaviorEngine,
     async route(candidates, state) {
       const res = await behaviorEngine.route({ candidates, state: state ?? {} });
-      return res.selected;
+      return res.confidence > 0 ? res.selected : undefined;
     },
     async shouldRetry(error, attempt, maxAttempts) {
       const res = await behaviorEngine.retry({ error, attempt, maxAttempts });
@@ -150,7 +178,13 @@ export function createAgent(options: AgentOptions): NexoAgent {
     let decision: DecisionOutcome;
 
     try {
-      decision = await engine.evaluate(intent, { extras: mergedExtras });
+      decision = allowUnrestricted
+        ? await engine.evaluate(intent, { extras: mergedExtras })
+        : engine.ruleCount === 0
+          ? NO_POLICY
+          : (tools.get(intent.action)?.permissions?.length ?? 0) > 0 && !enforcesToolPermissions(engine, tools)
+            ? PERMISSIONS_NOT_ENFORCED
+            : await engine.evaluate(intent, { extras: mergedExtras });
     } catch (error) {
       const completedAt = new Date().toISOString();
       const record: ExecutionRecord = {
@@ -234,15 +268,18 @@ export function createAgent(options: AgentOptions): NexoAgent {
         record.verificationResult?.recovery === "RETRY" &&
         attempt < maxRetries
       ) {
-        const retryDecision = await behaviorEngine.retry({
-          error: record.verificationResult?.reason ?? "Verification failed",
-          attempt,
-          maxAttempts: maxRetries,
-          context: { intent, toolResult: record.toolResult }
-        });
+        // The verifier asked for a retry; a configured judge may still veto it.
+        if (hasBehaviorJudge) {
+          const retryDecision = await behaviorEngine.retry({
+            error: record.verificationResult?.reason ?? "Verification failed",
+            attempt,
+            maxAttempts: maxRetries,
+            context: { intent, toolResult: record.toolResult }
+          });
 
-        if (!retryDecision.retry) {
-          break;
+          if (!retryDecision.retry) {
+            break;
+          }
         }
 
         attempt += 1;
@@ -271,6 +308,7 @@ export function createAgent(options: AgentOptions): NexoAgent {
       return executeWebResearch({
         query,
         ...researchOptions,
+        // `?.` so a JavaScript caller that passes nothing gets research()'s "needs a search provider" error.
         behaviorProvider: researchOptions?.behaviorProvider ?? behaviorEngine.getProvider(),
         knowledge: researchOptions?.knowledge ?? knowledge
       });
@@ -279,6 +317,20 @@ export function createAgent(options: AgentOptions): NexoAgent {
 
   return agent;
 }
+
+/** The outcome for every intent when the engine has no rules and `allowUnrestricted` is off. */
+const NO_POLICY: DecisionOutcome = {
+  result: "REJECT",
+  reason: "The decision engine has no rules. Add rules, or create the agent with allowUnrestricted: true to approve every intent.",
+  code: "NO_POLICY"
+};
+
+/** The outcome for a tool that declares permissions nothing enforces, when `allowUnrestricted` is off. */
+const PERMISSIONS_NOT_ENFORCED: DecisionOutcome = {
+  result: "REJECT",
+  reason: "This tool declares permissions, but the decision engine has no toolPermissionRule for this agent's tools. Add one, or create the agent with allowUnrestricted: true if another rule checks them.",
+  code: "PERMISSIONS_NOT_ENFORCED"
+};
 
 function writeToKnowledge(
   knowledge: ApplicationKnowledge | undefined,

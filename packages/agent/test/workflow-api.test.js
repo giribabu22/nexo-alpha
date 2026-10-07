@@ -31,7 +31,7 @@ async function buildServer(moduleOptions = {}) {
   const engine = createDecisionEngine({ name: "api-test" });
   engine.addRule(confirmationRule({ name: "confirm-refund", actions: ["refund"], requires: () => true, question: "Confirm refund?" }));
 
-  const agent = createAgent({ decisionEngine: engine });
+  const agent = createAgent({ allowUnrestricted: true, decisionEngine: engine });
   agent.tools.register(successTool("lookup"));
   agent.tools.register(successTool("refund"));
 
@@ -129,7 +129,7 @@ test("Workflow API: 400 for invalid bodies and status filters", async () => {
 
 test("Workflow API: resolveActor overrides the body actor", async () => {
   let seenActor;
-  const agent = createAgent({ decisionEngine: createDecisionEngine({ name: "approve-all" }) });
+  const agent = createAgent({ allowUnrestricted: true, decisionEngine: createDecisionEngine({ name: "approve-all" }) });
   agent.tools.register({
     action: "whoami",
     execute: async ({ intent }) => {
@@ -150,7 +150,7 @@ test("Workflow API: resolveActor overrides the body actor", async () => {
 });
 
 test("Workflow API: auth option protects every route", async () => {
-  const agent = createAgent({ decisionEngine: createDecisionEngine({ name: "approve-all" }) });
+  const agent = createAgent({ allowUnrestricted: true, decisionEngine: createDecisionEngine({ name: "approve-all" }) });
   const app = createApplication({ name: "auth-test" });
   app.module(createWorkflowApiModule({
     workflows: [createWorkflow({ name: "w", agent })],
@@ -169,7 +169,7 @@ test("Workflow API: auth option protects every route", async () => {
 });
 
 test("Workflow API: rejects duplicate workflow names", () => {
-  const agent = createAgent({ decisionEngine: createDecisionEngine({ name: "x" }) });
+  const agent = createAgent({ allowUnrestricted: true, decisionEngine: createDecisionEngine({ name: "x" }) });
   assert.throws(
     () => createWorkflowApiModule({ workflows: [createWorkflow({ name: "dup", agent }), createWorkflow({ name: "dup", agent })] }),
     /Duplicate workflow name "dup"/
@@ -215,7 +215,7 @@ test("Workflow API (queue): start and resume answer RUNNING immediately; the que
 
 test("Workflow API (queue): the resolved actor travels with the job, and stale jobs are skipped", async () => {
   const seen = [];
-  const agent = createAgent({ decisionEngine: createDecisionEngine({ name: "approve-all" }) });
+  const agent = createAgent({ allowUnrestricted: true, decisionEngine: createDecisionEngine({ name: "approve-all" }) });
   agent.tools.register({
     action: "whoami",
     execute: async ({ intent }) => {
@@ -247,7 +247,7 @@ test("Workflow API (queue): the resolved actor travels with the job, and stale j
 });
 
 test("NexoWorkflow.execute / start / reopen: split lifecycle and guards", async () => {
-  const agent = createAgent({ decisionEngine: createDecisionEngine({ name: "x" }) });
+  const agent = createAgent({ allowUnrestricted: true, decisionEngine: createDecisionEngine({ name: "x" }) });
   agent.tools.register(successTool("lookup"));
   const workflow = createWorkflow({ name: "split", agent, parser: createStepIntentParser([{ action: "lookup" }]) });
 
@@ -264,7 +264,7 @@ test("NexoWorkflow.execute / start / reopen: split lifecycle and guards", async 
 });
 
 test("Workflow API: GET /workflows/:name describes limits and callable tools", async () => {
-  const agent = createAgent({ decisionEngine: createDecisionEngine({ name: "x" }) });
+  const agent = createAgent({ allowUnrestricted: true, decisionEngine: createDecisionEngine({ name: "x" }) });
   agent.tools.register({ action: "refund", description: "Refunds an order", permissions: ["orders:refund"], execute: async () => ({ success: true, durationMs: 1 }) });
   agent.tools.register({ action: "lookup", execute: async () => ({ success: true, durationMs: 1 }) });
 

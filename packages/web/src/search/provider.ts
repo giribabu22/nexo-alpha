@@ -1,5 +1,10 @@
 import type { SearchQueryOptions, SearchResultItem, WebSearchProvider } from "../types/index.js";
 
+/**
+ * Returns fixed results (by default, two example.com pages about "React 20")
+ * whatever the query. For tests and demos only: `research()` never falls back
+ * to it, so pass it explicitly when that is what you want.
+ */
 export class MockWebSearchProvider implements WebSearchProvider {
   public readonly name = "mock-search";
   private items: readonly SearchResultItem[];

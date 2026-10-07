@@ -1,5 +1,32 @@
 # Changelog
 
+## Unreleased
+
+Fixes from the package architecture audit (P0): the AI layer no longer reports answers it doesn't have, agents need a policy before they act, and every request goes through one pipeline.
+
+### Changed
+
+- **`@nexo-alpha/behavior` no longer invents answers.** `LocalBehaviorProvider` without an evaluator, and therefore an engine with no provider, answers nothing. The policies then say they don't know: `verify` returns `"uncertain"`, `retry` returns `false`, `complete` returns `IN_PROGRESS` and `escalate` returns `true`, each with confidence 0. They used to return the first option or `true` with 0.9–0.95 confidence.
+- **`JevBehaviorProvider` needs `endpoint` and `apiKey`** (or `mockResults`), and throws when the endpoint fails or answers non-2xx. It used to fall back to canned answers.
+- **The behavior engine sends providers the full state of each policy.** The built-in injection profiles kept only `application.*` fields, which no policy sends, so providers saw an almost empty state. Delta compression is now opt-in (`tokenOptimization.compress`): with it on by default, providers saw only what changed since the previous call. Generated-token savings are credited only for answered questions.
+- **`research()` (`@nexo-alpha/web`) and `agent.research()` need a search `provider`.** `MockWebSearchProvider` is no longer the default. Without a behavior provider, nothing is verified and the status is `"INSUFFICIENT"`. The result has a new `sufficient` field, and `SUCCESS` now also requires sufficient evidence.
+- **Agents deny by default.** An intent run while the decision engine has no rules is blocked (`REJECT`, code `"NO_POLICY"`) and audited. Pass `createAgent({ allowUnrestricted: true })` to approve everything instead; `createTestAgent()` does.
+- **Agents refuse tools whose declared `permissions` nothing enforces.** If a tool declares `permissions` and the engine has no `toolPermissionRule` for that agent's `tools` (matched by registry, not by rule name), the intent is blocked with code `"PERMISSIONS_NOT_ENFORCED"`. They used to run unchecked. `allowUnrestricted: true` turns this check off too, e.g. when a custom rule checks permissions.
+- **`agent.behavior.route()` returns `undefined` when the provider didn't choose a candidate**, instead of the first candidate. Its type is now `Promise<T | undefined>`.
+- **The behavior engine drops answers outside their question's bounds**: a choice that isn't an option, a score that isn't a finite number within `min`/`max`, a non-boolean answer to a boolean question, a confidence outside 0–1, or an answer to a question that wasn't asked. Policies treat them as unanswered. `verify` used to treat the string `"false"` as true.
+- **Agent retries follow the verifier.** When a step's verifier asks for `RETRY`, the agent retries up to `maxRetries`. A configured `behaviorProvider`/`behaviorEngine` may veto a retry; without one, behavior is not consulted.
+- **`app.dispatch()` and `@nexo-alpha/hapi` share one request pipeline** (`createRequestPipeline` in core).
+  - `app.useMiddleware()` middleware now runs for HTTP requests. It used to run only for `dispatch()`.
+  - `createHapiServer()` uses `app.setAuthenticator()`'s authenticator when not given `authenticate`.
+  - `dispatch()` now validates `api.schema`, and maps a handler's `NexoValidationError` the way HTTP does.
+  - Every answer, including 401/403/400, emits `api.called` with its status. `api.error` is emitted only for unexpected errors (`dispatch()` used to emit it for auth and validation failures).
+- **`create-nexo-app` templates install only the Nexo packages their code imports.** `backend-api` and `fullstack-react` no longer install agent, behavior, decision, scheduler, tools and web.
+
+### Added
+
+- `createRequestPipeline(app, { authenticate?, project?, instrument? })` and `app.getAuthenticator()` in `@nexo-alpha/core`, for HTTP adapters.
+- `DecisionEngine.getRules()` in `@nexo-alpha/decision`.
+
 ## 0.7.0
 
 0.7.0 makes Nexo a full-stack framework. A domain object is declared once and drives storage, validation, the REST API, TypeScript types, forms and tables. It also adds built-in sign-in, file uploads, and SQL-backed lists on SQLite. See [Full-stack primitives](./docs/primitives.md) and the [upgrade notes](./docs/architecture/full-stack-report.md#f-migration).

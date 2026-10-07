@@ -150,7 +150,7 @@ test("NexoWorkflow + WorkflowStore: automatically persists steps and supports wo
     question: "Confirm payment?"
   }));
 
-  const agent = createAgent({ decisionEngine: engine });
+  const agent = createAgent({ allowUnrestricted: true, decisionEngine: engine });
   agent.tools.register(successTool("pay"));
 
   const store = createInMemoryWorkflowStore();

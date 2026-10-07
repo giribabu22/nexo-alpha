@@ -2,21 +2,17 @@ import type { NexoModule } from "./module.js";
 import type {
   NexoApi,
   NexoRequestContext,
-  NexoAuthenticator,
-  NexoAuthResult
+  NexoAuthenticator
 } from "./api.js";
 import type { NexoService } from "./service.js";
 import type { NexoJob } from "./job.js";
 import {
   NexoConfigurationError,
   NexoLifecycleError,
-  NexoPluginError,
-  NexoValidationError,
-  NexoAuthenticationError
+  NexoPluginError
 } from "./errors.js";
 import { NexoEvent, NexoEventBus } from "./events.js";
-import { missingScopes } from "./auth.js";
-import { isHttpResponse } from "./api.js";
+import { createRequestPipeline } from "./pipeline.js";
 import {
   NexoContainer,
   type ServiceToken,
@@ -486,11 +482,26 @@ export class NexoApplication {
   /* API Dispatch & Authentication                                              */
   /* -------------------------------------------------------------------------- */
 
+  /**
+   * Authenticates APIs with `auth.required`, for `dispatch()` and for HTTP
+   * adapters (unless the adapter is given its own).
+   */
   setAuthenticator(authenticator: NexoAuthenticator): this {
     this.authenticator = authenticator;
     return this;
   }
 
+  getAuthenticator(): NexoAuthenticator | undefined {
+    return this.authenticator;
+  }
+
+  /**
+   * Calls an API by name through the request pipeline (see
+   * `createRequestPipeline`) — the same authentication, validation,
+   * middleware and error handling an HTTP request gets — and returns the
+   * body. A 4xx answer is thrown as its error: `NexoAuthenticationError`
+   * (401/403), `NexoValidationError` or the handler's `NexoHttpError`.
+   */
   async dispatch(
     apiName: string,
     request: NexoRequestContext
@@ -500,73 +511,9 @@ export class NexoApplication {
       throw new NexoConfigurationError(`API "${apiName}" is not registered.`);
     }
 
-    const startTime = Date.now();
-
-    try {
-      // 1. Authentication
-      if (api.auth?.required) {
-        if (!this.authenticator) {
-          throw new NexoAuthenticationError(
-            `Authentication is required for API "${apiName}", but no authenticator is configured.`
-          );
-        }
-        const authResult: NexoAuthResult = await this.authenticator(request);
-        if (!authResult.authenticated) {
-          throw new NexoAuthenticationError(
-            `Authentication failed for API "${apiName}".`
-          );
-        }
-        if (api.auth.scopes && api.auth.scopes.length > 0) {
-          const missing = missingScopes(authResult.scopes, api.auth.scopes);
-          if (missing.length > 0) {
-            throw new NexoAuthenticationError(
-              `Missing required scope(s): ${missing.join(", ")}`
-            );
-          }
-        }
-      }
-
-      // 2. Validation
-      if (api.validate) {
-        const validation = await api.validate(request);
-        if (!validation.valid) {
-          throw new NexoValidationError(
-            `Request validation failed for API "${apiName}".`,
-            validation.errors ?? []
-          );
-        }
-      }
-
-      // 3. Middleware & Handler Execution
-      const result = await this.middleware.execute(request, async (ctx) => {
-        if (!api.handler) {
-          return undefined;
-        }
-        return await api.handler(ctx);
-      });
-
-      const durationMs = Date.now() - startTime;
-      this.events.emit(NexoEvent.API_CALLED, {
-        api: api.name,
-        method: api.method,
-        path: api.path,
-        statusCode: isHttpResponse(result) ? result.statusCode : 200,
-        durationMs
-      });
-
-      // dispatch() callers get the body; HTTP adapters read status/headers themselves.
-      return isHttpResponse(result) ? result.body : result;
-    } catch (error) {
-      const durationMs = Date.now() - startTime;
-      this.events.emit(NexoEvent.API_ERROR, {
-        api: api.name,
-        method: api.method,
-        path: api.path,
-        durationMs,
-        error: error instanceof Error ? error.message : String(error)
-      });
-      throw error;
-    }
+    const response = await createRequestPipeline(this).handle(api, request);
+    if (response.error !== undefined) throw response.error;
+    return response.body;
   }
 
   /* -------------------------------------------------------------------------- */

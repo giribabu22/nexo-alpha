@@ -3,14 +3,24 @@ import { BehaviorProvider, DecisionRequest, DecisionResponse, DecisionResult } f
 export interface JevProviderConfig {
   apiKey?: string | undefined;
   endpoint?: string | undefined;
+  /** Fixed results returned for every request (tests and demos); no endpoint is called. */
   mockResults?: Record<string, DecisionResult> | undefined;
 }
 
+/**
+ * Sends questions to a remote evaluation endpoint (`POST { state, questions }`,
+ * bearer `apiKey`) and returns its `DecisionResponse`. Needs `endpoint` and
+ * `apiKey`, or `mockResults`. A network error or non-2xx response throws:
+ * it never substitutes answers of its own.
+ */
 export class JevBehaviorProvider implements BehaviorProvider {
   public readonly name = 'jev';
   private config: JevProviderConfig;
 
   constructor(config: JevProviderConfig = {}) {
+    if (!config.mockResults && !(config.endpoint && config.apiKey)) {
+      throw new Error('JevBehaviorProvider needs an endpoint and an apiKey (or mockResults).');
+    }
     this.config = config;
   }
 
@@ -19,53 +29,28 @@ export class JevBehaviorProvider implements BehaviorProvider {
       return { results: this.config.mockResults };
     }
 
-    if (this.config.endpoint && this.config.apiKey) {
-      try {
-        const response = await fetch(this.config.endpoint, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${this.config.apiKey}`
-          },
-          body: JSON.stringify({
-            state: request.state,
-            questions: request.questions
-          })
-        });
-
-        if (response.ok) {
-          const data = await response.json();
-          return data as DecisionResponse;
-        }
-      } catch {
-        // Fallback gracefully
-      }
+    let response: Response;
+    try {
+      response = await fetch(this.config.endpoint as string, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${this.config.apiKey}`
+        },
+        body: JSON.stringify({
+          state: request.state,
+          questions: request.questions
+        })
+      });
+    } catch (error) {
+      throw new Error(
+        `JevBehaviorProvider: request to ${this.config.endpoint} failed: ${error instanceof Error ? error.message : String(error)}`
+      );
     }
 
-    const results: Record<string, DecisionResult> = {};
-    for (const [key, q] of Object.entries(request.questions)) {
-      if (q.type === 'choice') {
-        const val = q.options[0] ?? '';
-        results[key] = {
-          value: val,
-          confidence: 0.92,
-          explanation: `[Jev Adaptor] Evaluated top candidate: ${val}`
-        };
-      } else if (q.type === 'score') {
-        results[key] = {
-          value: 0.9,
-          confidence: 0.91,
-          explanation: '[Jev Adaptor] Probability-backed score evaluation'
-        };
-      } else if (q.type === 'boolean') {
-        results[key] = {
-          value: true,
-          confidence: 0.96,
-          explanation: '[Jev Adaptor] Boolean criteria passed'
-        };
-      }
+    if (!response.ok) {
+      throw new Error(`JevBehaviorProvider: ${this.config.endpoint} answered ${response.status} ${response.statusText}`);
     }
-
-    return { results };
+    return (await response.json()) as DecisionResponse;
   }
 }

@@ -285,6 +285,7 @@ export const agent = createAgent({
 });
 
 // Register tools (the ACT layer). A tool only runs after the Decision Engine approves the intent.
+// An engine with no rules approves nothing (code "NO_POLICY") unless the agent has allowUnrestricted: true.
 agent.tools.register({
   action: "cancel_order",
   description: "Cancels an order",
@@ -362,6 +363,8 @@ import { research } from "@nexo-alpha/web";
 
 const researchResult = await research({
   query: "TypeScript 5.6 release highlights",
+  provider: searchProvider,   // your WebSearchProvider (required)
+  behaviorProvider,           // judges relevance; without one nothing is verified
   maxSources: 5,
   knowledge
 });

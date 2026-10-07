@@ -22,7 +22,8 @@
  * either way.
  */
 
-import { httpResponse, type NexoApi, type NexoApiAuth, type NexoRequestContext } from "./api.js";
+import { httpResponse, type HttpMethod, type NexoApi, type NexoApiAuth, type NexoRequestContext } from "./api.js";
+import { describeModel, type ModelDescription } from "./describe.js";
 import type { NexoModule } from "./module.js";
 import type { NexoDocumentStore } from "./storage.js";
 import { queryDocuments, type DocumentQuery, type DocumentScalar } from "./document-query.js";
@@ -123,6 +124,8 @@ export interface NexoResource<M extends NexoModel> extends NexoModule {
   /** The API path, e.g. `/api/users`. */
   readonly path: string;
   readonly apis: readonly NexoApi[];
+  /** Fields that `list({ search })` matches against. */
+  readonly searchable: readonly FieldName<M>[];
   list(query?: ResourceListQuery<M>): Promise<ResourceListResult<Infer<M>>>;
   /** Throws NexoHttpError 404 if there is no such record. */
   get(id: string): Promise<Infer<M>>;
@@ -456,10 +459,56 @@ export function resource<M extends NexoModel>(model: M, options: ResourceOptions
     apis: RESOURCE_OPERATIONS.filter((operation) => expose.has(operation)).map((operation) => routes[operation]),
     model,
     path,
+    searchable: options.searchable ?? [],
     list,
     get,
     create: (input) => create(input),
     update: (id, patch) => update(id, patch),
     delete: remove
+  };
+}
+
+/** One operation a resource serves over HTTP. */
+export interface ResourceOperationDescription {
+  readonly operation: ResourceOperation;
+  readonly method: HttpMethod;
+  readonly path: string;
+  /** Whether the caller must be authenticated. */
+  readonly authenticated: boolean;
+  /** Scopes the caller needs (empty when only authentication, or nothing, is required). */
+  readonly scopes: readonly string[];
+}
+
+/** A resource as plain JSON: its model, path, search fields and the operations it serves. */
+export interface ResourceDescription {
+  readonly model: ModelDescription;
+  readonly path: string;
+  readonly searchable: readonly string[];
+  readonly operations: readonly ResourceOperationDescription[];
+}
+
+/** Whether a module is a `resource()`. */
+export function isResource(module: NexoModule): module is NexoResource<NexoModel> {
+  const candidate = module as Partial<NexoResource<NexoModel>>;
+  return typeof candidate.model === "object" && candidate.model !== null
+    && typeof candidate.path === "string" && typeof candidate.list === "function";
+}
+
+/** Describes a resource as plain JSON, e.g. for `nexo inspect resource` or an AI's context. */
+export function describeResource(resource: NexoResource<NexoModel>): ResourceDescription {
+  const prefix = `${resource.model.name}.`;
+  return {
+    model: describeModel(resource.model),
+    path: resource.path,
+    searchable: [...resource.searchable],
+    operations: resource.apis
+      .filter((api) => api.name.startsWith(prefix) && RESOURCE_OPERATIONS.includes(api.name.slice(prefix.length) as ResourceOperation))
+      .map((api) => ({
+        operation: api.name.slice(prefix.length) as ResourceOperation,
+        method: api.method,
+        path: api.path,
+        authenticated: api.auth?.required === true,
+        scopes: api.auth?.scopes ?? []
+      }))
   };
 }

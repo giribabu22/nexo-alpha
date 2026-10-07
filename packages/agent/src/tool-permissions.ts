@@ -13,9 +13,14 @@
  *   resolveRoles: ({ extras }) => (extras?.roles as string[]) ?? []
  * }));
  * ```
+ *
+ * An agent refuses to run a tool that declares permissions unless its engine
+ * has a `toolPermissionRule` for the agent's own `tools` (code
+ * `"PERMISSIONS_NOT_ENFORCED"`), so declared permissions are never silently
+ * ignored.
  */
 
-import { rbacRule, type AccessControl, type DecisionContext, type DecisionRule } from "@nexo-alpha/decision";
+import { rbacRule, type AccessControl, type DecisionContext, type DecisionEngine, type DecisionRule } from "@nexo-alpha/decision";
 import type { ToolRegistry } from "./tool-registry.js";
 
 export interface ToolPermissionRuleOptions {
@@ -30,12 +35,15 @@ export interface ToolPermissionRuleOptions {
   readonly message?: string | undefined;
 }
 
+/** Each rule made by toolPermissionRule(), and the registry it enforces. */
+const enforcedRegistries = new WeakMap<DecisionRule, ToolRegistry>();
+
 /**
  * A Decision Engine rule that REJECTs (`code: "PERMISSION_DENIED"`) when the
  * actor's roles don't grant every permission the called tool declares.
  */
 export function toolPermissionRule(options: ToolPermissionRuleOptions): DecisionRule {
-  return rbacRule({
+  const rule = rbacRule({
     access: options.access,
     resolveRoles: options.resolveRoles,
     permissions: (ctx) => options.tools.get(ctx.intent.action)?.permissions,
@@ -43,4 +51,11 @@ export function toolPermissionRule(options: ToolPermissionRuleOptions): Decision
     name: options.name ?? "tool-permissions",
     message: options.message
   });
+  enforcedRegistries.set(rule, options.tools);
+  return rule;
+}
+
+/** Whether `engine` has a toolPermissionRule() enforcing the permissions of `tools`. */
+export function enforcesToolPermissions(engine: DecisionEngine, tools: ToolRegistry): boolean {
+  return engine.getRules().some((rule) => enforcedRegistries.get(rule) === tools);
 }

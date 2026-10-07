@@ -90,6 +90,8 @@ export function createTestAgent(options: TestAgentOptions = {}): TestAgent {
   const agent = createAgent({
     name: options.name ?? "test-agent",
     decisionEngine: engine,
+    // Tests drive tools directly; with no rules given, every intent is approved.
+    allowUnrestricted: true,
     ...(options.maxRetries !== undefined ? { maxRetries: options.maxRetries } : {})
   });
   for (const tool of options.tools ?? []) agent.tools.register(tool);

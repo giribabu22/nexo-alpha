@@ -35,33 +35,27 @@ export interface InjectionProfile {
 // Built-in profiles per call type
 // ---------------------------------------------------------------------------
 
+/**
+ * The fields each `BehaviorEngine` policy puts in its state, so the provider
+ * sees everything the question is about. Register a narrower profile (e.g.
+ * `"state.ticket"`) to trim large states for a call type.
+ */
 const BUILT_IN_PROFILES: Record<CallType, InjectionProfile> = {
   route: {
-    include: ["application.name", "application.state", "developmentState.currentObjective"]
+    include: ["state", "context"]
   },
   verify: {
-    include: ["application.name", "application.state", "developmentState"]
+    include: ["expected", "actual", "context"]
   },
   retry: {
-    include: ["application.name", "application.state", "developmentState.knownIssues"]
+    include: ["error", "attempt", "maxAttempts", "context"]
   },
   complete: {
-    include: [
-      "application",
-      "developmentState",
-      "decisions",
-      "constraints",
-      "modules"
-    ],
+    include: ["goal", "history", "currentState"],
     maxTokens: 3000
   },
   escalate: {
-    include: [
-      "application",
-      "developmentState",
-      "decisions",
-      "constraints"
-    ]
+    include: ["state", "context"]
   },
   custom: {
     include: [] // all fields included by default for custom call types

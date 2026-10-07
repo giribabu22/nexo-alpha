@@ -203,7 +203,7 @@ scopedContainer.bind("requestId", () => crypto.randomUUID(), { lifetime: "scoped
 
 ### 5. Middleware Pipeline
 
-Add global or per-request middleware using the onion execution pattern:
+Add middleware around every API handler, using the onion execution pattern. It runs for `app.dispatch()` and for HTTP requests (`@nexo-alpha/hapi`) alike, after authentication and validation. Throw `NexoHttpError` to answer with a 4xx:
 
 ```ts
 app.useMiddleware(async (ctx, next) => {
@@ -256,7 +256,7 @@ console.log("App state:", app.state); // "running"
 
 ### 8. Direct API Dispatching & Testing
 
-Invoke declared APIs directly without spinning up an HTTP server. Nexo automatically executes authentication, validation, and middleware:
+Invoke declared APIs directly without spinning up an HTTP server. `dispatch()` runs the same request pipeline as HTTP adapters (`createRequestPipeline`): authentication and scopes, `validate` or `schema` validation, middleware and the handler. It returns the body, and throws a 4xx answer as its error (`NexoAuthenticationError`, `NexoValidationError` or the handler's `NexoHttpError`). The authenticator set here is also used by `createHapiServer()` unless that is given its own:
 
 ```ts
 app.setAuthenticator(async (req) => {

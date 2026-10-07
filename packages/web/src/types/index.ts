@@ -35,7 +35,12 @@ export interface ResearchOptions {
   readonly query: string;
   readonly maxSources?: number | undefined;
   readonly freshnessDays?: number | undefined;
-  readonly provider?: WebSearchProvider | undefined;
+  /** The search engine to query. Required: there is no default. */
+  readonly provider: WebSearchProvider;
+  /**
+   * Judges each result's relevance and whether the evidence is sufficient.
+   * Without one, nothing is verified and the status is "INSUFFICIENT".
+   */
   readonly behaviorProvider?: BehaviorProvider | undefined;
   readonly knowledge?: ApplicationKnowledge | undefined;
 }
@@ -45,5 +50,11 @@ export interface ResearchResult {
   readonly evidence: readonly Evidence[];
   readonly totalRetrieved: number;
   readonly totalVerified: number;
+  /** Whether the behavior provider judged the verified evidence enough to answer the query. */
+  readonly sufficient: boolean;
+  /**
+   * SUCCESS: every result verified and the evidence is sufficient. INSUFFICIENT:
+   * nothing verified. PARTIAL: anything in between.
+   */
   readonly status: "SUCCESS" | "PARTIAL" | "INSUFFICIENT";
 }

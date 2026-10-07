@@ -24,6 +24,9 @@ export type {
   ValidateOptions
 } from "./model.js";
 
+export { describeModel, toJsonSchema } from "./describe.js";
+export type { FieldDescription, ModelDescription, JsonSchema } from "./describe.js";
+
 export { FILES_PATH, mimeMatches } from "./files-contract.js";
 export type { NexoFile } from "./files-contract.js";
 

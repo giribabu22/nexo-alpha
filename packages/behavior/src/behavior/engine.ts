@@ -1,4 +1,4 @@
-import { BehaviorProvider, DecisionRequest, DecisionResponse } from '../types/provider.js';
+import { BehaviorProvider, DecisionRequest, DecisionResponse, DecisionResult } from '../types/provider.js';
 import { QuestionMap } from '../types/primitives.js';
 import { LocalBehaviorProvider } from '../provider/local-provider.js';
 import { TelemetryTracker, createTelemetryTracker, type BehaviorTelemetryMetrics } from '../telemetry/index.js';
@@ -33,7 +33,12 @@ import {
 } from '../token/selective-injector.js';
 
 export interface TokenOptimizationConfig {
-  /** Context state compression (delta diffing). Default: enabled with 'delta' strategy. */
+  /**
+   * Context state compression (delta diffing). Default: off. A delta only
+   * makes sense to a provider that keeps the previous state between calls;
+   * a stateless provider (every built-in one) would see a partial state.
+   * Pass options to opt in.
+   */
   readonly compress?: CompressOptions | false;
   /** Prompt LRU cache settings. Default: 256-entry, 5-min TTL. */
   readonly promptCache?: PromptCacheOptions | false;
@@ -64,9 +69,9 @@ export class BehaviorEngine {
 
     const tok = config.tokenOptimization;
 
-    this.compressor = tok?.compress === false
-      ? null
-      : createContextCompressor(typeof tok?.compress === 'object' ? tok.compress : {});
+    this.compressor = typeof tok?.compress === 'object'
+      ? createContextCompressor(tok.compress)
+      : null;
 
     this.promptCache = tok?.promptCache === false
       ? null
@@ -169,9 +174,14 @@ export class BehaviorEngine {
         )
       : { response: await this.provider.evaluate(optimisedRequest as DecisionRequest<TState>), cacheHit: false };
 
+    // Keep only answers within their question's bounds; anything else counts as unanswered.
+    const results = boundedResults(request.questions, response.results);
+
     const durationMs = Date.now() - startMs;
     const questionCount = Object.keys(request.questions).length;
-    const savedGenerativeTokens = response.metrics?.savedGenerativeTokens ?? (questionCount * 250);
+    // Credit only questions that were actually answered: a provider that answers nothing saved nothing.
+    const answeredCount = Object.keys(results).length;
+    const savedGenerativeTokens = response.metrics?.savedGenerativeTokens ?? (answeredCount * 250);
     const totalSaved = savedGenerativeTokens + tokensSaved + (cacheHit ? this.estimateSaved(request.state) : 0);
 
     const metrics = response.metrics ?? {
@@ -192,7 +202,7 @@ export class BehaviorEngine {
       savedTokens: totalSaved
     });
 
-    return { ...response, metrics };
+    return { ...response, results, metrics };
   }
 
   /** Rough token estimate for a state object. */
@@ -218,6 +228,7 @@ export class BehaviorEngine {
       if (!fallback) {
         throw new Error('route() failed: candidates array is empty.');
       }
+      // Not an answer: confidence 0 tells the caller the first candidate is only a placeholder.
       return { selected: fallback, confidence: 0 };
     }
 
@@ -364,6 +375,31 @@ export class BehaviorEngine {
       confidence: conf
     };
   }
+}
+
+/**
+ * The answers that fit their question: a choice among its options, a finite
+ * score within [min, max], a boolean for a boolean question, and a confidence
+ * in [0, 1]. Answers to questions that weren't asked are dropped too.
+ */
+function boundedResults(
+  questions: QuestionMap,
+  results: Readonly<Record<string, DecisionResult>> | undefined
+): Record<string, DecisionResult> {
+  const bounded: Record<string, DecisionResult> = {};
+  for (const [key, question] of Object.entries(questions)) {
+    const result = results?.[key];
+    if (result === undefined || result === null) continue;
+    const { value, confidence } = result;
+    if (typeof confidence !== 'number' || !(confidence >= 0 && confidence <= 1)) continue;
+    const fits =
+      question.type === 'choice' ? (question.options as readonly unknown[]).includes(value)
+      : question.type === 'score' ? typeof value === 'number' && Number.isFinite(value)
+        && value >= (question.min ?? 0) && value <= (question.max ?? 1)
+      : typeof value === 'boolean';
+    if (fits) bounded[key] = result;
+  }
+  return bounded;
 }
 
 export function createBehaviorEngine(config?: BehaviorEngineConfig | undefined): BehaviorEngine {

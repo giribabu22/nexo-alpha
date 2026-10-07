@@ -155,7 +155,7 @@ export function createDscAgent(options: DscAgentOptions): NexoAgent {
       );
     },
 
-    async research(query: string, researchOptions?: Omit<ResearchOptions, "query">): Promise<ResearchResult> {
+    async research(query: string, researchOptions: Omit<ResearchOptions, "query">): Promise<ResearchResult> {
       const researchKey = stableResearchKey(query);
 
       return orchestrator.run(

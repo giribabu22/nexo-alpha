@@ -55,9 +55,11 @@ export type {
   ValidateOptions
 } from "./model.js";
 
-export { resource, RESOURCE_OPERATIONS } from "./resource.js";
+export { resource, RESOURCE_OPERATIONS, isResource, describeResource } from "./resource.js";
 export type {
   NexoResource,
+  ResourceDescription,
+  ResourceOperationDescription,
   ResourceOptions,
   ResourceAuth,
   ResourceOperation,
@@ -66,6 +68,9 @@ export type {
 } from "./resource.js";
 
 export { resourcePath, encodeListQuery, decodeListQuery, LIST_PARAMS } from "./resource-contract.js";
+
+export { describeModel, toJsonSchema } from "./describe.js";
+export type { FieldDescription, ModelDescription, JsonSchema } from "./describe.js";
 export type { ResourceListQuery, ResourceListResult } from "./resource-contract.js";
 
 export {
@@ -88,6 +93,14 @@ export {
 } from "./auth.js";
 
 export { createRequestContext } from "./request.js";
+
+export { createRequestPipeline } from "./pipeline.js";
+export type {
+  NexoRequestPipeline,
+  NexoPipelineResponse,
+  RequestPipelineOptions,
+  RequestProjectOptions
+} from "./pipeline.js";
 
 export { createFiles, createDiskBlobStore, createInMemoryBlobStore } from "./files.js";
 export type { NexoFiles, NexoBlobStore, CreateFilesOptions, FilesCleanupOptions, UploadInput } from "./files.js";

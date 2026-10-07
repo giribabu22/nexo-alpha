@@ -22,6 +22,8 @@ import {
   confirmationRule,
   escalationRule
 } from "@nexo-alpha/decision";
+import { LocalBehaviorProvider } from "@nexo-alpha/behavior";
+import { MockWebSearchProvider } from "@nexo-alpha/web";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -32,7 +34,7 @@ function makeEngine() {
 }
 
 function approveAll() {
-  return makeEngine(); // no rules → always APPROVE
+  return makeEngine(); // no rules → APPROVE, for agents created with allowUnrestricted: true
 }
 
 function rejectAll() {
@@ -224,7 +226,7 @@ test("Agent: ASK_USER → status BLOCKED", async () => {
 // ---------------------------------------------------------------------------
 
 test("Agent: APPROVE + success + verify → APPROVED_AND_COMPLETE", async () => {
-  const agent = createAgent({ decisionEngine: approveAll() });
+  const agent = createAgent({ allowUnrestricted: true, decisionEngine: approveAll() });
   agent.tools.register(successTool("cancel_order"));
 
   const record = await agent.execute({ action: "cancel_order", actor: "u1", target: "o1" });
@@ -237,7 +239,7 @@ test("Agent: APPROVE + success + verify → APPROVED_AND_COMPLETE", async () => 
 });
 
 test("Agent: APPROVE + tool failure → APPROVED_AND_FAILED", async () => {
-  const agent = createAgent({ decisionEngine: approveAll() });
+  const agent = createAgent({ allowUnrestricted: true, decisionEngine: approveAll() });
   agent.tools.register(failTool("cancel_order"));
 
   const record = await agent.execute({ action: "cancel_order" });
@@ -248,7 +250,7 @@ test("Agent: APPROVE + tool failure → APPROVED_AND_FAILED", async () => {
 });
 
 test("Agent: unregistered tool → APPROVED_AND_FAILED", async () => {
-  const agent = createAgent({ decisionEngine: approveAll() });
+  const agent = createAgent({ allowUnrestricted: true, decisionEngine: approveAll() });
   // No tool registered for "mystery"
   const record = await agent.execute({ action: "mystery" });
 
@@ -262,7 +264,7 @@ test("Agent: unregistered tool → APPROVED_AND_FAILED", async () => {
 
 test("Agent: retries on RETRY recovery (maxRetries respected)", async () => {
   const engine = approveAll();
-  const agent = createAgent({ decisionEngine: engine, maxRetries: 3 });
+  const agent = createAgent({ allowUnrestricted: true, decisionEngine: engine, maxRetries: 3 });
 
   let callCount = 0;
   agent.tools.register({
@@ -283,7 +285,7 @@ test("Agent: retries on RETRY recovery (maxRetries respected)", async () => {
 });
 
 test("Agent: no retry when recovery is ABORT (maxRetries=3 but ABORT)", async () => {
-  const agent = createAgent({ decisionEngine: approveAll(), maxRetries: 3 });
+  const agent = createAgent({ allowUnrestricted: true, decisionEngine: approveAll(), maxRetries: 3 });
   agent.tools.register(failTool("x")); // error message → ABORT recovery
 
   const record = await agent.execute({ action: "x" });
@@ -293,7 +295,7 @@ test("Agent: no retry when recovery is ABORT (maxRetries=3 but ABORT)", async ()
 });
 
 test("Agent: default maxRetries=1 means no retry", async () => {
-  const agent = createAgent({ decisionEngine: approveAll() }); // maxRetries defaults to 1
+  const agent = createAgent({ allowUnrestricted: true, decisionEngine: approveAll() }); // maxRetries defaults to 1
   let callCount = 0;
   agent.tools.register({
     action: "flaky",
@@ -309,7 +311,7 @@ test("Agent: default maxRetries=1 means no retry", async () => {
 // ---------------------------------------------------------------------------
 
 test("Agent: every execute() call is recorded in auditLog", async () => {
-  const agent = createAgent({ decisionEngine: approveAll() });
+  const agent = createAgent({ allowUnrestricted: true, decisionEngine: approveAll() });
   agent.tools.register(successTool("a"));
   agent.tools.register(successTool("b"));
 
@@ -323,7 +325,7 @@ test("Agent: every execute() call is recorded in auditLog", async () => {
 });
 
 test("Agent: auditLog filterByStatus", async () => {
-  const agent = createAgent({ decisionEngine: approveAll() });
+  const agent = createAgent({ allowUnrestricted: true, decisionEngine: approveAll() });
   agent.tools.register(successTool("ok"));
   agent.tools.register(failTool("bad"));
 
@@ -335,7 +337,7 @@ test("Agent: auditLog filterByStatus", async () => {
 });
 
 test("Agent: auditLog records include id, timestamps, and durationMs", async () => {
-  const agent = createAgent({ decisionEngine: approveAll() });
+  const agent = createAgent({ allowUnrestricted: true, decisionEngine: approveAll() });
   agent.tools.register(successTool("x"));
 
   await agent.execute({ action: "x" });
@@ -349,7 +351,7 @@ test("Agent: auditLog records include id, timestamps, and durationMs", async () 
 });
 
 test("Agent: auditLog.clear() empties entries", async () => {
-  const agent = createAgent({ decisionEngine: approveAll() });
+  const agent = createAgent({ allowUnrestricted: true, decisionEngine: approveAll() });
   agent.tools.register(successTool("x"));
 
   await agent.execute({ action: "x" });
@@ -374,7 +376,7 @@ test("Agent: writes to ApplicationKnowledge history when provided", async () => 
     getHistory() { return historyEntries; }
   };
 
-  const agent = createAgent({ decisionEngine: approveAll(), knowledge });
+  const agent = createAgent({ allowUnrestricted: true, decisionEngine: approveAll(), knowledge });
   agent.tools.register(successTool("cancel_order"));
 
   await agent.execute({ action: "cancel_order", actor: "user_1", target: "order_42" });
@@ -431,7 +433,7 @@ test("Full pipeline: permission + state + success + verify = APPROVED_AND_COMPLE
       message: "No weekend cancellations."
     }));
 
-  const agent = createAgent({ name: "order-agent", decisionEngine: engine });
+  const agent = createAgent({ allowUnrestricted: true, name: "order-agent", decisionEngine: engine });
   agent.tools.register({
     action: "cancel_order",
     async execute({ intent }) {
@@ -460,7 +462,7 @@ test("Full pipeline: wrong actor → BLOCKED at permission stage", async () => {
     check: ({ intent }) => intent.actor === "user_1"
   }));
 
-  const agent = createAgent({ name: "order-agent", decisionEngine: engine });
+  const agent = createAgent({ allowUnrestricted: true, name: "order-agent", decisionEngine: engine });
   let toolCalled = false;
   agent.tools.register({ action: "cancel_order", execute() { toolCalled = true; return { success: true, durationMs: 0 }; } });
 
@@ -478,6 +480,7 @@ test("Full pipeline: wrong actor → BLOCKED at permission stage", async () => {
 
 test("Full pipeline: extras flow through to tool", async () => {
   const agent = createAgent({
+    allowUnrestricted: true,
     decisionEngine: approveAll(),
     extras: { db: "agent-level-db" }
   });
@@ -509,7 +512,7 @@ test("Matrix: state rule rejected → status BLOCKED", async () => {
     resolveState: () => "shipped"
   }));
 
-  const agent = createAgent({ decisionEngine: engine });
+  const agent = createAgent({ allowUnrestricted: true, decisionEngine: engine });
   let toolCalled = false;
   agent.tools.register({ action: "cancel", execute() { toolCalled = true; return { success: true, durationMs: 0 }; } });
 
@@ -530,7 +533,7 @@ test("Matrix: confirmation required → status BLOCKED (ASK_USER)", async () => 
     question: "Are you sure you want to delete everything?"
   }));
 
-  const agent = createAgent({ decisionEngine: engine });
+  const agent = createAgent({ allowUnrestricted: true, decisionEngine: engine });
   let toolCalled = false;
   agent.tools.register({ action: "delete_all", execute() { toolCalled = true; return { success: true, durationMs: 0 }; } });
 
@@ -552,7 +555,7 @@ test("Matrix: escalation required → status BLOCKED (ESCALATE)", async () => {
     reason: "Refund over $500 requires manager authorization."
   }));
 
-  const agent = createAgent({ decisionEngine: engine });
+  const agent = createAgent({ allowUnrestricted: true, decisionEngine: engine });
   let toolCalled = false;
   agent.tools.register({ action: "refund", execute() { toolCalled = true; return { success: true, durationMs: 0 }; } });
 
@@ -565,7 +568,7 @@ test("Matrix: escalation required → status BLOCKED (ESCALATE)", async () => {
 });
 
 test("Matrix: tool fails + retries exhausted → APPROVED_AND_FAILED", async () => {
-  const agent = createAgent({ decisionEngine: approveAll(), maxRetries: 3 });
+  const agent = createAgent({ allowUnrestricted: true, decisionEngine: approveAll(), maxRetries: 3 });
   let attempts = 0;
   agent.tools.register({
     action: "persistently_failing",
@@ -584,7 +587,7 @@ test("Matrix: tool fails + retries exhausted → APPROVED_AND_FAILED", async () 
 });
 
 test("Matrix: tool fails + escalation recovery → APPROVED_AND_FAILED", async () => {
-  const agent = createAgent({ decisionEngine: approveAll() });
+  const agent = createAgent({ allowUnrestricted: true, decisionEngine: approveAll() });
   agent.tools.register(failTool("refund_vault"));
   agent.verifiers.register({
     action: "refund_vault",
@@ -604,7 +607,7 @@ test("Matrix: engine throws unexpected exception → status ERROR", async () => 
     evaluate() { throw new Error("Internal decision engine failure."); }
   });
 
-  const agent = createAgent({ decisionEngine: engine });
+  const agent = createAgent({ allowUnrestricted: true, decisionEngine: engine });
   const record = await agent.execute({ action: "test" });
 
   assert.equal(record.status, "ERROR");
@@ -623,7 +626,7 @@ test("Invariant: ❌ No APPROVE → No ACT (tool is NEVER executed when blocked)
   for (const item of outcomesToTest) {
     const engine = createDecisionEngine();
     engine.addRule(item.rule);
-    const agent = createAgent({ decisionEngine: engine });
+    const agent = createAgent({ allowUnrestricted: true, decisionEngine: engine });
     let toolExecuted = false;
     agent.tools.register({ action: "do_action", execute() { toolExecuted = true; return { success: true, durationMs: 0 }; } });
 
@@ -636,7 +639,7 @@ test("Invariant: ❌ No APPROVE → No ACT (tool is NEVER executed when blocked)
 });
 
 test("Invariant: ❌ ACT failure → Never silently report success", async () => {
-  const agent = createAgent({ decisionEngine: approveAll() });
+  const agent = createAgent({ allowUnrestricted: true, decisionEngine: approveAll() });
   
   // Case A: tool returns success: false
   agent.tools.register(failTool("bad_tool"));
@@ -669,7 +672,7 @@ test("Invariant: ❌ ACT failure → Never silently report success", async () =>
 // ---------------------------------------------------------------------------
 
 test("Agent.run(): throws error if no parser is configured", async () => {
-  const agent = createAgent({ decisionEngine: approveAll() });
+  const agent = createAgent({ allowUnrestricted: true, decisionEngine: approveAll() });
   await assert.rejects(
     () => agent.run("Cancel order 123"),
     /No IntentParser configured/
@@ -689,6 +692,7 @@ test("Agent.run(): parses text into DecisionIntent and executes control loop", a
   });
 
   const agent = createAgent({
+    allowUnrestricted: true,
     decisionEngine: approveAll(),
     parser
   });
@@ -719,6 +723,7 @@ test("Agent.run(): per-call parser overrides agent-level parser", async () => {
   });
 
   const agent = createAgent({
+    allowUnrestricted: true,
     decisionEngine: approveAll(),
     parser: defaultParser
   });
@@ -749,6 +754,7 @@ test("Agent.run(): full pipeline blocked by Decision Engine when intent violates
   }));
 
   const agent = createAgent({
+    allowUnrestricted: true,
     decisionEngine: engine,
     parser
   });
@@ -777,9 +783,15 @@ test("Agent.research(): executes web research and writes to knowledge history", 
     getHistory() { return historyEntries; }
   };
 
-  const agent = createAgent({ decisionEngine: approveAll(), knowledge });
+  const agent = createAgent({ allowUnrestricted: true, decisionEngine: approveAll(), knowledge });
 
-  const result = await agent.research("What changed in React 20?");
+  const result = await agent.research("What changed in React 20?", {
+    provider: new MockWebSearchProvider(),
+    behaviorProvider: new LocalBehaviorProvider((key) => ({
+      value: { matches: true, quality: 0.9, status: "COMPLETE" }[key],
+      confidence: 0.9
+    }))
+  });
 
   assert.equal(result.query, "What changed in React 20?");
   assert.ok(result.totalRetrieved > 0);
@@ -791,3 +803,116 @@ test("Agent.research(): executes web research and writes to knowledge history", 
 
 
 
+
+// ---------------------------------------------------------------------------
+// Agent — deny by default
+// ---------------------------------------------------------------------------
+
+test("Agent: an engine with no rules blocks every intent (NO_POLICY) and the tool never runs", async () => {
+  const agent = createAgent({ decisionEngine: makeEngine() });
+  let ran = false;
+  agent.tools.register({ action: "delete_account", execute() { ran = true; return { success: true, durationMs: 0 }; } });
+
+  const record = await agent.execute({ action: "delete_account", target: "u-1" });
+
+  assert.equal(record.status, "BLOCKED");
+  assert.equal(record.decision.result, "REJECT");
+  assert.equal(record.decision.code, "NO_POLICY");
+  assert.equal(ran, false);
+  assert.equal(agent.auditLog.entries.length, 1);
+});
+
+test("Agent: rules added after createAgent() lift the NO_POLICY block", async () => {
+  const engine = makeEngine();
+  const agent = createAgent({ decisionEngine: engine });
+  agent.tools.register(successTool("ping"));
+
+  assert.equal((await agent.execute({ action: "ping" })).decision.code, "NO_POLICY");
+
+  engine.addRule({ name: "allow-ping", evaluate: () => undefined });
+  assert.equal((await agent.execute({ action: "ping" })).status, "APPROVED_AND_COMPLETE");
+});
+
+test("Agent: allowUnrestricted approves every intent when the engine has no rules", async () => {
+  const agent = createAgent({ decisionEngine: makeEngine(), allowUnrestricted: true });
+  agent.tools.register(successTool("ping"));
+
+  assert.equal((await agent.execute({ action: "ping" })).status, "APPROVED_AND_COMPLETE");
+});
+
+// ---------------------------------------------------------------------------
+// Agent — retries and the behavior judge
+// ---------------------------------------------------------------------------
+
+function flakyTool(succeedOn) {
+  let calls = 0;
+  return {
+    get calls() { return calls; },
+    tool: { action: "flaky", execute() { calls += 1; return { success: calls >= succeedOn, durationMs: 0 }; } }
+  };
+}
+
+test("Agent: a configured behavior provider can veto a retry the verifier asked for", async () => {
+  const flaky = flakyTool(3);
+  const agent = createAgent({
+    decisionEngine: approveAll(),
+    allowUnrestricted: true,
+    maxRetries: 3,
+    behaviorProvider: new LocalBehaviorProvider((key) => ({
+      value: { shouldRetry: false, strategy: "backoff" }[key],
+      confidence: 0.9
+    }))
+  });
+  agent.tools.register(flaky.tool);
+
+  const record = await agent.execute({ action: "flaky" });
+
+  assert.equal(flaky.calls, 1);
+  assert.equal(record.status, "APPROVED_AND_FAILED");
+});
+
+test("Agent: a behavior provider that answers nothing stops retries rather than guessing", async () => {
+  const flaky = flakyTool(3);
+  const agent = createAgent({
+    decisionEngine: approveAll(),
+    allowUnrestricted: true,
+    maxRetries: 3,
+    behaviorProvider: new LocalBehaviorProvider()
+  });
+  agent.tools.register(flaky.tool);
+
+  const record = await agent.execute({ action: "flaky" });
+
+  assert.equal(flaky.calls, 1);
+  assert.equal(record.status, "APPROVED_AND_FAILED");
+});
+
+test("Agent.research(): needs a search provider", async () => {
+  const agent = createAgent({ decisionEngine: approveAll(), allowUnrestricted: true });
+  await assert.rejects(agent.research("anything"), /needs a search provider/);
+});
+
+// ---------------------------------------------------------------------------
+// agent.behavior.route never guesses
+// ---------------------------------------------------------------------------
+
+test("agent.behavior.route(): undefined without a provider, the choice with one", async () => {
+  const unjudged = createAgent({ decisionEngine: approveAll(), allowUnrestricted: true });
+  assert.equal(await unjudged.behavior.route(["billing", "technical"], { ticket: "API timeout" }), undefined);
+
+  const judged = createAgent({
+    decisionEngine: approveAll(),
+    allowUnrestricted: true,
+    behaviorProvider: new LocalBehaviorProvider(() => ({ value: "technical", confidence: 0.8 }))
+  });
+  assert.equal(await judged.behavior.route(["billing", "technical"], { ticket: "API timeout" }), "technical");
+});
+
+test("agent.behavior.route(): an answer that is not a candidate is no answer", async () => {
+  const agent = createAgent({
+    decisionEngine: approveAll(),
+    allowUnrestricted: true,
+    behaviorProvider: new LocalBehaviorProvider(() => ({ value: "legal", confidence: 0.99 }))
+  });
+  assert.equal(await agent.behavior.route(["billing", "technical"]), undefined);
+});

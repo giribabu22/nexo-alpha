@@ -28,7 +28,7 @@ async function startServer({ queue, auth } = {}) {
   const engine = createDecisionEngine({ name: "frontend-test" });
   engine.addRule(confirmationRule({ name: "confirm", actions: ["refund"], requires: () => true, question: "Refund?" }));
 
-  const agent = createAgent({ decisionEngine: engine });
+  const agent = createAgent({ allowUnrestricted: true, decisionEngine: engine });
   let release = () => {};
   const gate = new Promise((resolve) => { release = resolve; });
   for (const action of ["lookup", "refund"]) {
@@ -226,7 +226,7 @@ test("NexoWorkflowDashboard: renders the start form inside a NexoProvider", () =
 });
 
 test("client.workflows.describe + NexoWorkflowCatalog: tools, permissions and unregistered actions", async () => {
-  const agent = createAgent({ decisionEngine: createDecisionEngine({ name: "x" }) });
+  const agent = createAgent({ allowUnrestricted: true, decisionEngine: createDecisionEngine({ name: "x" }) });
   agent.tools.register({ action: "refund", description: "Refunds an order", permissions: ["orders:refund"], execute: async () => ({ success: true, durationMs: 1 }) });
   const app = createApplication({ name: "catalog" });
   app.module(createWorkflowApiModule({ workflows: [createWorkflow({ name: "refund", agent, maxSteps: 3, allowedActions: ["refund", "ghost"] })] }));

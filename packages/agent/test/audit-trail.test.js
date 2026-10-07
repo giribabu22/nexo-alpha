@@ -10,7 +10,7 @@ import { createToolStub } from "../dist/testing.js";
 function agentWith(options = {}) {
   const engine = createDecisionEngine({ name: "audit" });
   engine.addRule(permissionRule({ actions: ["refund"], check: ({ intent }) => intent.actor === "admin" }));
-  const agent = createAgent({ decisionEngine: engine, ...options });
+  const agent = createAgent({ allowUnrestricted: true, decisionEngine: engine, ...options });
   agent.tools.register(createToolStub("refund"));
   agent.tools.register(createToolStub("lookup"));
   return agent;

@@ -12,6 +12,7 @@ import {
   health,
   impact,
   inspect,
+  inspectResource,
   intents,
   knowledge as renderKnowledge,
   search,
@@ -29,6 +30,7 @@ const USAGE = `Usage:
   nexo doctor [project-root] [--json]
   nexo inspect [app-module-path] [moduleName]
   nexo inspect [--module moduleName]
+  nexo inspect resource [name] [app-module-path] [--json]
   nexo status [app-module-path]
   nexo context [app-module-path] [--source-root <path>]
   nexo knowledge [app-module-path]
@@ -168,6 +170,22 @@ async function main(): Promise<void> {
     const outFlag = extractFlagValue(rest, "--out");
     const outPath = resolve(process.cwd(), outFlag ?? ".nexo/knowledge-graph.json");
     console.log(await freshness(outPath, sourceRoot));
+    return;
+  }
+
+  if (command === "inspect" && rest[0] === "resource") {
+    // The second positional is the resource name, unless it's a module path.
+    const positional = rest.slice(1).filter((arg) => !arg.startsWith("--"));
+    const looksLikePath = (arg: string | undefined) => arg !== undefined && /\.(c|m)?js$/.test(arg);
+    const name = looksLikePath(positional[0]) ? undefined : positional[0];
+    const appPath = await resolveAppPathFrom(name === undefined ? positional[0] : positional[1]);
+    if (appPath === undefined) {
+      console.error(`No app path given and no "nexo.config.json" found.\n\n${USAGE}`);
+      process.exitCode = 1;
+      return;
+    }
+    const { app, knowledge } = await loadApplication(appPath);
+    console.log(inspectResource(app, knowledge, name, rest.includes("--json")));
     return;
   }
 

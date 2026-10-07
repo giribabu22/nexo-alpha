@@ -46,7 +46,7 @@ function successTool(action) {
 
 test("Workflow: multi-step sequence executes DECIDE → ACT → VERIFY for each step", async () => {
   const engine = approveAllEngine();
-  const agent = createAgent({ name: "payment-agent", decisionEngine: engine });
+  const agent = createAgent({ allowUnrestricted: true, name: "payment-agent", decisionEngine: engine });
 
   agent.tools.register(successTool("find_payment"));
   agent.tools.register(successTool("retry_payment"));
@@ -79,7 +79,7 @@ test("Workflow: multi-step sequence executes DECIDE → ACT → VERIFY for each 
 
 test("Workflow: safety boundary maxSteps halts execution when exceeded", async () => {
   const engine = approveAllEngine();
-  const agent = createAgent({ decisionEngine: engine });
+  const agent = createAgent({ allowUnrestricted: true, decisionEngine: engine });
 
   agent.tools.register(successTool("step_1"));
   agent.tools.register(successTool("step_2"));
@@ -107,7 +107,7 @@ test("Workflow: safety boundary maxSteps halts execution when exceeded", async (
 
 test("Workflow: safety boundary allowedActions blocks unlisted actions", async () => {
   const engine = approveAllEngine();
-  const agent = createAgent({ decisionEngine: engine });
+  const agent = createAgent({ allowUnrestricted: true, decisionEngine: engine });
 
   agent.tools.register(successTool("allowed_action"));
   agent.tools.register(successTool("forbidden_action"));
@@ -139,7 +139,7 @@ test("Workflow: Decision Engine REJECT halts workflow immediately without tool c
     check: ({ intent }) => intent.actor === "admin"
   }));
 
-  const agent = createAgent({ decisionEngine: engine });
+  const agent = createAgent({ allowUnrestricted: true, decisionEngine: engine });
   let toolCalled = false;
   agent.tools.register({
     action: "dangerous_action",
@@ -172,7 +172,7 @@ test("Workflow: human interruption ASK_USER → WAITING → resume completes wor
     question: "Do you confirm transferring $5000?"
   }));
 
-  const agent = createAgent({ decisionEngine: engine });
+  const agent = createAgent({ allowUnrestricted: true, decisionEngine: engine });
   agent.tools.register(successTool("prepare_transfer"));
   agent.tools.register(successTool("transfer_funds"));
 
@@ -231,7 +231,7 @@ test("Workflow: human escalation ESCALATE → ESCALATED → resume completes wor
     reason: "Refund over limit."
   }));
 
-  const agent = createAgent({ decisionEngine: engine });
+  const agent = createAgent({ allowUnrestricted: true, decisionEngine: engine });
   agent.tools.register(successTool("high_refund"));
 
   let escalated = true;
@@ -264,7 +264,7 @@ test("Workflow: human escalation ESCALATE → ESCALATED → resume completes wor
 });
 
 test("Workflow: onEvent receives the step lifecycle in order", async () => {
-  const agent = createAgent({ name: "events-agent", decisionEngine: approveAllEngine() });
+  const agent = createAgent({ allowUnrestricted: true, name: "events-agent", decisionEngine: approveAllEngine() });
   agent.tools.register(successTool("step_a"));
   agent.tools.register(successTool("step_b"));
 
@@ -294,7 +294,7 @@ test("Workflow: onEvent receives the step lifecycle in order", async () => {
 });
 
 test("Workflow: failed step emits step.failed and workflow.failed", async () => {
-  const agent = createAgent({ decisionEngine: approveAllEngine() });
+  const agent = createAgent({ allowUnrestricted: true, decisionEngine: approveAllEngine() });
   agent.tools.register({
     action: "broken",
     execute: async () => ({ success: false, error: "boom", durationMs: 1 })
@@ -317,7 +317,7 @@ test("Workflow: failed step emits step.failed and workflow.failed", async () => 
 });
 
 test("Workflow: aborting the signal cancels before the next step", async () => {
-  const agent = createAgent({ decisionEngine: approveAllEngine() });
+  const agent = createAgent({ allowUnrestricted: true, decisionEngine: approveAllEngine() });
   const controller = new AbortController();
   agent.tools.register({
     action: "first",
@@ -345,7 +345,7 @@ test("Workflow: aborting the signal cancels before the next step", async () => {
 });
 
 test("Workflow: a throwing onEvent listener does not affect the outcome", async () => {
-  const agent = createAgent({ decisionEngine: approveAllEngine() });
+  const agent = createAgent({ allowUnrestricted: true, decisionEngine: approveAllEngine() });
   agent.tools.register(successTool("only"));
 
   const workflow = createWorkflow({

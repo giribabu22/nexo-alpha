@@ -2,6 +2,16 @@ import { BehaviorProvider, DecisionRequest, DecisionResponse, DecisionResult } f
 
 export type HeuristicEvaluator = (key: string, question: any, state: any) => DecisionResult;
 
+/**
+ * Answers questions in-process with a caller-supplied evaluator — for
+ * deterministic heuristics and tests.
+ *
+ * Without an evaluator it answers nothing: every question is left out of
+ * `results`, so the policies report that they don't know (`verify` →
+ * "uncertain", `retry` → false, `escalate` → true, all with confidence 0)
+ * instead of acting on an invented answer. This is the provider a
+ * `BehaviorEngine` uses when none is configured.
+ */
 export class LocalBehaviorProvider implements BehaviorProvider {
   public readonly name = 'local';
   private customEvaluator?: HeuristicEvaluator | undefined;
@@ -12,33 +22,12 @@ export class LocalBehaviorProvider implements BehaviorProvider {
 
   async evaluate<TState>(request: DecisionRequest<TState>): Promise<DecisionResponse> {
     const results: Record<string, DecisionResult> = {};
+    if (!this.customEvaluator) {
+      return { results };
+    }
 
     for (const [key, q] of Object.entries(request.questions)) {
-      if (this.customEvaluator) {
-        results[key] = this.customEvaluator(key, q, request.state);
-        continue;
-      }
-
-      if (q.type === 'choice') {
-        const val = q.options[0] ?? '';
-        results[key] = {
-          value: val,
-          confidence: 0.9,
-          explanation: `Local default choice: ${val}`
-        };
-      } else if (q.type === 'score') {
-        results[key] = {
-          value: (q.max ?? 1) * 0.85,
-          confidence: 0.88,
-          explanation: 'Local heuristic score evaluation'
-        };
-      } else if (q.type === 'boolean') {
-        results[key] = {
-          value: true,
-          confidence: 0.95,
-          explanation: 'Local boolean evaluation criteria matched'
-        };
-      }
+      results[key] = this.customEvaluator(key, q, request.state);
     }
 
     return { results };

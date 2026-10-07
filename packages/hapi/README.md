@@ -22,10 +22,11 @@ pnpm add @nexo-alpha/hapi @nexo-alpha/core @hapi/hapi
 
 ## What the Adapter Handles
 
-`createHapiServer(app, options)` serves every declared API, including `resource()`, `createAuth()` and `createFiles()` modules:
+`createHapiServer(app, options)` serves every declared API, including `resource()`, `createAuth()` and `createFiles()` modules. Each request goes through core's request pipeline (`createRequestPipeline`), the same one `app.dispatch()` uses, so an API answers the same either way:
 
 - **Validation:** `api.validate` or `api.schema` runs before the handler. A thrown `NexoValidationError` answers 400 `{ error, errors }`.
-- **Auth:** `authenticate` checks `auth.required` APIs (401/403 with missing scopes). Handlers get the caller as `context.auth`.
+- **Auth:** the `authenticate` option, or else the application's (`app.setAuthenticator()`), checks `auth.required` APIs (401/403 with missing scopes). Handlers get the caller as `context.auth`.
+- **Middleware:** `app.useMiddleware()` runs around every handler.
 - **Uploads:** APIs with `rawBody` receive the request body as bytes, up to `maxBytes` (413 beyond that).
 - **Errors:** `NexoHttpError` answers its 4xx status; `httpResponse()` sets the success status and headers.
 - **Operations:** request IDs, `rateLimit`, `securityHeaders`, structured `logger`, multi-tenant `project`.

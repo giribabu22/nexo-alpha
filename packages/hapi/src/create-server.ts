@@ -1,19 +1,12 @@
 import Hapi from "@hapi/hapi";
 import {
   NexoEvent,
-  NexoHttpError,
-  NexoValidationError,
   createRateLimiter,
-  isHttpResponse,
-  isValidProjectId,
-  runInProject,
-  missingScopes,
-  validateSchema,
-  type NexoApi,
+  createRequestPipeline,
   type NexoApplication,
   type NexoAuthenticator,
   type NexoLogger,
-  type NexoRequestContext,
+  type RequestProjectOptions,
   type DscInterceptorLike,
   DSC_INTERCEPTOR
 } from "@nexo-alpha/core";
@@ -35,17 +28,8 @@ export interface SecurityHeadersOptions {
   readonly hsts?: string | false;
 }
 
-export interface HapiProjectOptions {
-  /**
-   * The request's project, e.g. from an `x-project-id` header checked against
-   * the user's memberships. Throw `NexoHttpError(403, …)` to deny access.
-   */
-  resolve(context: NexoRequestContext): string | undefined | Promise<string | undefined>;
-  /** Answer 400 when no project resolves. Default: true */
-  readonly required?: boolean;
-  /** APIs that run outside any project (e.g. health checks, the project list). */
-  readonly skip?: (api: NexoApi) => boolean;
-}
+/** Multi-tenancy options; the same as core's `RequestProjectOptions`. */
+export type HapiProjectOptions = RequestProjectOptions;
 
 export interface HapiRateLimitOptions {
   readonly windowMs: number;
@@ -64,6 +48,7 @@ const VALID_REQUEST_ID = /^[A-Za-z0-9._-]{1,128}$/;
 export interface CreateHapiServerOptions {
   readonly port?: number;
   readonly host?: string;
+  /** Authenticates APIs with `auth.required`. Default: the application's (`app.setAuthenticator()`). */
   readonly authenticate?: NexoAuthenticator;
   readonly bindLifecycle?: boolean;
   readonly cors?: boolean;
@@ -252,12 +237,22 @@ export async function createHapiServer(
     }
   }
 
+  // Authentication, projects, validation, middleware and error mapping: the
+  // same pipeline `app.dispatch()` uses. This adapter only translates.
+  const pipeline = createRequestPipeline(app, {
+    authenticate: options.authenticate,
+    project: options.project,
+    instrument: interceptor
+      ? (api, handler) => interceptor.instrument(`hapi:${api.method}:${api.path}`, handler, { stage: "execute", trackPayloadSize: true })
+      : undefined
+  });
+
   const apis = app.getApis();
 
   for (const api of apis) {
-    if (api.auth?.required && options.authenticate === undefined) {
+    if (api.auth?.required && pipeline.authenticate === undefined) {
       throw new Error(
-        `API "${api.name}" requires auth, but no "authenticate" option was provided to createHapiServer().`
+        `API "${api.name}" requires auth, but no authenticator is configured: pass "authenticate" to createHapiServer() or call app.setAuthenticator().`
       );
     }
   }
@@ -267,16 +262,6 @@ export async function createHapiServer(
     // Hapi generates HEAD responses from GET automatically
     if (api.method === "HEAD") continue;
 
-    // Wrap the handler with DSC timing + payload tracking if interceptor present
-    const rawHandler = api.handler;
-    const trackedHandler = interceptor
-      ? interceptor.instrument(
-          `hapi:${api.method}:${api.path}`,
-          rawHandler,
-          { stage: "execute", trackPayloadSize: true }
-        )
-      : rawHandler;
-
     server.route({
       method: api.method,
       path: toHapiPath(api.path),
@@ -284,98 +269,17 @@ export async function createHapiServer(
         ? { options: { payload: { parse: false, output: "data" as const, maxBytes: api.rawBody.maxBytes ?? 10 * 1024 * 1024 } } }
         : {}),
       handler: async (request, h) => {
-        const startedAt = Date.now();
-
-        const respond = (statusCode: number, body?: unknown) => {
-          app.events.emit(NexoEvent.API_CALLED, {
-            api: api.name,
-            method: api.method,
-            path: api.path,
-            statusCode,
-            durationMs: Date.now() - startedAt
-          });
-          return body === undefined
-            ? h.response().code(statusCode)
-            : h.response(body as Hapi.ResponseValue).code(statusCode);
-        };
-
-        let context: NexoRequestContext = {
+        const answer = await pipeline.handle(api, {
           params: request.params as Record<string, string>,
           query: request.query as Record<string, unknown>,
           payload: request.payload,
           headers: request.headers as Record<string, string>
-        };
-
-        if (api.auth?.required) {
-          const authResult = await (options.authenticate as NexoAuthenticator)(context);
-          if (!authResult.authenticated) return respond(401, { error: "Unauthorized" });
-          const missing = missingScopes(authResult.scopes, api.auth.scopes ?? []);
-          if (missing.length > 0) return respond(403, { error: "Forbidden", missingScopes: missing });
-          context = { ...context, auth: authResult };
-        }
-
-        const execute = async () => {
-          if (api.validate) {
-            const outcome = await api.validate(context);
-            if (!outcome.valid) {
-              return respond(400, { error: "Validation failed", errors: outcome.errors ?? [] });
-            }
-          } else if (api.schema) {
-            const outcome = validateSchema(api.schema, context);
-            if (!outcome.valid) {
-              return respond(400, { error: "Validation failed", errors: outcome.errors ?? [] });
-            }
-          }
-
-          let result: unknown;
-          try {
-            result = await trackedHandler(context);
-          } catch (error) {
-            if (error instanceof NexoHttpError && error.statusCode >= 400 && error.statusCode < 500) {
-              return respond(error.statusCode, { error: error.message, code: error.code });
-            }
-            if (error instanceof NexoValidationError) {
-              return respond(400, { error: "Validation failed", errors: error.errors.length > 0 ? error.errors : [error.message] });
-            }
-            app.events.emit(NexoEvent.API_ERROR, {
-              api: api.name,
-              method: api.method,
-              path: api.path,
-              durationMs: Date.now() - startedAt,
-              error: error instanceof Error ? error.message : String(error)
-            });
-            throw error;
-          }
-
-          if (isHttpResponse(result)) {
-            const response = respond(result.statusCode, result.body);
-            for (const [name, value] of Object.entries(result.headers)) response.header(name, value);
-            return response;
-          }
-          return result === undefined ? respond(204) : respond(200, result);
-        };
-
-        const project = options.project;
-        if (project === undefined || project.skip?.(api) === true) {
-          return execute();
-        }
-        let projectId: string | undefined;
-        try {
-          projectId = await project.resolve(context);
-          if (projectId !== undefined && !isValidProjectId(projectId)) {
-            throw new NexoHttpError(400, "INVALID_PROJECT_ID", `Invalid project ID "${projectId}".`);
-          }
-        } catch (error) {
-          if (error instanceof NexoHttpError && error.statusCode >= 400 && error.statusCode < 500) {
-            return respond(error.statusCode, { error: error.message, code: error.code });
-          }
-          throw error;
-        }
-        if (projectId === undefined) {
-          if (project.required === false) return execute();
-          return respond(400, { error: "A project is required for this request.", code: "PROJECT_REQUIRED" });
-        }
-        return runInProject(projectId, execute);
+        });
+        const response = answer.body === undefined
+          ? h.response().code(answer.statusCode)
+          : h.response(answer.body as Hapi.ResponseValue).code(answer.statusCode);
+        for (const [name, value] of Object.entries(answer.headers)) response.header(name, value);
+        return response;
       }
     });
   }

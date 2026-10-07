@@ -277,3 +277,25 @@ test("contextToJson round-trips through JSON.parse", () => {
 
   assert.deepEqual(parsed, context);
 });
+
+test("buildContext describes resource modules: fields, path, search and operations", async () => {
+  const { createApplication: create, createInMemoryDocumentStore, field, model, resource } = await import("@nexo-alpha/core");
+  const Note = model("notes", { title: field.string({ minLength: 1 }), done: field.boolean().default(false) });
+  const app = create({ name: "notes-app" });
+  app.module(resource(Note, { store: createInMemoryDocumentStore(), searchable: ["title"], auth: { write: ["notes:write"] } }));
+  app.module({ name: "plain", apis: [] });
+
+  const context = buildContext(app);
+  const notes = context.modules.find((module) => module.name === "notes");
+
+  assert.equal(notes.resource.path, "/api/notes");
+  assert.deepEqual(notes.resource.searchable, ["title"]);
+  assert.deepEqual(Object.keys(notes.resource.model.fields), ["title", "done"]);
+  assert.equal(notes.resource.model.fields.done.default, false);
+  assert.deepEqual(
+    notes.resource.operations.map((op) => [op.operation, op.scopes]),
+    [["list", []], ["get", []], ["create", ["notes:write"]], ["update", ["notes:write"]], ["delete", ["notes:write"]]]
+  );
+  assert.equal("resource" in context.modules.find((module) => module.name === "plain"), false);
+  assert.deepEqual(JSON.parse(contextToJson(context)).modules[0].resource, notes.resource);
+});

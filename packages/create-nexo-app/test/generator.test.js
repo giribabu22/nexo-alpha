@@ -37,9 +37,8 @@ test("creates fullstack-react project files with customized project name and pro
     // Check backend files
     const backendPkg = JSON.parse(await fs.readFile(path.join(appDir, "backend", "package.json"), "utf8"));
     assert.equal(backendPkg.name, "super-app-backend");
-    assert.equal(backendPkg.dependencies["@nexo-alpha/tools"], "^0.7.0");
-    assert.ok(backendPkg.dependencies["@nexo-alpha/behavior"]);
-    assert.ok(backendPkg.dependencies["@nexo-alpha/agent"]);
+    assert.equal(backendPkg.dependencies["@nexo-alpha/hapi"], "^0.7.0");
+    assert.equal(backendPkg.dependencies["@nexo-alpha/cli"], "^0.7.0");
     assert.equal(backendPkg.scripts.graph, "nexo graph --source-root src --out .nexo/knowledge-graph.json");
 
     const appTs = await fs.readFile(path.join(appDir, "backend", "src", "app.ts"), "utf8");
@@ -108,9 +107,7 @@ test("creates backend-api project files with customized project name", async () 
     assert.equal(pkg.name, "order-service");
     assert.ok(pkg.dependencies["@nexo-alpha/core"]);
     assert.ok(pkg.dependencies["@nexo-alpha/hapi"]);
-    assert.equal(pkg.dependencies["@nexo-alpha/tools"], "^0.7.0");
-    assert.ok(pkg.dependencies["@nexo-alpha/behavior"]);
-    assert.ok(pkg.dependencies["@nexo-alpha/agent"]);
+    assert.equal(pkg.dependencies["@nexo-alpha/cli"], "^0.7.0");
     assert.equal(pkg.scripts.graph, "nexo graph --source-root src --out .nexo/knowledge-graph.json");
 
     const dockerfile = await fs.readFile(path.join(appDir, "Dockerfile"), "utf8");
@@ -182,6 +179,50 @@ test("creates minimal project files", async () => {
     await fs.rm(tempDir, { recursive: true, force: true });
   }
 });
+
+/** The package.json files in a generated project: the root and any workspaces. */
+async function packageDirs(appDir) {
+  const root = JSON.parse(await fs.readFile(path.join(appDir, "package.json"), "utf8"));
+  return [appDir, ...(root.workspaces ?? []).map((workspace) => path.join(appDir, workspace))];
+}
+
+async function sourceFiles(dir) {
+  const files = [];
+  for (const entry of await fs.readdir(dir, { withFileTypes: true })) {
+    if (entry.name === "node_modules") continue;
+    const full = path.join(dir, entry.name);
+    if (entry.isDirectory()) files.push(...(await sourceFiles(full)));
+    else if (/\.(ts|tsx|js|mjs)$/.test(entry.name)) files.push(full);
+  }
+  return files;
+}
+
+for (const templateName of ["fullstack-react", "backend-api", "agent-service", "minimal"]) {
+  test(`${templateName}: installs only the Nexo packages its code imports`, async () => {
+    const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "nexo-deps-"));
+    const appDir = path.join(tempDir, "deps-app");
+
+    try {
+      await createNexoApp({ targetDir: appDir, templateName });
+      for (const dir of await packageDirs(appDir)) {
+        const pkg = JSON.parse(await fs.readFile(path.join(dir, "package.json"), "utf8"));
+        const nexoDeps = Object.keys({ ...pkg.dependencies, ...pkg.devDependencies })
+          .filter((name) => name.startsWith("@nexo-alpha/"));
+        const code = (await Promise.all((await sourceFiles(dir)).map((file) => fs.readFile(file, "utf8")))).join("\n");
+        const scripts = Object.values(pkg.scripts ?? {}).join("\n");
+
+        for (const dep of nexoDeps) {
+          const used = dep === "@nexo-alpha/cli"
+            ? /(^|\s|&&\s*)nexo\s/m.test(scripts)
+            : new RegExp(`(from|import)\\s*["']${dep}(/[\\w./-]+)?["']`).test(code);
+          assert.ok(used, `${path.relative(appDir, dir) || "."}/package.json installs ${dep}, which nothing uses`);
+        }
+      }
+    } finally {
+      await fs.rm(tempDir, { recursive: true, force: true });
+    }
+  });
+}
 
 test("throws error when unknown template is provided", async () => {
   const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "nexo-err-"));

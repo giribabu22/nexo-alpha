@@ -101,7 +101,7 @@ test("AgentMemory (File): persists across instances", async () => {
 
 test("Workflow + AgentMemory: a fact remembered in one run is recalled by the next", async () => {
   const memory = createInMemoryAgentMemory();
-  const agent = createAgent({ decisionEngine: createDecisionEngine({ name: "approve-all" }) });
+  const agent = createAgent({ allowUnrestricted: true, decisionEngine: createDecisionEngine({ name: "approve-all" }) });
 
   agent.tools.register({
     action: "learn_preference",
@@ -145,7 +145,7 @@ test("Workflow + AgentMemory: custom recallMemory and initialContext precedence"
   const memory = createInMemoryAgentMemory();
   await memory.remember("unrelated", "nothing to do with the goal", { tags: ["always"] });
 
-  const agent = createAgent({ decisionEngine: createDecisionEngine({ name: "approve-all" }) });
+  const agent = createAgent({ allowUnrestricted: true, decisionEngine: createDecisionEngine({ name: "approve-all" }) });
   const parser = createStepIntentParser([]);
 
   const byTag = createWorkflow({ name: "tag", agent, memory, parser, recallMemory: () => ({ tags: ["always"] }) });

@@ -81,7 +81,8 @@ export function generateFiles(kind: GeneratorKind, name: string, options: Genera
 export const ${constName}: NexoTool = {
   action: "${action}",
   description: "TODO: describe what ${action} does",
-  // Permissions the actor needs; enforced when the engine has a toolPermissionRule.
+  // Permissions the actor needs. The agent runs this tool only when its engine
+  // has a toolPermissionRule for agent.tools (otherwise: "PERMISSIONS_NOT_ENFORCED").
   permissions: ["${parts[0]}:${action}"],
   async execute({ intent, extras }) {
     // TODO: implement. intent.target / intent.payload carry the request;
@@ -122,7 +123,8 @@ import { createAgent, createWorkflow, createStepIntentParser, type NexoWorkflow 
  */
 export function ${fn}(): NexoWorkflow {
   const decisionEngine = createDecisionEngine({ name: "${file}" });
-  // e.g. decisionEngine.addRule(toolPermissionRule({ access, tools: agent.tools, resolveRoles }));
+  // Until a rule is added, every step is blocked (code "NO_POLICY"). e.g.
+  // decisionEngine.addRule(toolPermissionRule({ access, tools: agent.tools, resolveRoles }));
 
   const agent = createAgent({ name: "${file}-agent", decisionEngine });
   // agent.tools.register(myTool);

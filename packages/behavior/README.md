@@ -22,19 +22,13 @@ pnpm add @nexo-alpha/behavior
 
 ## Why Bounded Behavior?
 
-Most AI frameworks rely on heavyweight generative models for every branching decision:
+An open-ended prompt ("what should the agent do next?") gets an open-ended answer that the code then has to interpret. A bounded question gets an answer the code can use directly:
 
-```text
-Unbounded LLM (500-1500 tokens, 1200ms, non-deterministic)
-```
+- `choice(["retry", "fail", "escalate"])`: exactly one of these options;
+- `score({ min: 0, max: 1 })`: a number in that range;
+- `boolean("Is the order shipped?")`: `true` or `false`.
 
-Nexo frames micro-decisions with bounded constraints:
-
-```text
-Bounded Primitive (10-50 tokens or zero-cost local heuristics, <10ms, deterministic)
-```
-
-This saves up to **90% of token usage and latency** while guaranteeing consistent execution.
+Every answer also carries a `confidence` between 0 and 1. The engine checks each answer against its question, so an answer outside its bounds is never acted on (see [Answers are checked](#3-answers-are-checked)). Questions are short, which keeps prompts small.
 
 ---
 
@@ -68,13 +62,17 @@ const isGoalSatisfied = boolean("Is the user request fully satisfied?");
 
 ### 2. Evaluating Decisions with `BehaviorEngine`
 
-The `BehaviorEngine` evaluates questions against a provided state:
+The `BehaviorEngine` sends questions about a state to a provider. `LocalBehaviorProvider` answers them in-process with your evaluator:
 
 ```ts
 import { BehaviorEngine, LocalBehaviorProvider } from "@nexo-alpha/behavior";
 
 const engine = new BehaviorEngine({
-  provider: new LocalBehaviorProvider()
+  provider: new LocalBehaviorProvider((key, question, state) =>
+    key === "nextAction"
+      ? { value: state.retries < 3 ? "retry" : "escalate", confidence: 1 }
+      : { value: 1, confidence: 1 }
+  )
 });
 
 const response = await engine.decide({
@@ -89,82 +87,105 @@ const response = await engine.decide({
   }
 });
 
-console.log(response.answers.nextAction); // "retry"
-console.log(response.metrics);           // { durationMs, savedGenerativeTokens, ... }
+console.log(response.results.nextAction.value); // "retry"
+console.log(response.metrics);                  // { durationMs, savedGenerativeTokens, ... }
 ```
+
+**No provider means no answers.** An engine created without a provider, and a `LocalBehaviorProvider` without an evaluator, leave every question unanswered. The policies then report that they don't know: `verify` returns `"uncertain"`, `retry` returns `false` and `escalate` returns `true`, each with confidence `0`. They never act on an invented answer. `JevBehaviorProvider` needs an `endpoint` and an `apiKey`, and it throws when the endpoint fails.
 
 ---
 
-### 3. Built-in Behavior Policies
+### 3. Answers are checked
 
-Nexo provides pre-packaged policies for the most common agent branching scenarios:
+`decide()` keeps an answer only if it fits its question: an option of a `choice`, a finite number within a `score`'s `min`/`max`, an actual boolean for a `boolean` (not the string `"false"`), with a `confidence` between 0 and 1. Anything else, including answers to questions that weren't asked, is dropped and counts as unanswered. So a provider that returns a made-up option or a malformed value gets the same treatment as one that returns nothing.
 
-#### Route Policy
-Routes execution to one candidate among multiple branches:
+---
+
+### 4. Built-in Behavior Policies
+
+Each policy asks the provider a fixed set of bounded questions and turns the answers into a result. When the provider doesn't answer (or its answer doesn't fit), the result says so with `confidence: 0` and a cautious value.
+
+#### Route
+Chooses one candidate:
 
 ```ts
-const route = await engine.routePolicy({
+const route = await engine.route({
   candidates: ["payment_service", "inventory_service", "support_service"],
   state: { task: "Check product availability in warehouse" }
 });
 
-console.log("Selected route:", route.selected); // "inventory_service"
+route.selected;   // e.g. "inventory_service"
+route.confidence; // 0 when the provider didn't choose: `selected` is then only the first candidate
 ```
 
-#### Verify Policy
-Evaluates whether an operation's output meets acceptance criteria:
+#### Verify
+Checks an output against what was expected:
 
 ```ts
-const verification = await engine.verifyPolicy({
-  criteria: "The order status must be marked as 'shipped' with a valid tracking number",
+const verification = await engine.verify({
+  expected: "The order is marked 'shipped' with a tracking number",
   actual: { status: "shipped", trackingNumber: "TRK_991823" }
 });
 
-console.log("Passed:", verification.passed);       // true
-console.log("Confidence:", verification.confidence); // 0.98
+verification.status;     // "verified" | "failed" | "uncertain" (no answer: "uncertain")
+verification.confidence;
 ```
 
-#### Retry Policy
-Determines whether a failed step should retry or abort:
+#### Retry
+Decides whether a failed step should run again:
 
 ```ts
-const retryDecision = await engine.retryPolicy({
+const decision = await engine.retry({
   error: new Error("ETIMEDOUT"),
   attempt: 2,
   maxAttempts: 3
 });
 
-console.log("Should retry:", retryDecision.shouldRetry); // true
-console.log("Backoff ms:", retryDecision.backoffMs);    // 1000
+decision.retry;    // false once attempt >= maxAttempts, and when there is no answer
+decision.strategy; // "backoff" | "immediate" | "fallback"
 ```
 
-#### Complete Policy
-Checks if a multi-step agent goal is satisfied:
+#### Complete
+Checks whether a goal is reached:
 
 ```ts
-const completion = await engine.completePolicy({
-  goal: "Cancel order ord_123 and notify customer",
+const completion = await engine.complete({
+  goal: "Cancel order ord_123 and notify the customer",
   history: [
     { action: "cancel_order", status: "SUCCESS" },
     { action: "send_email", status: "SUCCESS" }
   ]
 });
 
-console.log("Completed:", completion.isComplete);
+completion.status; // "COMPLETE" | "IN_PROGRESS" | "VERIFY_MORE" | "BLOCKED" | "FAILED" | "ESCALATE" (no answer: "IN_PROGRESS")
 ```
+
+#### Escalate
+Decides whether a person should review:
+
+```ts
+const escalation = await engine.escalate({ state: { refundAmount: 5000 }, confidenceThreshold: 0.9 });
+
+escalation.escalate; // true when there is no answer
+escalation.action;   // "ACT" | "REVIEW" | "HUMAN_ESCALATE"
+```
+
+The same policies are also exported as functions that take a provider: `route(options, provider)`, `verify(…)`, `retry(…)`, `complete(…)`, `escalate(…)`.
 
 ---
 
-### 4. Telemetry & Cost Measurement
+### 5. Telemetry
 
-`BehaviorEngine` tracks every decision's latency, token savings, and estimated cost:
+`BehaviorEngine` records each evaluation:
 
 ```ts
 const metrics = engine.getMetrics();
 
-console.log(`Evaluated ${metrics.totalDecisions} decisions.`);
-console.log(`Total duration: ${metrics.totalDurationMs}ms`);
-console.log(`Estimated generative tokens saved: ${metrics.totalSavedGenerativeTokens}`);
+metrics.totalEvaluations;     // decide() calls, including those made by policies
+metrics.totalQuestions;
+metrics.totalDurationMs;
+metrics.estimatedSavedTokens; // an estimate; only answered questions count
+metrics.providerCounts;       // evaluations per provider name
 ```
 
 ---

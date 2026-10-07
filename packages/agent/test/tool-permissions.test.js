@@ -133,3 +133,60 @@ test("Workflow API: resolveActor drives RBAC for both start and resume", async (
 
   assert.deepEqual(calls, [{ action: "refund_order", actor: "sam" }]);
 });
+
+// ---------------------------------------------------------------------------
+// Declared permissions are never silently ignored
+// ---------------------------------------------------------------------------
+
+function agentWithRefundTool(options = {}) {
+  const engine = createDecisionEngine({ name: "unenforced" });
+  engine.addRule({ name: "allow-all", evaluate: () => undefined });
+  const agent = createAgent({ decisionEngine: engine, ...options });
+  let ran = 0;
+  agent.tools.register({
+    action: "refund_order",
+    permissions: ["orders:refund"],
+    execute: async () => { ran += 1; return { success: true, durationMs: 0 }; }
+  });
+  agent.tools.register({ action: "ping", execute: async () => ({ success: true, durationMs: 0 }) });
+  return { engine, agent, ran: () => ran };
+}
+
+test("a tool declaring permissions is blocked when no toolPermissionRule enforces them", async () => {
+  const { agent, ran } = agentWithRefundTool();
+
+  const record = await agent.execute({ action: "refund_order", actor: "ann" });
+
+  assert.equal(record.status, "BLOCKED");
+  assert.equal(record.decision.code, "PERMISSIONS_NOT_ENFORCED");
+  assert.equal(ran(), 0);
+  // Tools that declare nothing are unaffected.
+  assert.equal((await agent.execute({ action: "ping" })).status, "APPROVED_AND_COMPLETE");
+});
+
+test("a toolPermissionRule for another agent's tools does not count", async () => {
+  const { engine, agent, ran } = agentWithRefundTool();
+  const other = createAgent({ decisionEngine: createDecisionEngine({ name: "other" }) });
+  engine.addRule(toolPermissionRule({ access, tools: other.tools, resolveRoles: () => ["support"] }));
+
+  const record = await agent.execute({ action: "refund_order", actor: "sam" });
+
+  assert.equal(record.decision.code, "PERMISSIONS_NOT_ENFORCED");
+  assert.equal(ran(), 0);
+});
+
+test("a toolPermissionRule for this agent's tools enforces them, whatever its name", async () => {
+  const { engine, agent, ran } = agentWithRefundTool();
+  engine.addRule(toolPermissionRule({ name: "custom-name", access, tools: agent.tools, resolveRoles: ({ intent }) => USER_ROLES[intent.actor] ?? [] }));
+
+  assert.equal((await agent.execute({ action: "refund_order", actor: "ann" })).decision.code, "PERMISSION_DENIED");
+  assert.equal((await agent.execute({ action: "refund_order", actor: "sam" })).status, "APPROVED_AND_COMPLETE");
+  assert.equal(ran(), 1);
+});
+
+test("allowUnrestricted runs tools whose permissions another rule checks", async () => {
+  const { agent, ran } = agentWithRefundTool({ allowUnrestricted: true });
+
+  assert.equal((await agent.execute({ action: "refund_order", actor: "ann" })).status, "APPROVED_AND_COMPLETE");
+  assert.equal(ran(), 1);
+});

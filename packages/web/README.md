@@ -37,7 +37,8 @@ const result = await research({
   query: "React 19 compiler release features",
   maxSources: 5,
   freshnessDays: 60,
-  provider: new MockWebSearchProvider(),
+  provider: new MockWebSearchProvider(), // fixed demo results; use a real WebSearchProvider in production
+  behaviorProvider,                       // judges relevance; without one nothing is verified
   knowledge
 });
 
@@ -128,6 +129,10 @@ console.log(verified.verifiedEvidence[0].confidence); // 0.95
 
 ---
 
+`research()` needs a search `provider`; there is no default. Without a `behaviorProvider`, no evidence is verified and the status is `"INSUFFICIENT"`: the pipeline never marks results as verified on its own.
+
+---
+
 ## Integration with `@nexo-alpha/agent`
 
 If you are using [`@nexo-alpha/agent`](https://www.npmjs.com/package/@nexo-alpha/agent), the research pipeline is directly accessible on any agent instance:
@@ -137,8 +142,9 @@ import { createAgent } from "@nexo-alpha/agent";
 
 const agent = createAgent({ decisionEngine });
 
-// Automatically searches, verifies, and records to the agent's knowledge store:
-const research = await agent.research("PostgreSQL 17 performance improvements");
+// Searches with your provider, verifies with the agent's behavior provider,
+// and records to the agent's knowledge store:
+const research = await agent.research("PostgreSQL 17 performance improvements", { provider: mySearchProvider });
 ```
 
 ---

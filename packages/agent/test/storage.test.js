@@ -105,7 +105,7 @@ test("SQLite: a paused workflow survives a 'restart' and resumes from a new conn
       if (requireConfirmation) {
         engine.addRule(confirmationRule({ actions: ["refund"], requires: () => true, question: "Refund?" }));
       }
-      const agent = createAgent({ decisionEngine: engine });
+      const agent = createAgent({ allowUnrestricted: true, decisionEngine: engine });
       agent.tools.register({
         action: "refund",
         execute: async ({ extras }) => {

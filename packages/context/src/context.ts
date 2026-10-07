@@ -1,10 +1,13 @@
 import { createHash } from "node:crypto";
-import type {
-  ApplicationState,
-  NexoApi,
-  NexoApplication,
-  NexoJob,
-  NexoService
+import {
+  describeResource,
+  isResource,
+  type ApplicationState,
+  type NexoApi,
+  type NexoApplication,
+  type NexoJob,
+  type NexoService,
+  type ResourceDescription
 } from "@nexo-alpha/core";
 import {
   type ApplicationKnowledge,
@@ -27,6 +30,11 @@ export interface ModuleContext {
   readonly jobs: readonly NexoJob[];
   /** Declared implementing file paths. See `NexoModule.sourceFiles`. */
   readonly sourceFiles: readonly string[];
+  /**
+   * Present when the module is a `resource()`: its model's fields, path,
+   * search fields and the operations it serves, with their scopes.
+   */
+  readonly resource?: ResourceDescription;
 }
 
 /** A declared dependency edge between a module and whatever it depends on. */
@@ -334,7 +342,8 @@ export function buildContext(
     services: module.services ?? [],
     events: module.events ?? [],
     jobs: module.jobs ?? [],
-    sourceFiles: module.sourceFiles ?? []
+    sourceFiles: module.sourceFiles ?? [],
+    ...(isResource(module) ? { resource: describeResource(module) } : {})
   }));
 
   const structure = describeStructure(app);

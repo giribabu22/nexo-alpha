@@ -122,6 +122,11 @@ export class DecisionEngine {
     return this._rules.map((r) => r.name);
   }
 
+  /** Returns the registered rules in evaluation order. */
+  getRules(): readonly DecisionRule[] {
+    return [...this._rules];
+  }
+
   /**
    * Attaches an application context snapshot (from `@nexo-alpha/context`'s
    * `buildContext()`) so every rule can read it without the caller having to
