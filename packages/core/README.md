@@ -32,9 +32,9 @@ pnpm add @nexo-alpha/core
 
 ---
 
-## Full-Stack Primitives (0.7)
+## Data Layer: Models, Resources and Stores (0.7)
 
-Declare a domain object once; storage, validation, the REST API and the TypeScript types follow from it.
+Nexo's data layer is part of `@nexo-alpha/core` (there is no separate data package). Declare a domain object once; storage, validation, the REST API and the TypeScript types follow from it.
 
 ```ts
 import { createApplication, createAuth, createFiles, createDiskBlobStore, createSqliteDocumentStore, field, model, resource, api } from "@nexo-alpha/core";

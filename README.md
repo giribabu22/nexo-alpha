@@ -76,7 +76,7 @@ Nexo is built as a set of modular, composable packages published under the `@nex
 
 | Package | npm | Description |
 |---|---|---|
-| [`@nexo-alpha/core`](./packages/core/README.md) | `0.7.0` | Core runtime: applications, modules, services, declarative APIs, jobs, lifecycle, and event bus. Full-stack primitives: `model`, `resource`, `api.*`, `createAuth`, `createFiles`, and document stores (memory, JSON file, SQLite). |
+| [`@nexo-alpha/core`](./packages/core/README.md) | `0.7.0` | Core runtime: applications, modules, services, declarative APIs, jobs, lifecycle, and event bus. Also the data layer ([docs](./packages/core/README.md#data-layer-models-resources-and-stores-07)): `model`, `resource`, `api.*`, `createAuth`, `createFiles`, and document stores (memory, JSON file, SQLite). |
 | [`@nexo-alpha/context`](./packages/context/README.md) | `0.7.0` | Application context manifest, knowledge journal (decisions, constraints, state, intents), and structure hashing. |
 | [`@nexo-alpha/decision`](./packages/decision/README.md) | `0.7.0` | Deterministic AI decision engine. Rule chains (`permission`, `state`, `constraint`, `confirmation`, `escalation`, `rateLimit`). |
 | [`@nexo-alpha/agent`](./packages/agent/README.md) | `0.7.0` | AI agent orchestration layer wiring `UNDERSTAND → KNOW → DECIDE → ACT → VERIFY`, tool registries, and autonomous workflows. |

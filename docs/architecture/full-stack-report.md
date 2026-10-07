@@ -236,4 +236,4 @@ hooks and components keep working.
    `<img src>` on files behind `auth.read`.
 5. Consolidate the older data hooks (`useApi`, `useNexoApi`, `useNexoRpcQuery`)
    onto `createQuery`, and decide whether the RPC client's method guessing stays.
-6. Resolve `packages/data` (see E).
+6. ~~Resolve `packages/data`~~: done (reviewed, useful parts ported into core, removed; see E).
