@@ -90,7 +90,7 @@ export {
 export { createRequestContext } from "./request.js";
 
 export { createFiles, createDiskBlobStore, createInMemoryBlobStore } from "./files.js";
-export type { NexoFiles, NexoBlobStore, CreateFilesOptions, UploadInput } from "./files.js";
+export type { NexoFiles, NexoBlobStore, CreateFilesOptions, FilesCleanupOptions, UploadInput } from "./files.js";
 export { FILES_PATH, mimeMatches } from "./files-contract.js";
 export type { NexoFile } from "./files-contract.js";
 

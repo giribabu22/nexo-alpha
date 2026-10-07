@@ -35,6 +35,9 @@
 - `scopeMatches` and `missingScopes` are also exported from the browser-safe `@nexo-alpha/core/model`.
 - Lists on SQLite run in SQL: `NexoDocumentStore.query` (optional) filters, searches, sorts and pages in the store, and `NexoDocumentStore.index` (optional) adds expression indexes. `resource()` uses both, and indexes `ref` fields by default (`indexes` option). Other stores use `queryDocuments()`, which follows the same rules, and a randomized test checks the two give identical results. On 50,000 rows, one customer's orders take 3 ms instead of 160 ms.
 
+**Data (`@nexo-alpha/data`, new)**
+- The data layer in one import: `model`, `field`, `resource`, document stores, `queryDocuments`, `createFiles` and the related types, plus a browser-safe `@nexo-alpha/data/model`. It re-exports `@nexo-alpha/core`: same functions and types, no second implementation.
+
 **Frontend (`@nexo-alpha/frontend`)**
 - `client.session` (`NexoSession`, persisted in localStorage in browsers) and `client.auth` (login, register, logout, me). The session token is sent on every request, and a 401 for it signs the client out.
 - `client.files` (`NexoFilesClient`: upload, url, info, download, delete) and `client.request(path, init, read)` for non-JSON responses. `NexoForm` renders `field.file()` as a file picker that uploads on selection, and `NexoTable` links to the file.

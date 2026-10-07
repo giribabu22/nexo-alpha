@@ -192,7 +192,9 @@ Run on 2026-10-06 with Node 22.19, `turbo run build typecheck test --force` (no 
 during this work, was reviewed and removed (2026-10-06). Three of its ideas were ported into
 core with tests: field descriptions (`.describe()`), change events (`resource({ onChange })`)
 and per-operation scopes (`auth: { delete: [...] }`). Its cursor pagination and ULID-style ids
-were not ported; cursor pagination is a candidate for a later release.
+were not ported; cursor pagination is a candidate for a later release. The package name
+`@nexo-alpha/data` was then reused (2026-10-07) for a thin re-export of core's data layer, so it is
+installable on its own without a second implementation.
 
 ## F. Migration
 
