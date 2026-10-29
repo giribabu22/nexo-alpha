@@ -183,7 +183,8 @@ export type { DocumentQuery, DocumentQueryResult, DocumentScalar } from "./docum
 
 export type {
   NexoDocumentStore,
-  SqliteDocumentStoreOptions
+  SqliteDocumentStoreOptions,
+  DocumentWrite
 } from "./storage.js";
 
 export type {

@@ -21,7 +21,7 @@ import { AsyncLocalStorage } from "node:async_hooks";
 import type { NexoApi, NexoApiAuth, NexoRequestContext } from "./api.js";
 import { NexoHttpError } from "./errors.js";
 import type { NexoModule } from "./module.js";
-import type { NexoDocumentStore } from "./storage.js";
+import type { DocumentWrite, NexoDocumentStore } from "./storage.js";
 import type { DocumentQuery, DocumentScalar } from "./document-query.js";
 
 const PROJECT_ID = /^[a-z0-9][a-z0-9-]{0,62}$/;
@@ -84,6 +84,15 @@ export function scopeByProject(store: NexoDocumentStore, options: ScopeByProject
     replaceIf: async (collection, id, expected, next) => store.replaceIf(scoped(collection), id, expected, next),
     ...(store.insert !== undefined
       ? { insert: async (collection: string, id: string, document: unknown) => store.insert!(scoped(collection), id, document) }
+      : {}),
+    ...(store.entries !== undefined
+      ? { entries: async <T>(collection: string) => store.entries!<T>(scoped(collection)) }
+      : {}),
+    ...(store.writeBatch !== undefined
+      ? {
+        writeBatch: async (writes: readonly DocumentWrite[]) =>
+          store.writeBatch!(writes.map((write) => ({ ...write, collection: scoped(write.collection) })))
+      }
       : {}),
     ...(store.query !== undefined
       ? { query: async <T>(collection: string, query: DocumentQuery) => store.query!<T>(scoped(collection), query) }

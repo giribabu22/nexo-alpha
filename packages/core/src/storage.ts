@@ -64,8 +64,51 @@ export interface NexoDocumentStore {
   index?(collection: string, field: string, options?: { readonly default?: DocumentScalar | undefined }): Promise<void>;
   /** Every document in `collection`, in first-insertion order. */
   list<T = unknown>(collection: string): Promise<T[]>;
+  /**
+   * Like `list`, with each document's id. Optional; migrations need it,
+   * because not every document stores its id inside it.
+   */
+  entries?<T = unknown>(collection: string): Promise<Array<[id: string, document: T]>>;
+  /**
+   * Applies every write, or none: each one only if its document still equals
+   * `expected` (compared by JSON serialization, as for `replaceIf`). Returns
+   * false, writing nothing, if any differs. Optional; migrations need it.
+   * The built-in stores apply the whole batch in one synchronous step (SQLite:
+   * one transaction), so nothing else interleaves.
+   */
+  writeBatch?(writes: readonly DocumentWrite[]): Promise<boolean>;
   /** Releases resources (file handles, connections). The store must not be used afterwards. */
   close(): Promise<void>;
+}
+
+/** One write of a {@link NexoDocumentStore.writeBatch}. */
+export interface DocumentWrite {
+  readonly collection: string;
+  readonly id: string;
+  /** The document as last read; `undefined` means it must not exist. */
+  readonly expected: unknown;
+  /** The document to store; `undefined` deletes it. */
+  readonly next: unknown;
+}
+
+interface CheckedWrite extends DocumentWrite {
+  readonly expectedJson: string | undefined;
+  readonly nextJson: string | undefined;
+}
+
+/** Serializes a batch up front, so a bad document or a repeated id fails before anything is written. */
+function checkWrites(writes: readonly DocumentWrite[]): CheckedWrite[] {
+  const seen = new Set<string>();
+  return writes.map((write) => {
+    const key = JSON.stringify([write.collection, write.id]);
+    if (seen.has(key)) throw new TypeError(`writeBatch: "${write.collection}/${write.id}" is written twice.`);
+    seen.add(key);
+    return {
+      ...write,
+      expectedJson: write.expected === undefined ? undefined : serialize(write.expected),
+      nextJson: write.next === undefined ? undefined : serialize(write.next)
+    };
+  });
 }
 
 function serialize(document: unknown): string {
@@ -123,6 +166,24 @@ export function createInMemoryDocumentStore(): NexoDocumentStore {
     },
     async list<T>(collection: string) {
       return [...(collections.get(collection)?.values() ?? [])].map((json) => JSON.parse(json) as T);
+    },
+    async entries<T>(collection: string) {
+      return [...(collections.get(collection)?.entries() ?? [])].map(([id, json]): [string, T] => [id, JSON.parse(json) as T]);
+    },
+    async writeBatch(writes) {
+      // Checked, then applied, with no await in between: nothing interleaves.
+      const checked = checkWrites(writes);
+      if (checked.some((w) => collections.get(w.collection)?.get(w.id) !== w.expectedJson)) return false;
+      for (const w of checked) {
+        let docs = collections.get(w.collection);
+        if (docs === undefined) {
+          docs = new Map();
+          collections.set(w.collection, docs);
+        }
+        if (w.nextJson === undefined) docs.delete(w.id);
+        else docs.set(w.id, w.nextJson);
+      }
+      return true;
     },
     async close() {
       collections.clear();
@@ -207,6 +268,26 @@ export function createFileDocumentStore(filePath: string): NexoDocumentStore {
     return pending;
   }
 
+  /** Set while a writeBatch is writing the file; other changes wait for it. */
+  let batching: Promise<void> | undefined;
+
+  /**
+   * Runs `change` on the data once no batch is in progress, in the same step
+   * as that check. `change` must call persist() itself (and return its
+   * promise wrapped, so it isn't awaited here), so a batch starting afterwards
+   * finds the save pending and waits for it.
+   */
+  async function mutate<T>(change: (all: FileContents) => T): Promise<T> {
+    let all = await data();
+    while (batching !== undefined) {
+      await batching;
+      all = await data();
+    }
+    return change(all);
+  }
+
+  const json = (document: unknown) => (document === undefined ? undefined : JSON.stringify(document));
+
   return {
     async get<T>(collection: string, id: string) {
       const document = (await data())[collection]?.[id];
@@ -215,17 +296,21 @@ export function createFileDocumentStore(filePath: string): NexoDocumentStore {
 
     async put(collection, id, document) {
       const copy = clone(document);
-      const all = await data();
-      all[collection] = { ...all[collection], [id]: copy };
-      await persist();
+      await mutate((all) => {
+        all[collection] = { ...all[collection], [id]: copy };
+        return persist();
+      });
     },
 
     async delete(collection, id) {
-      const all = await data();
-      const docs = all[collection];
-      if (docs === undefined || !(id in docs)) return false;
-      delete docs[id];
-      await persist();
+      const saved = await mutate((all) => {
+        const docs = all[collection];
+        if (docs === undefined || !(id in docs)) return undefined;
+        delete docs[id];
+        return { saved: persist() };
+      });
+      if (saved === undefined) return false;
+      await saved.saved;
       return true;
     },
 
@@ -233,25 +318,67 @@ export function createFileDocumentStore(filePath: string): NexoDocumentStore {
       return clone(Object.values((await data())[collection] ?? {}) as T[]);
     },
 
+    async entries<T>(collection: string) {
+      return Object.entries(clone((await data())[collection] ?? {})) as Array<[string, T]>;
+    },
+
     async replaceIf(collection, id, expected, next) {
       const expectedJson = serialize(expected);
       const copy = clone(next);
-      const all = await data();
-      const current = all[collection]?.[id];
-      if (current === undefined || JSON.stringify(current) !== expectedJson) return false;
-      all[collection] = { ...all[collection], [id]: copy };
-      await persist();
+      const saved = await mutate((all) => {
+        const current = all[collection]?.[id];
+        if (current === undefined || JSON.stringify(current) !== expectedJson) return undefined;
+        all[collection] = { ...all[collection], [id]: copy };
+        return { saved: persist() };
+      });
+      if (saved === undefined) return false;
+      await saved.saved;
       return true;
     },
 
     async insert(collection, id, document) {
       const copy = clone(document);
-      const all = await data();
-      // No await between the check and the write, so this is atomic within the process.
-      if (all[collection]?.[id] !== undefined) return false;
-      all[collection] = { ...all[collection], [id]: copy };
-      await persist();
+      // The check and the write happen in one step, so this is atomic within the process.
+      const saved = await mutate((all) => {
+        if (all[collection]?.[id] !== undefined) return undefined;
+        all[collection] = { ...all[collection], [id]: copy };
+        return { saved: persist() };
+      });
+      if (saved === undefined) return false;
+      await saved.saved;
       return true;
+    },
+
+    /**
+     * Writes a changed copy of the data to the file first, and only then makes
+     * it the data readers see: if the write fails, the file and memory are both
+     * as they were. Other changes wait until it is done.
+     */
+    async writeBatch(writes) {
+      const checked = checkWrites(writes);
+      while (batching !== undefined) await batching;
+      let release!: () => void;
+      batching = new Promise<void>((resolve) => (release = resolve));
+      try {
+        // Let earlier changes finish saving, so the file matches memory before this write.
+        await pending?.catch(() => undefined);
+        await writing.catch(() => undefined);
+        const all = await data(); // a failed save drops the cache; this reloads it
+        if (checked.some((w) => json(all[w.collection]?.[w.id]) !== w.expectedJson)) return false;
+        const copy: FileContents = { ...all };
+        for (const w of checked) {
+          const docs = { ...copy[w.collection] };
+          if (w.nextJson === undefined) delete docs[w.id];
+          else docs[w.id] = JSON.parse(w.nextJson) as unknown;
+          copy[w.collection] = docs;
+        }
+        await writeSnapshot(JSON.stringify(copy, null, 2));
+        cache = copy;
+        return true;
+      } finally {
+        batching = undefined;
+        release();
+      }
     },
 
     async close() {
@@ -330,6 +457,7 @@ export async function createSqliteDocumentStore(
   );
   const deleteStmt = db.prepare(`DELETE FROM ${table} WHERE collection = ? AND id = ?`);
   const listStmt = db.prepare(`SELECT data FROM ${table} WHERE collection = ? ORDER BY rowid`);
+  const entriesStmt = db.prepare(`SELECT id, data FROM ${table} WHERE collection = ? ORDER BY rowid`);
   const insertStmt = db.prepare(
     `INSERT INTO ${table} (collection, id, data, updated_at) VALUES (?, ?, ?, ?) ON CONFLICT (collection, id) DO NOTHING`
   );
@@ -444,6 +572,40 @@ export async function createSqliteDocumentStore(
     async insert(collection, id, document) {
       open();
       return Number(insertStmt.run(collection, id, serialize(document), new Date().toISOString()).changes) > 0;
+    },
+    async entries<T>(collection: string) {
+      open();
+      return (entriesStmt.all(collection) as { id: string; data: string }[]).map((row): [string, T] => [row.id, JSON.parse(row.data) as T]);
+    },
+    /**
+     * One transaction, run synchronously, so no other call on this connection
+     * gets inside it. IMMEDIATE takes the write lock up front, so other
+     * processes wait (busy timeout) rather than change rows between the
+     * checks and the writes.
+     */
+    async writeBatch(writes) {
+      open();
+      const checked = checkWrites(writes);
+      const now = new Date().toISOString();
+      db.exec("BEGIN IMMEDIATE");
+      try {
+        for (const w of checked) {
+          const row = getStmt.get(w.collection, w.id) as { data: string } | undefined;
+          if (row?.data !== w.expectedJson) {
+            db.exec("ROLLBACK");
+            return false;
+          }
+        }
+        for (const w of checked) {
+          if (w.nextJson === undefined) deleteStmt.run(w.collection, w.id);
+          else putStmt.run(w.collection, w.id, w.nextJson, now);
+        }
+        db.exec("COMMIT");
+        return true;
+      } catch (error) {
+        db.exec("ROLLBACK");
+        throw error;
+      }
     },
     async query<T>(collection: string, query: DocumentQuery) {
       open();
