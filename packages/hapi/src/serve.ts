@@ -16,11 +16,15 @@
  * anything it does can be done by hand, and each piece can be replaced: pass
  * a `store`, an `app`, ready-made `modules`, or a `(store) => resource(…)`
  * function for a resource with options.
+ *
+ * With `migrations`, pending ones are applied before the app starts; if one
+ * fails, nothing listens (docs/architecture/migrations-design.md §8).
  */
 
 import type Hapi from "@hapi/hapi";
 import {
   NexoConfigurationError,
+  NexoMigrationError,
   createApplication,
   createAuth,
   createDiskBlobStore,
@@ -29,17 +33,22 @@ import {
   createInMemoryDocumentStore,
   createSqliteDocumentStore,
   isResource,
+  migrationStatus,
   resource,
+  runMigrations,
   type CreateAuthOptions,
   type CreateFilesOptions,
+  type MigrationRunOptions,
   type NexoApplication,
   type NexoAuth,
   type NexoBlobStore,
   type NexoDocumentStore,
   type NexoFiles,
+  type NexoMigration,
   type NexoModel,
   type NexoModule,
-  type NexoResource
+  type NexoResource,
+  type RunMigrationsResult
 } from "@nexo-alpha/core";
 import { startHapiServer, type CreateHapiServerOptions } from "./create-server.js";
 
@@ -56,6 +65,16 @@ export type ServeFilesOptions = Omit<CreateFilesOptions, "store" | "blobs"> & {
   readonly blobs?: NexoBlobStore;
   /** Default: "data/files" */
   readonly directory?: string;
+};
+
+export type ServeMigrationsOptions = MigrationRunOptions & {
+  readonly list: readonly NexoMigration[];
+  /**
+   * Apply pending migrations before starting. Default: true. With false,
+   * `serve()` only checks, and refuses to start while any are pending (for
+   * teams that run `nexo migrate up` in their deploy pipeline).
+   */
+  readonly auto?: boolean;
 };
 
 export interface ServeOptions extends CreateHapiServerOptions {
@@ -80,6 +99,13 @@ export interface ServeOptions extends CreateHapiServerOptions {
   readonly app?: NexoApplication;
   /** Stop cleanly and exit on SIGINT (Ctrl+C) and SIGTERM. Default: true */
   readonly handleSignals?: boolean;
+  /**
+   * Migrations for `store`, applied before the app starts: a list, or
+   * `{ list, auto, allowDestructive, production, maxChanges }`. In production
+   * (`NODE_ENV=production`), destructive ones run only if their id is in
+   * `allowDestructive`. If any fails, `serve()` rejects and nothing listens.
+   */
+  readonly migrations?: readonly NexoMigration[] | ServeMigrationsOptions;
 }
 
 export interface NexoServedApp {
@@ -90,6 +116,8 @@ export interface NexoServedApp {
   readonly auth: NexoAuth | undefined;
   /** Present when `files` was set. */
   readonly files: NexoFiles | undefined;
+  /** What `migrations` applied at start; undefined without `migrations`. */
+  readonly migrations: RunMigrationsResult | undefined;
   /** e.g. "http://localhost:3000" */
   readonly url: string;
   /** The served resource for `model`, for calls from server code. Throws if the model isn't served. */
@@ -111,12 +139,12 @@ async function openStore(location: string): Promise<NexoDocumentStore> {
 export async function serve(options: ServeOptions = {}): Promise<NexoServedApp> {
   const {
     name, store: storeOption, resources = [], modules = [], auth: authOption, files: filesOption,
-    app: appOption, handleSignals = true, ...serverOptions
+    app: appOption, handleSignals = true, migrations: migrationsOption, ...serverOptions
   } = options;
 
   const app = appOption ?? createApplication({ name: name ?? "nexo-app" });
   // With nothing to store (e.g. an `app` whose resources have their own store), no database file is created.
-  const needsStore = resources.length > 0 || authOption !== undefined || filesOption !== undefined;
+  const needsStore = resources.length > 0 || authOption !== undefined || filesOption !== undefined || migrationsOption !== undefined;
   const ownsStore = typeof storeOption !== "object";
   const store = typeof storeOption === "object"
     ? storeOption
@@ -126,6 +154,30 @@ export async function serve(options: ServeOptions = {}): Promise<NexoServedApp> 
 
   let server: Hapi.Server | undefined;
   try {
+    const log = (message: string, fields: Record<string, unknown>): void => {
+      if (serverOptions.logging === false) return;
+      if (serverOptions.logger !== undefined) serverOptions.logger.info(message, fields);
+      else if (process.env.NODE_ENV !== "test") console.log(`${message} ${JSON.stringify(fields)}`);
+    };
+    let migrations: RunMigrationsResult | undefined;
+    if (migrationsOption !== undefined) {
+      const { list, auto = true, ...runOptions }: ServeMigrationsOptions = Array.isArray(migrationsOption)
+        ? { list: migrationsOption as readonly NexoMigration[] }
+        : (migrationsOption as ServeMigrationsOptions);
+      if (auto) {
+        migrations = await runMigrations(store, list, runOptions);
+        for (const applied of migrations.applied) log("migration applied", { ...applied });
+      } else {
+        const { pending } = await migrationStatus(store, list);
+        if (pending.length > 0) {
+          throw new NexoMigrationError(
+            `serve(): ${pending.length} migration${pending.length === 1 ? " is" : "s are"} pending (${pending.map((m) => m.id).join(", ")}) ` +
+              "and migrations.auto is false. Run nexo migrate up first."
+          );
+        }
+      }
+    }
+
     let auth: NexoAuth | undefined;
     if (authOption !== undefined) {
       const { secret = process.env.AUTH_SECRET, ...rest } = authOption === true ? {} : authOption;
@@ -198,6 +250,7 @@ export async function serve(options: ServeOptions = {}): Promise<NexoServedApp> 
       store,
       auth,
       files,
+      migrations,
       url,
       resource<M extends NexoModel>(model: M): NexoResource<M> {
         const found = served.get(model);

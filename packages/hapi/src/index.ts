@@ -20,6 +20,7 @@ export type {
   ServeResource,
   ServeAuthOptions,
   ServeFilesOptions,
+  ServeMigrationsOptions,
   NexoServedApp
 } from "./serve.js";
 
