@@ -245,3 +245,36 @@ await store.close();
     await fs.rm(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
   }
 });
+
+test("DocumentStore: an unusable path is explained, naming it, why, and what to change", async () => {
+  const { NexoConfigurationError } = await import("../dist/index.js");
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), "nexo-store-path-"));
+  try {
+    const blocked = path.join(dir, "blocked");
+    await fs.writeFile(blocked, "a file where a folder should be");
+    const explained = (pattern, code) => (error) => {
+      assert.ok(error instanceof NexoConfigurationError, String(error));
+      assert.match(error.message, pattern);
+      assert.match(error.message, /Choose a path in a folder that can be created and written to \(the store option of serve\(\)\)\./);
+      if (code !== undefined) assert.ok(code.includes(error.cause?.code), `cause ${error.cause?.code}`);
+      return true;
+    };
+
+    // JSON file store: the folder can't be created (the error comes with the first write).
+    const file = createFileDocumentStore(path.join(blocked, "app.json"));
+    await assert.rejects(file.put("tasks", "t1", { id: "t1" }), explained(/^Can't use .*blocked.app\.json for the data file: .*blocked is a file, where a folder is needed \((EEXIST|ENOTDIR)\)/, ["EEXIST", "ENOTDIR"]));
+    // JSON file store: the path is a folder.
+    const folder = createFileDocumentStore(dir);
+    await assert.rejects(folder.list("tasks"), explained(/is a folder, where a file is needed \(EISDIR\)/, ["EISDIR"]));
+
+    if (HAS_SQLITE) {
+      await assert.rejects(
+        createSqliteDocumentStore(path.join(blocked, "app.db")),
+        explained(/^Can't use .*blocked.app\.db for the database: .*blocked is a file, where a folder is needed \((EEXIST|ENOTDIR)\)/, ["EEXIST", "ENOTDIR"])
+      );
+      await assert.rejects(createSqliteDocumentStore(dir), explained(/for the database: .* is a folder, where a file is needed \(EISDIR\)/, ["EISDIR"]));
+    }
+  } finally {
+    await fs.rm(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
+  }
+});

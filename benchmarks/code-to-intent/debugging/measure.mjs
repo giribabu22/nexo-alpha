@@ -92,9 +92,10 @@ A crossed-out criterion wasn't met. One criterion was corrected after the first 
 too narrow: "where" for the unprotected API required the text \`tasks\`, which the hand-written API's
 name (\`createTask\`) doesn't contain; it now asks whether the API is named, which credits **before**.
 
-Read the totals with the details below: for the port and database mistakes both variants pass
-Node's own error through unchanged, and the \`missing-scope\` "fix" credit comes from the
-\`missingScopes\` field naming what's missing, not from advice.
+Read the totals with the details below. The port and database messages are explained in
+\`startHapiServer\` and the stores, which both variants use, so they improved both (in the first
+run both passed Node's own error through: 2/3 each). The \`missing-scope\` "fix" credit comes from
+the \`missingScopes\` field naming what's missing, not from advice.
 
 This measures what the framework tells a developer. How long people take to find and fix each
 mistake needs people; see [TIME-PROTOCOL.md](./TIME-PROTOCOL.md).

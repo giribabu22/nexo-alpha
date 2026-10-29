@@ -333,12 +333,34 @@ export async function createHapiServer(
   return server;
 }
 
+/**
+ * Explains why the server couldn't listen, naming the port and host and what
+ * to change, with Node's error as `cause`. Other errors are returned unchanged.
+ */
+export function explainListenError(error: unknown, port: number, host: string): unknown {
+  const code = (error as NodeJS.ErrnoException | undefined)?.code;
+  const at = `port ${port} on ${host}`;
+  const message =
+    code === "EADDRINUSE"
+      ? `Can't listen on ${at}: another process is already using it (EADDRINUSE). Stop that process, or choose another port (the port option; serve() also reads PORT).`
+      : code === "EACCES"
+        ? `Can't listen on ${at}: permission denied (EACCES). Ports below 1024 need extra rights on most systems; choose a port of 1024 or higher (the port option; serve() also reads PORT).`
+        : code === "EADDRNOTAVAIL"
+          ? `Can't listen on ${at}: "${host}" isn't an address of this machine (EADDRNOTAVAIL). Use "localhost", or "0.0.0.0" to listen on every network interface (the host option).`
+          : undefined;
+  return message === undefined ? error : new NexoConfigurationError(message, { cause: error });
+}
+
 export async function startHapiServer(
   app: NexoApplication,
   options: CreateHapiServerOptions = {}
 ): Promise<Hapi.Server> {
   const server = await createHapiServer(app, options);
-  await server.start();
+  try {
+    await server.start();
+  } catch (error) {
+    throw explainListenError(error, options.port ?? 3000, options.host ?? "localhost");
+  }
 
   if (options.bindLifecycle !== false) {
     const onStopping = async () => {

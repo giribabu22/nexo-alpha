@@ -11,9 +11,10 @@ A crossed-out criterion wasn't met. One criterion was corrected after the first 
 too narrow: "where" for the unprotected API required the text `tasks`, which the hand-written API's
 name (`createTask`) doesn't contain; it now asks whether the API is named, which credits **before**.
 
-Read the totals with the details below: for the port and database mistakes both variants pass
-Node's own error through unchanged, and the `missing-scope` "fix" credit comes from the
-`missingScopes` field naming what's missing, not from advice.
+Read the totals with the details below. The port and database messages are explained in
+`startHapiServer` and the stores, which both variants use, so they improved both (in the first
+run both passed Node's own error through: 2/3 each). The `missing-scope` "fix" credit comes from
+the `missingScopes` field naming what's missing, not from advice.
 
 This measures what the framework tells a developer. How long people take to find and fix each
 mistake needs people; see [TIME-PROTOCOL.md](./TIME-PROTOCOL.md).
@@ -22,12 +23,12 @@ mistake needs people; see [TIME-PROTOCOL.md](./TIME-PROTOCOL.md).
 |---|---|---|
 | Sign-in configured without a secret (configuration) | at startup, 0/3 | at startup, 3/3 |
 | A protected API, but no way to check sign-ins (configuration) | at startup, 3/3 | at startup, 3/3 |
-| The database path can't be created (a file is in the way) (database) | at startup, 2/3 | at startup, 2/3 |
-| The port is already taken (configuration) | at startup, 2/3 | at startup, 2/3 |
+| The database path can't be created (a file is in the way) (database) | at startup, 3/3 | at startup, 3/3 |
+| The port is already taken (configuration) | at startup, 3/3 | at startup, 3/3 |
 | A signed-in user without the scope a write needs (authorization) | on the request, 3/3 | on the request, 3/3 |
 | A client sends a misspelled field (titel) (client mistake) | not detected, 0/3 | on the request, 3/3 |
 | A field renamed in the model; stored records still use the old name (data drift) | not detected, 0/3 | by `nexo migrate check`, 3/3 |
-| **Total** | detected 5/7, 4 at startup, 10/21 points | detected 7/7, 4 at startup, 19/21 points |
+| **Total** | detected 5/7, 4 at startup, 12/21 points | detected 7/7, 4 at startup, 21/21 points |
 
 ## What each variant said
 
@@ -43,13 +44,13 @@ mistake needs people; see [TIME-PROTOCOL.md](./TIME-PROTOCOL.md).
 
 ### The database path can't be created (a file is in the way)
 
-- **before** (at startup; cause where ~~fix~~): EEXIST: file already exists, mkdir 'C:\Users\durga\AppData\Local\Temp\nexo-debugging-database-location-unusable-MpErku\blocked' EEXIST
-- **after** (at startup; cause where ~~fix~~): EEXIST: file already exists, mkdir 'C:\Users\durga\AppData\Local\Temp\nexo-debugging-database-location-unusable-WpHwtY\blocked' EEXIST
+- **before** (at startup; cause where fix): Can't use C:\Users\durga\AppData\Local\Temp\nexo-debugging-database-location-unusable-kQBRin\blocked\app.db for the database: C:\Users\durga\AppData\Local\Temp\nexo-debugging-database-location-unusable-kQBRin\blocked is a file, where a folder is needed (EEXIST). Choose a path in a folder that can be created and written to (the store option of serve()). NEXO_CONFIGURATION_ERROR
+- **after** (at startup; cause where fix): Can't use C:\Users\durga\AppData\Local\Temp\nexo-debugging-database-location-unusable-tllgkT\blocked\app.db for the database: C:\Users\durga\AppData\Local\Temp\nexo-debugging-database-location-unusable-tllgkT\blocked is a file, where a folder is needed (EEXIST). Choose a path in a folder that can be created and written to (the store option of serve()). Pass store: "data/app.json" to use a JSON fil…
 
 ### The port is already taken
 
-- **before** (at startup; cause where ~~fix~~): listen EADDRINUSE: address already in use ::1:58350 EADDRINUSE
-- **after** (at startup; cause where ~~fix~~): listen EADDRINUSE: address already in use ::1:58351 EADDRINUSE
+- **before** (at startup; cause where fix): Can't listen on port 57917 on localhost: another process is already using it (EADDRINUSE). Stop that process, or choose another port (the port option; serve() also reads PORT). NEXO_CONFIGURATION_ERROR
+- **after** (at startup; cause where fix): Can't listen on port 57918 on localhost: another process is already using it (EADDRINUSE). Stop that process, or choose another port (the port option; serve() also reads PORT). NEXO_CONFIGURATION_ERROR
 
 ### A signed-in user without the scope a write needs
 
@@ -58,10 +59,10 @@ mistake needs people; see [TIME-PROTOCOL.md](./TIME-PROTOCOL.md).
 
 ### A client sends a misspelled field (titel)
 
-- **before** (not detected; ~~cause~~ ~~where~~ ~~fix~~): 200 {"id":"08002a63-3867-4d40-b965-f4050fd7162c","title":"x"}
+- **before** (not detected; ~~cause~~ ~~where~~ ~~fix~~): 200 {"id":"f83b1499-5536-48a2-acf3-27c226bb9c52","title":"x"}
 - **after** (on the request; cause where fix): 400 {"error":"Validation failed","errors":["Field \"body.titel\" is not a field of model \"tasks\"."]}
 
 ### A field renamed in the model; stored records still use the old name
 
 - **before** (not detected; ~~cause~~ ~~where~~ ~~fix~~): 200 {"items":[{"id":"t1","name":"Old task","createdAt":"2026-10-01T00:00:00.000Z","updatedAt":"2026-10-01T00:00:00.000Z"}],"total":1,"limit":50,"offset":0}
-- **after** (by `nexo migrate check`; cause where fix): Checked C:\Users\durga\AppData\Local\Temp\nexo-debugging-model-changed-without-migration-TDwWcQ\app.json: tasks (1) 1 record doesn't match the model: tasks/t1: Field "body.name" is not a field of model "tasks".; Field "body.title" is required. Write a migration that brings them in line: nexo migrate create <name>
+- **after** (by `nexo migrate check`; cause where fix): Checked C:\Users\durga\AppData\Local\Temp\nexo-debugging-model-changed-without-migration-fNNav6\app.json: tasks (1) 1 record doesn't match the model: tasks/t1: Field "body.name" is not a field of model "tasks".; Field "body.title" is required. Write a migration that brings them in line: nexo migrate create <name>

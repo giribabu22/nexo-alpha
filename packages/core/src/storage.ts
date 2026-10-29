@@ -113,6 +113,26 @@ interface CheckedWrite extends DocumentWrite {
   readonly nextJson: string | undefined;
 }
 
+/**
+ * Explains why a store can't use a path, naming the path, the reason and what
+ * to change, with Node's error as `cause`. Errors that aren't about the path
+ * (a full disk, say) are returned unchanged.
+ */
+function explainPathError(error: unknown, file: string, what: string, option = "the store option of serve()"): unknown {
+  const { code, path: at = file } = (error ?? {}) as NodeJS.ErrnoException;
+  const reason =
+    code === "EEXIST" || code === "ENOTDIR" ? `${at} is a file, where a folder is needed`
+    : code === "EISDIR" ? `${at} is a folder, where a file is needed`
+    : code === "EACCES" || code === "EPERM" ? `there is no permission to write ${at}`
+    : code === "EROFS" ? `${at} is on a read-only file system`
+    : undefined;
+  if (reason === undefined) return error;
+  return new NexoConfigurationError(
+    `Can't use ${file} for the ${what}: ${reason} (${code}). Choose a path in a folder that can be created and written to (${option}).`,
+    { cause: error }
+  );
+}
+
 /** Serializes a batch up front, so a bad document or a repeated id fails before anything is written. */
 function checkWrites(writes: readonly DocumentWrite[]): CheckedWrite[] {
   const seen = new Set<string>();
@@ -240,7 +260,7 @@ export function createFileDocumentStore(filePath: string): NexoDocumentStore {
       content = await fs.readFile(filePath, "utf-8");
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code === "ENOENT") return {};
-      throw error;
+      throw explainPathError(error, filePath, "data file");
     }
     return content.trim() === "" ? {} : (JSON.parse(content) as FileContents);
   }
@@ -261,11 +281,15 @@ export function createFileDocumentStore(filePath: string): NexoDocumentStore {
   }
 
   async function writeSnapshot(snapshot: string): Promise<void> {
-    await fs.mkdir(path.dirname(filePath), { recursive: true });
-    writeCounter += 1;
-    const tempPath = `${filePath}.${process.pid}.${writeCounter}.tmp`;
-    await fs.writeFile(tempPath, snapshot, "utf-8");
-    await fs.rename(tempPath, filePath);
+    try {
+      await fs.mkdir(path.dirname(filePath), { recursive: true });
+      writeCounter += 1;
+      const tempPath = `${filePath}.${process.pid}.${writeCounter}.tmp`;
+      await fs.writeFile(tempPath, snapshot, "utf-8");
+      await fs.rename(tempPath, filePath);
+    } catch (error) {
+      throw explainPathError(error, filePath, "data file");
+    }
   }
 
   /** Resolves once every change made before this call is on disk. */
@@ -414,7 +438,9 @@ export function createFileDocumentStore(filePath: string): NexoDocumentStore {
       const target = path.join(directory ?? path.join(path.dirname(filePath), "backups"), `${name}.json`);
       return exclusive(async (all) => {
         const counts = Object.fromEntries(Object.entries(all).map(([collection, docs]) => [collection, Object.keys(docs).length]));
-        await fs.mkdir(path.dirname(target), { recursive: true });
+        await fs.mkdir(path.dirname(target), { recursive: true }).catch((error: unknown) => {
+          throw explainPathError(error, path.dirname(target), "backups", "the backup directory option");
+        });
         try {
           // "wx": never overwrite an existing backup.
           await fs.writeFile(target, JSON.stringify(all, null, 2), { encoding: "utf-8", flag: "wx" });
@@ -517,9 +543,26 @@ export async function createSqliteDocumentStore(
   }
 
   const inMemory = filePath === ":memory:";
-  if (!inMemory) await fs.mkdir(path.dirname(filePath), { recursive: true });
+  if (!inMemory) {
+    await fs.mkdir(path.dirname(filePath), { recursive: true }).catch((error: unknown) => {
+      throw explainPathError(error, filePath, "database");
+    });
+  }
 
-  const db = new sqlite.DatabaseSync(filePath);
+  let db: SqliteDatabase;
+  try {
+    db = new sqlite.DatabaseSync(filePath);
+  } catch (error) {
+    // SQLite only says "unable to open database file"; say why when we can tell.
+    if (await fs.stat(filePath).then((stats) => stats.isDirectory(), () => false)) {
+      throw explainPathError(Object.assign(new Error("is a directory"), { code: "EISDIR", path: filePath }), filePath, "database");
+    }
+    throw new NexoConfigurationError(
+      `Can't open ${filePath} as the database: ${error instanceof Error ? error.message : String(error)}. ` +
+        "Check that its folder can be written to (the store option of serve()).",
+      { cause: error }
+    );
+  }
   /**
    * Another process opening the same new database at the same moment can make
    * these fail with SQLITE_BUSY: switching to WAL needs an exclusive lock, and
@@ -690,7 +733,9 @@ export async function createSqliteDocumentStore(
       open();
       if (inMemory) return undefined;
       const target = path.join(directory ?? path.join(path.dirname(filePath), "backups"), `${name}.db`);
-      await fs.mkdir(path.dirname(target), { recursive: true });
+      await fs.mkdir(path.dirname(target), { recursive: true }).catch((error: unknown) => {
+        throw explainPathError(error, path.dirname(target), "backups", "the backup directory option");
+      });
       for (let attempt = 0; attempt < 3; attempt++) {
         if (await fs.access(target).then(() => true, () => false)) {
           throw new NexoConfigurationError(`Backup ${target} already exists; backups are never overwritten.`);

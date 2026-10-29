@@ -1,8 +1,9 @@
 export class NexoError extends Error {
   readonly code: string;
 
-  constructor(code: string, message: string) {
-    super(message);
+  /** `options.cause`: the error this one explains, e.g. Node's EADDRINUSE. */
+  constructor(code: string, message: string, options?: ErrorOptions) {
+    super(message, options);
 
     this.name = "NexoError";
     this.code = code;
@@ -10,8 +11,8 @@ export class NexoError extends Error {
 }
 
 export class NexoConfigurationError extends NexoError {
-  constructor(message: string) {
-    super("NEXO_CONFIGURATION_ERROR", message);
+  constructor(message: string, options?: ErrorOptions) {
+    super("NEXO_CONFIGURATION_ERROR", message, options);
     this.name = "NexoConfigurationError";
   }
 }
