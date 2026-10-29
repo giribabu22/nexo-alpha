@@ -76,21 +76,21 @@ Nexo is built as a set of modular, composable packages published under the `@nex
 
 | Package | npm | Description |
 |---|---|---|
-| [`@nexo-alpha/core`](./packages/core/README.md) | `0.7.0` | Core runtime: applications, modules, services, declarative APIs, jobs, lifecycle, and event bus. Also the data layer ([docs](./packages/core/README.md#data-layer-models-resources-and-stores-07)): `model`, `resource`, `api.*`, `createAuth`, `createFiles`, and document stores (memory, JSON file, SQLite). |
-| [`@nexo-alpha/data`](./packages/data/README.md) | `0.7.0` | The data layer on its own: models, resources (CRUD + REST), document stores, list queries and file uploads. Re-exports `@nexo-alpha/core`, so the code is identical. |
-| [`@nexo-alpha/context`](./packages/context/README.md) | `0.7.0` | Application context manifest, knowledge journal (decisions, constraints, state, intents), and structure hashing. |
-| [`@nexo-alpha/decision`](./packages/decision/README.md) | `0.7.0` | Deterministic AI decision engine. Rule chains (`permission`, `state`, `constraint`, `confirmation`, `escalation`, `rateLimit`). |
-| [`@nexo-alpha/agent`](./packages/agent/README.md) | `0.7.0` | AI agent orchestration layer wiring `UNDERSTAND → KNOW → DECIDE → ACT → VERIFY`, tool registries, and autonomous workflows. |
-| [`@nexo-alpha/behavior`](./packages/behavior/README.md) | `0.7.0` | Typed bounded behavior layer: micro-decision primitives (`choice`, `boolean`, `score`), policies, and telemetry. |
-| [`@nexo-alpha/web`](./packages/web/README.md) | `0.7.0` | Web search, evidence extraction, and claim verification pipeline for AI research. |
-| [`@nexo-alpha/tools`](./packages/tools/README.md) | `0.7.0` | AI & developer introspection: read/write interfaces, verification, live metrics, source scanning, and knowledge graph. |
-| [`@nexo-alpha/scheduler`](./packages/scheduler/README.md) | `0.7.0` | Dependency-free cron scheduler for `NexoJob`s, plus a persistent background job queue with retries. |
-| [`@nexo-alpha/webhooks`](./packages/webhooks/README.md) | `0.7.0` | Signed, retried webhook delivery with subscription management and receiver-side verification. |
-| [`@nexo-alpha/integrations`](./packages/integrations/README.md) | `0.7.0` | Agent toolkits for GitHub and Slack, gated by RBAC like any other tool. |
-| [`@nexo-alpha/hapi`](./packages/hapi/README.md) | `0.7.0` | HTTP adapter turning declared `NexoApi`s into running Hapi.js servers with auth, validation, rate limits, request IDs, raw-body uploads, and lifecycle hooks. |
-| [`@nexo-alpha/cli`](./packages/cli/README.md) | `0.7.0` | Terminal CLI for architecture inspection, dependency impact tracing, health checks, knowledge graphs, and code generators (`generate resource`, `generate page`, …). |
-| [`@nexo-alpha/frontend`](./packages/frontend/README.md) | `0.7.0` | Typed client (`client.resource`, `client.auth`, `client.files`), React hooks (`useResource`, `useAuth`), forms and tables generated from models, the `NexoApp` shell with routing, and UI dashboards. |
-| [`@nexo-alpha/create-nexo-app`](./packages/create-nexo-app/README.md) | `0.7.0` | Scaffolding CLI for generating starter templates. |
+| [`@nexo-alpha/core`](./packages/core/README.md) | `0.8.0` | Core runtime: applications, modules, services, declarative APIs, jobs, lifecycle, and event bus. Also the data layer ([docs](./packages/core/README.md#data-layer-models-resources-and-stores-07)): `model`, `resource`, `api.*`, `createAuth`, `createFiles`, and document stores (memory, JSON file, SQLite). |
+| [`@nexo-alpha/data`](./packages/data/README.md) | `0.8.0` | The data layer on its own: models, resources (CRUD + REST), document stores, list queries and file uploads. Re-exports `@nexo-alpha/core`, so the code is identical. |
+| [`@nexo-alpha/context`](./packages/context/README.md) | `0.8.0` | Application context manifest, knowledge journal (decisions, constraints, state, intents), and structure hashing. |
+| [`@nexo-alpha/decision`](./packages/decision/README.md) | `0.8.0` | Deterministic AI decision engine. Rule chains (`permission`, `state`, `constraint`, `confirmation`, `escalation`, `rateLimit`). |
+| [`@nexo-alpha/agent`](./packages/agent/README.md) | `0.8.0` | AI agent orchestration layer wiring `UNDERSTAND → KNOW → DECIDE → ACT → VERIFY`, tool registries, and autonomous workflows. |
+| [`@nexo-alpha/behavior`](./packages/behavior/README.md) | `0.8.0` | Typed bounded behavior layer: micro-decision primitives (`choice`, `boolean`, `score`), policies, and telemetry. |
+| [`@nexo-alpha/web`](./packages/web/README.md) | `0.8.0` | Web search, evidence extraction, and claim verification pipeline for AI research. |
+| [`@nexo-alpha/tools`](./packages/tools/README.md) | `0.8.0` | AI & developer introspection: read/write interfaces, verification, live metrics, source scanning, and knowledge graph. |
+| [`@nexo-alpha/scheduler`](./packages/scheduler/README.md) | `0.8.0` | Dependency-free cron scheduler for `NexoJob`s, plus a persistent background job queue with retries. |
+| [`@nexo-alpha/webhooks`](./packages/webhooks/README.md) | `0.8.0` | Signed, retried webhook delivery with subscription management and receiver-side verification. |
+| [`@nexo-alpha/integrations`](./packages/integrations/README.md) | `0.8.0` | Agent toolkits for GitHub and Slack, gated by RBAC like any other tool. |
+| [`@nexo-alpha/hapi`](./packages/hapi/README.md) | `0.8.0` | HTTP adapter turning declared `NexoApi`s into running Hapi.js servers with auth, validation, rate limits, request IDs, raw-body uploads, and lifecycle hooks. |
+| [`@nexo-alpha/cli`](./packages/cli/README.md) | `0.8.0` | Terminal CLI for architecture inspection, dependency impact tracing, health checks, knowledge graphs, and code generators (`generate resource`, `generate page`, …). |
+| [`@nexo-alpha/frontend`](./packages/frontend/README.md) | `0.8.0` | Typed client (`client.resource`, `client.auth`, `client.files`), React hooks (`useResource`, `useAuth`), forms and tables generated from models, the `NexoApp` shell with routing, and UI dashboards. |
+| [`@nexo-alpha/create-nexo-app`](./packages/create-nexo-app/README.md) | `0.8.0` | Scaffolding CLI for generating starter templates. |
 
 ---
 

@@ -1,6 +1,5 @@
 import { Template, TemplateFile } from "./types.js";
-
-const NEXO_VERSION = "^0.7.0";
+import { NEXO_VERSION } from "./version.js";
 
 /**
  * An agent workflow service on the production runtime: JWT auth, role-based

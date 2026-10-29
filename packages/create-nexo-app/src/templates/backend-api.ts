@@ -1,4 +1,5 @@
 import { Template, TemplateFile } from "./types.js";
+import { NEXO_VERSION } from "./version.js";
 
 export const backendApiTemplate: Template = {
   name: "backend-api",
@@ -138,10 +139,10 @@ npx nexo freshness --source-root src
               graph: "nexo graph --source-root src --out .nexo/knowledge-graph.json"
             },
             dependencies: {
-              "@nexo-alpha/core": "^0.7.0",
-              "@nexo-alpha/context": "^0.7.0",
-              "@nexo-alpha/hapi": "^0.7.0",
-              "@nexo-alpha/cli": "^0.7.0"
+              "@nexo-alpha/core": NEXO_VERSION,
+              "@nexo-alpha/context": NEXO_VERSION,
+              "@nexo-alpha/hapi": NEXO_VERSION,
+              "@nexo-alpha/cli": NEXO_VERSION
             },
             devDependencies: {
               "@types/node": "^20.11.0",

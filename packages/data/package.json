@@ -1,6 +1,6 @@
 {
   "name": "@nexo-alpha/data",
-  "version": "0.7.0",
+  "version": "0.8.0",
   "description": "Nexo's data layer in one import: models, resources (CRUD + REST), document stores, queries and file uploads. Re-exports @nexo-alpha/core.",
   "keywords": [
     "nexo",

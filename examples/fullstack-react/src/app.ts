@@ -28,7 +28,7 @@ import { createMetricsCollector, createMetricsApiModule } from "@nexo-alpha/tool
 
 export const app = createApplication({
   name: "fullstack-react-backend",
-  version: "0.7.0",
+  version: "0.8.0",
   description: "Nexo Fullstack React, AI Workflow & DSC Optimized Studio Backend"
 });
 

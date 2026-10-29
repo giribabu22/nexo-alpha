@@ -1,4 +1,5 @@
 import { Template, TemplateFile } from "./types.js";
+import { NEXO_VERSION } from "./version.js";
 
 export const minimalTemplate: Template = {
   name: "minimal",
@@ -25,8 +26,8 @@ data
               start: "node dist/index.js"
             },
             dependencies: {
-              "@nexo-alpha/core": "^0.7.0",
-              "@nexo-alpha/hapi": "^0.7.0"
+              "@nexo-alpha/core": NEXO_VERSION,
+              "@nexo-alpha/hapi": NEXO_VERSION
             },
             devDependencies: {
               "@types/node": "^20.11.0",

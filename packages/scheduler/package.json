@@ -1,6 +1,6 @@
 {
   "name": "@nexo-alpha/scheduler",
-  "version": "0.7.0",
+  "version": "0.8.0",
   "description": "Job scheduler/executor for the Nexo framework",
   "keywords": [
     "nexo",

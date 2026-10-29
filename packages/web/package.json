@@ -1,6 +1,6 @@
 {
   "name": "@nexo-alpha/web",
-  "version": "0.7.0",
+  "version": "0.8.0",
   "description": "Web search and evidence retrieval pipeline for the Nexo framework",
   "keywords": [
     "nexo",

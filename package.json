@@ -1,7 +1,7 @@
 {
   "name": "nexo",
   "private": true,
-  "version": "0.7.0",
+  "version": "0.8.0",
   "description": "Application framework and environment for the AI era",
   "license": "MIT",
   "repository": {
@@ -19,7 +19,8 @@
     "lint": "eslint .",
     "clean": "pnpm -r --if-present clean",
     "publish:all": "pnpm build && pnpm -r publish --access public --no-git-checks",
-    "bench": "node scripts/bench.mjs"
+    "bench": "node scripts/bench.mjs",
+    "release:check": "node scripts/release-check.mjs"
   },
   "devDependencies": {
     "@eslint/js": "^9",

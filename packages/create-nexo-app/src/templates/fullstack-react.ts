@@ -1,4 +1,5 @@
 import { Template, TemplateFile } from "./types.js";
+import { NEXO_VERSION } from "./version.js";
 
 export const fullstackReactTemplate: Template = {
   name: "fullstack-react",
@@ -155,7 +156,7 @@ npx nexo freshness --source-root src
               inspect: "nexo inspect"
             },
             devDependencies: {
-              "@nexo-alpha/cli": "^0.7.0",
+              "@nexo-alpha/cli": NEXO_VERSION,
               concurrently: "^9.1.0"
             }
           },
@@ -195,7 +196,7 @@ npx nexo freshness --source-root src
               dev: "tsc --watch --preserveWatchOutput"
             },
             dependencies: {
-              "@nexo-alpha/core": "^0.7.0"
+              "@nexo-alpha/core": NEXO_VERSION
             },
             devDependencies: {
               typescript: "^5.4.0"
@@ -263,10 +264,10 @@ export type Todo = Infer<typeof Todo>;
             },
             dependencies: {
               [`${projectName}-shared`]: "*",
-              "@nexo-alpha/core": "^0.7.0",
-              "@nexo-alpha/context": "^0.7.0",
-              "@nexo-alpha/hapi": "^0.7.0",
-              "@nexo-alpha/cli": "^0.7.0"
+              "@nexo-alpha/core": NEXO_VERSION,
+              "@nexo-alpha/context": NEXO_VERSION,
+              "@nexo-alpha/hapi": NEXO_VERSION,
+              "@nexo-alpha/cli": NEXO_VERSION
             },
             devDependencies: {
               "@types/node": "^20.11.0",
@@ -512,7 +513,7 @@ await serve({ app, port: Number(process.env.PORT) || 4000, cors: true, frontend:
             },
             dependencies: {
               [`${projectName}-shared`]: "*",
-              "@nexo-alpha/frontend": "^0.7.0",
+              "@nexo-alpha/frontend": NEXO_VERSION,
               react: "^18.3.1",
               "react-dom": "^18.3.1"
             },

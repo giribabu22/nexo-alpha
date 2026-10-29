@@ -1,8 +1,8 @@
 # Changelog
 
-## Unreleased
+## 0.8.0
 
-Fixes from the package architecture audit (P0): the AI layer no longer reports answers it doesn't have, agents need a policy before they act, and every request goes through one pipeline.
+Two themes. `serve()` takes an app from its models to a running server in one call, and can serve the built frontend from the same port, so a full-stack app is one deployment; every `create-nexo-app` template starts with it. The package architecture audit's P0 fixes: the AI layer no longer reports answers it doesn't have, agents need a policy before they act, and every request goes through one pipeline. Several of these change behavior; read **Changed** before upgrading.
 
 ### Changed
 
