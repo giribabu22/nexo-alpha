@@ -88,6 +88,10 @@ export interface MigrationRecord {
   readonly durationMs: number;
   /** The process that applied it. */
   readonly by: string;
+  /** Documents inserted, updated or deleted. */
+  readonly documentsChanged?: number;
+  /** Whether it deleted documents, removed values or changed their types. */
+  readonly destructive?: boolean;
 }
 
 export interface MigrationStatus {
@@ -187,14 +191,21 @@ export async function migrationStatus(store: NexoDocumentStore, list: readonly N
 }
 
 /** The record to store for `item`, applied by `by` starting at `startedAt`. */
-export function createMigrationRecord(item: NexoMigration, by: string, startedAt: number, now = Date.now()): MigrationRecord {
+export function createMigrationRecord(
+  item: NexoMigration,
+  by: string,
+  startedAt: number,
+  now = Date.now(),
+  changes?: { readonly documentsChanged: number; readonly destructive: boolean }
+): MigrationRecord {
   return {
     id: item.id,
     ...(item.description !== undefined ? { description: item.description } : {}),
     checksum: item.checksum,
     appliedAt: new Date(now).toISOString(),
     durationMs: Math.max(0, now - startedAt),
-    by
+    by,
+    ...changes
   };
 }
 
@@ -207,6 +218,8 @@ export interface RunPendingOptions {
   readonly onWarning?: (message: string) => void;
   /** Nexo's own migrations are in the list (packages, not apps). */
   readonly allowNexoNamespace?: boolean;
+  /** Runs inside the lock, after the order checks and before anything is applied; throw to stop. */
+  readonly prepare?: (pending: readonly NexoMigration[]) => Promise<void>;
 }
 
 export interface RunPendingResult {
@@ -220,7 +233,15 @@ export interface RunPendingResult {
  * Applies one migration and stores its record in the same atomic write;
  * returns false, writing nothing, if the record already exists.
  */
-export type ApplyMigration = (item: NexoMigration, info: { readonly by: string; readonly startedAt: number }) => Promise<boolean>;
+export type ApplyMigration = (
+  item: NexoMigration,
+  info: {
+    readonly by: string;
+    readonly startedAt: number;
+    /** Throws if the lock was lost; call right before writing. */
+    readonly assertHeld: () => void;
+  }
+) => Promise<boolean>;
 
 /**
  * Validates `list`, takes the lock, checks order and edits, and applies each
@@ -251,11 +272,14 @@ export async function runPendingMigrations(
       );
     }
 
+    await options.prepare?.(status.pending);
+
     const applied: string[] = [];
     const skipped: string[] = [];
+    const assertHeld = () => lock?.assertHeld();
     for (const item of status.pending) {
-      lock?.assertHeld();
-      if (await apply(item, { by, startedAt: Date.now() })) {
+      assertHeld();
+      if (await apply(item, { by, startedAt: Date.now(), assertHeld })) {
         applied.push(item.id);
       } else if ((await store.get(MIGRATIONS_COLLECTION, item.id)) !== undefined) {
         skipped.push(item.id);

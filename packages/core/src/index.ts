@@ -118,6 +118,9 @@ export type {
   MigrationStatus
 } from "./migrations.js";
 export { MIGRATIONS_COLLECTION } from "./migration-lock.js";
+export { runMigrations, planMigrations, revertMigration, describeDestructive } from "./migration-runner.js";
+export type { MigrationRunOptions, RunMigrationsResult, AppliedMigration, PlannedMigrations } from "./migration-runner.js";
+export type { MigrationPlan, DestructiveChange } from "./migration-plan.js";
 
 export { createAuth } from "./accounts.js";
 export type {
