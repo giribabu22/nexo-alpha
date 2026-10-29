@@ -42,15 +42,16 @@ export const usersResource = (store: NexoDocumentStore) => resource(User, { stor
 
 ```ts
 // src/server.ts
-import { createApplication, createSqliteDocumentStore } from "@nexo-alpha/core";
-import { startHapiServer } from "@nexo-alpha/hapi";
+import { serve } from "@nexo-alpha/hapi";
 import { usersResource } from "./users/users.api.js";
 
-const store = await createSqliteDocumentStore("data/app.db");
-const app = createApplication({ name: "my-app" });
-app.module(usersResource(store));
-await startHapiServer(app, { port: 3000, cors: true });   // cors: when the browser app is served from another origin
+await serve({ name: "my-app", resources: [usersResource], cors: true });
+// SQLite at data/app.db, port 3000 ($PORT), Ctrl+C stops cleanly.
+// cors: when the browser app is served from another origin.
 ```
+
+A model with no options can go in directly: `serve({ resources: [User] })`.
+[serve](#serve-server) lists what it sets up and how to replace each part.
 
 ```tsx
 // src/users/users.page.tsx — browser
@@ -215,6 +216,54 @@ resource(Note, {
 
 **Extension points.** `beforeWrite`; `indexes`; `expose` to drop routes; extra endpoints
 with `api.*` in another module; `scopeByProject(store)` for multi-tenancy.
+
+---
+
+## serve (server)
+
+**Purpose.** Starts an app from its models: opens the store, serves each
+resource, optionally sign-in and uploads, and runs the HTTP server. It only
+wires the primitives on this page, so each part can be replaced.
+
+**Syntax.** `await serve(options)` from `@nexo-alpha/hapi`.
+
+```ts
+const app = await serve({
+  resources: [Task, (store) => resource(Note, { store, auth: true })],  // a model, or a function given the store
+  auth: true,                                                          // accounts at /api/auth; secret from AUTH_SECRET
+  files: true                                                          // uploads at /api/files, stored in data/files
+});
+await app.resource(Task).create({ title: "Seed data" });               // typed, same as resource()
+```
+
+| Option | Default | Notes |
+|---|---|---|
+| `resources` | `[]` | models (default `resource()` options) or `(store) => module` |
+| `store` | `"data/app.db"` | a path (`.json` → JSON file store, anything else → SQLite) or any `NexoDocumentStore`; in memory when there are no `resources`, `auth` or `files` |
+| `auth` | off | `true` or `createAuth` options; `secret` defaults to `process.env.AUTH_SECRET` |
+| `files` | off | `true` or `createFiles` options plus `directory` (default `data/files`) or `blobs` |
+| `modules` | `[]` | any other modules: `api.*` endpoints, jobs, integrations |
+| `app` | a new one named `name` | an application you built yourself (plugins, middleware); not started yet |
+| `port` | `$PORT`, else 3000 | every `createHapiServer` option works: `cors`, `rateLimit`, `logger`, … |
+| `handleSignals` | `true` | stop cleanly and exit on SIGINT/SIGTERM |
+
+**Returns** `{ app, server, store, auth, files, url, resource(model), stop() }`.
+`stop()` closes the store only if `serve()` opened it.
+
+**By hand.** The same thing without `serve()`, when you need control over the order:
+
+```ts
+const store = await createSqliteDocumentStore("data/app.db");
+const app = createApplication({ name: "my-app" });
+app.module(resource(Task, { store }));
+await app.start();
+await startHapiServer(app, { port: 3000 });
+```
+
+**Common mistakes**
+- `auth: true` with no `AUTH_SECRET` set: `serve()` refuses to start. Use at least 32 random bytes.
+- `store` left at its default on Node.js older than 22.5: SQLite is unavailable; pass `store: "data/app.json"`.
+- Passing an `app` that is already started: modules can't be added to a running application.
 
 ---
 

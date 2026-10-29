@@ -34,6 +34,21 @@ pnpm add @nexo-alpha/hapi @nexo-alpha/core @hapi/hapi
 
 ## How to Use
 
+### The short path: `serve()`
+
+From models to a running server in one call:
+
+```ts
+import { serve } from "@nexo-alpha/hapi";
+import { Task } from "./tasks/task.model.js";
+
+const app = await serve({ resources: [Task] });
+// SQLite at data/app.db; GET/POST /api/tasks, GET/PATCH/DELETE /api/tasks/:id;
+// port $PORT or 3000; Ctrl+C stops cleanly.
+```
+
+Add `auth: true` (secret from `AUTH_SECRET`) for accounts at `/api/auth`, and `files: true` for uploads at `/api/files`. Each default can be replaced: pass `store`, your own `app`, extra `modules`, or `(store) => resource(Model, { … })` for a resource with options. Every `createHapiServer` option below also works. `serve()` only wires these primitives, so the sections below show how to do the same by hand.
+
 ### 1. Basic Server Setup
 
 Declare route handlers on your modules and start the Hapi server:

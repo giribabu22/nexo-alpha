@@ -29,7 +29,7 @@
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "test": "node --test",
+    "test": "node --test && tsc -p type-tests",
     "clean": "rm -rf dist"
   },
   "dependencies": {

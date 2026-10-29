@@ -13,3 +13,13 @@ export type {
   SecurityHeadersOptions
 } from "./create-server.js";
 
+export { serve } from "./serve.js";
+
+export type {
+  ServeOptions,
+  ServeResource,
+  ServeAuthOptions,
+  ServeFilesOptions,
+  NexoServedApp
+} from "./serve.js";
+
