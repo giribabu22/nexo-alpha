@@ -31,6 +31,10 @@ Two themes. `serve()` takes an app from its models to a running server in one ca
 - `createRequestPipeline(app, { authenticate?, project?, instrument? })` and `app.getAuthenticator()` in `@nexo-alpha/core`, for HTTP adapters.
 - `DecisionEngine.getRules()` in `@nexo-alpha/decision`.
 
+### Fixed
+
+- **Several processes opening the same new SQLite database at once** no longer fail with "database is locked". Switching a new database to WAL needs an exclusive lock, and SQLite returns SQLITE_BUSY without waiting when waiting could deadlock; `createSqliteDocumentStore` now sets the busy timeout first and retries those statements briefly.
+
 ## 0.7.0
 
 0.7.0 makes Nexo a full-stack framework. A domain object is declared once and drives storage, validation, the REST API, TypeScript types, forms and tables. It also adds built-in sign-in, file uploads, and SQL-backed lists on SQLite. See [Full-stack primitives](./docs/primitives.md) and the [upgrade notes](./docs/architecture/full-stack-report.md#f-migration).
