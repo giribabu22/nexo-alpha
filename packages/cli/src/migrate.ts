@@ -32,7 +32,11 @@ export interface MigrateOptions {
   readonly store?: string | undefined;
   readonly migrations?: string | undefined;
   readonly cwd: string;
+  /** The app, when one is configured: Nexo's own migrations come from its modules. */
+  readonly app?: NexoApplication | undefined;
 }
+
+const modulesOf = (options: MigrateOptions) => options.app?.getModules() ?? [];
 
 /** Loads a module whose default (or `migrations`) export is a migration list. */
 export async function loadMigrations(modulePath: string): Promise<NexoMigration[]> {
@@ -84,7 +88,7 @@ export interface MigrateStatusResult extends MigrationStatus {
 export async function migrateStatus(options: MigrateOptions): Promise<MigrateStatusResult> {
   const paths = await resolvePaths(options, { store: true, migrations: true });
   const list = await loadMigrations(paths.migrations);
-  const status = await withStore(paths.store, false, (store) => migrationStatus(store, list));
+  const status = await withStore(paths.store, false, (store) => migrationStatus(store, list, { modules: modulesOf(options) }));
   return { ...status, store: paths.store, storeExists: existsSync(paths.store) };
 }
 
@@ -124,7 +128,8 @@ function runOptions(flags: MigrateRunFlags, warnings: string[]): MigrationRunOpt
     allowOutOfOrder: flags.allowOutOfOrder === true,
     ...(flags.maxChanges !== undefined ? { maxChanges: flags.maxChanges } : {}),
     backup: flags.noBackup === true ? false : flags.backupDir !== undefined ? { directory: resolve(flags.cwd, flags.backupDir) } : {},
-    onWarning: (message) => warnings.push(message)
+    onWarning: (message) => warnings.push(message),
+    modules: modulesOf(flags)
   };
 }
 
@@ -298,12 +303,13 @@ export interface MigrateCheckResult {
  * app with its model: unknown fields, missing required ones, wrong types.
  */
 export async function migrateCheck(options: MigrateOptions & { readonly app: NexoApplication }): Promise<MigrateCheckResult> {
+  const { app } = options;
   const paths = await resolvePaths(options, { store: true, migrations: false });
   return withStore(paths.store, false, async (store) => {
     if (store.entries === undefined) throw new Error("This store can't list its documents (no entries()).");
     const checked: Record<string, number> = {};
     const problems: MigrateCheckProblem[] = [];
-    for (const module of options.app.getModules()) {
+    for (const module of app.getModules()) {
       if (!isResource(module)) continue;
       const model = module.model;
       const documents = await store.entries<Record<string, unknown>>(model.name);

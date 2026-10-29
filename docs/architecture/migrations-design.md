@@ -303,6 +303,11 @@ Progress: steps 1 and 2 are done. Step 1: `migrations.ts`, `migration-lock.ts`, 
 
 Step 4 is done (`fileReleases` in `migration-plan.ts`; files are released in the migration's batch). A file counts as still used if the record mentions its id anywhere, so a renamed file field keeps it. One limit, documented: a `down()` that brings back a deleted record doesn't claim its file again; saving the record through its resource does, if cleanup hasn't run.
 
+Step 5 is done: modules ship `migrations` (`nexo:` ids, `package` required), collected by `moduleMigrations` and run first; `serve()` now runs migrations after registering modules, still before anything starts. All five steps are complete. Two things learned while building them:
+
+- `up()` runs more than once (planning, applying, conflict retries), so it must not do anything outside `m`. The docs say so.
+- Testing two processes under load found a bug outside migrations: processes opening the same new SQLite database at once could fail with "database is locked". Fixed in `createSqliteDocumentStore`.
+
 1. **Tracking and locking:** `migration()`, validation, the `nexo_migrations` record, ordering and
    checksums, the lease lock, `status`. Applying uses the store's existing single-document writes
    only for the record and lock, which are atomic on their own.

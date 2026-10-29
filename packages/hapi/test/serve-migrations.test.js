@@ -115,3 +115,21 @@ test("serve({ migrations }) in production: an unapproved destructive migration s
     assert.deepEqual(served.migrations.applied.map((a) => [a.id, a.destructive]), [[rename.id, false], [dropNames.id, true]]);
     await served.stop();
   }));
+
+test("serve({ migrations }): Nexo's own migrations from registered modules run first, recorded with their package", () =>
+  withV1Data(async (path) => {
+    const tagUsers = migration({
+      id: "nexo:20261029T0600-tag-users",
+      package: "@nexo-alpha/example@1.0.0",
+      up: (m) => m.setField("users", "source", "v1")
+    });
+    const served = await serve({ ...base, store: path, modules: [{ name: "tagger", migrations: [tagUsers] }], migrations: [rename] });
+    try {
+      assert.deepEqual(served.migrations.applied.map((a) => a.id), [tagUsers.id, rename.id]);
+      const [user] = (await (await fetch(`${served.url}/api/users`)).json()).items;
+      assert.equal(user.fullName, "Ann");
+      assert.equal((await served.store.get(MIGRATIONS_COLLECTION, tagUsers.id)).package, "@nexo-alpha/example@1.0.0");
+    } finally {
+      await served.stop();
+    }
+  }));

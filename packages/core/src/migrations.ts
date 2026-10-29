@@ -21,6 +21,7 @@ import { hostname } from "node:os";
 import { NexoMigrationError } from "./errors.js";
 import { acquireMigrationLock, MIGRATIONS_COLLECTION, MIGRATION_LOCK_ID, type MigrationLockOptions } from "./migration-lock.js";
 import type { NexoDocumentStore } from "./storage.js";
+import type { NexoModule } from "./module.js";
 
 /** `<UTC yyyymmdd>T<hhmm[ss]>-<kebab-name>`, e.g. `20261029T0730-rename-user-name`. Nexo's own add a `nexo:` prefix. */
 export const MIGRATION_ID = /^\d{8}T\d{4}(?:\d{2})?-[a-z0-9]+(?:-[a-z0-9]+)*$/;
@@ -72,6 +73,8 @@ export interface MigrationDefinition {
   readonly down?: (m: MigrationContext) => void | Promise<void>;
   /** Run once per project of a `scopeByProject()` store. */
   readonly perProject?: boolean;
+  /** Who ships it, e.g. "@nexo-alpha/core@0.9.0": required for Nexo's own ("nexo:") migrations, recorded when applied. */
+  readonly package?: string;
 }
 
 export interface NexoMigration extends MigrationDefinition {
@@ -88,6 +91,8 @@ export interface MigrationRecord {
   readonly durationMs: number;
   /** The process that applied it. */
   readonly by: string;
+  /** The package that shipped it, for Nexo's own migrations. */
+  readonly package?: string;
   /** Documents inserted, updated or deleted. */
   readonly documentsChanged?: number;
   /** Uploaded files released for cleanup. */
@@ -125,6 +130,9 @@ export function migration(definition: MigrationDefinition): NexoMigration {
     );
   }
   if (typeof up !== "function") throw new NexoMigrationError(`Migration "${id}" has no up() function.`);
+  if (isNexoId(id) && (typeof definition.package !== "string" || definition.package === "")) {
+    throw new NexoMigrationError(`Migration "${id}" is one of Nexo's own; give it package: "<name>@<version>".`);
+  }
   if (down !== undefined && typeof down !== "function") throw new NexoMigrationError(`Migration "${id}": down must be a function.`);
   if (description !== undefined && typeof description !== "string") {
     throw new NexoMigrationError(`Migration "${id}": description must be a string.`);
@@ -189,9 +197,50 @@ export function compareWithRecords(list: readonly NexoMigration[], records: read
   };
 }
 
-/** Which migrations of `list` are applied to `store` and which are pending. Reads only. */
-export async function migrationStatus(store: NexoDocumentStore, list: readonly NexoMigration[]): Promise<MigrationStatus> {
-  return compareWithRecords(validateMigrationList(list), await readMigrationRecords(store));
+/**
+ * Nexo's own migrations, shipped on `modules` (`module.migrations`), checked:
+ * each id must start "nexo:", and one id shipped twice must be the same code.
+ */
+export function moduleMigrations(modules: readonly NexoModule[] = []): NexoMigration[] {
+  const found = new Map<string, { item: NexoMigration; module: string }>();
+  for (const module of modules) {
+    for (const item of module.migrations ?? []) {
+      if (typeof item !== "object" || item === null || typeof item.checksum !== "string") {
+        throw new NexoMigrationError(`Module "${module.name}" ships a migration that wasn't made with migration(...).`);
+      }
+      if (!isNexoId(item.id)) {
+        throw new NexoMigrationError(`Module "${module.name}" ships migration "${item.id}"; a module's migrations need ids starting "nexo:".`);
+      }
+      const seen = found.get(item.id);
+      if (seen !== undefined && seen.item.checksum !== item.checksum) {
+        throw new NexoMigrationError(`Modules "${seen.module}" and "${module.name}" ship different migrations with the id "${item.id}".`);
+      }
+      found.set(item.id, { item, module: module.name });
+    }
+  }
+  return [...found.values()].map((entry) => entry.item);
+}
+
+/**
+ * The full run list: Nexo's own migrations from `modules`, then the app's
+ * `list`. The app's list is checked on its own first, so it can't contain
+ * (and so can't edit or reorder) Nexo's.
+ */
+export function allMigrations(list: readonly NexoMigration[], modules?: readonly NexoModule[]): NexoMigration[] {
+  const own = validateMigrationList(list);
+  return validateMigrationList([...moduleMigrations(modules), ...own], { allowNexoNamespace: true });
+}
+
+/**
+ * Which migrations are applied to `store` and which are pending: the app's
+ * `list`, plus Nexo's own from `modules` (pass the app's modules). Reads only.
+ */
+export async function migrationStatus(
+  store: NexoDocumentStore,
+  list: readonly NexoMigration[],
+  options: { readonly modules?: readonly NexoModule[] } = {}
+): Promise<MigrationStatus> {
+  return compareWithRecords(allMigrations(list, options.modules), await readMigrationRecords(store));
 }
 
 /** The record to store for `item`, applied by `by` starting at `startedAt`. */
@@ -211,6 +260,7 @@ export function createMigrationRecord(
     id: item.id,
     ...(item.description !== undefined ? { description: item.description } : {}),
     checksum: item.checksum,
+    ...(item.package !== undefined ? { package: item.package } : {}),
     appliedAt: new Date(now).toISOString(),
     durationMs: Math.max(0, now - startedAt),
     by,

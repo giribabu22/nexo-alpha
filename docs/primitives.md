@@ -595,11 +595,20 @@ removed released files brings back their records, not their contents: raise
 `removeDetachedAfterMs` if you may need to restore later than that.
 
 **CLI.** `nexo migrate status | plan | up | down <id> | create <name> | check | backups | restore`, with
-`--store` and `--migrations` (or `"store"` and `"migrations"` in `nexo.config.json`).
+`--store`, `--migrations` and `--app` (or `"store"`, `"migrations"` and `"app"` in `nexo.config.json`).
 `plan` is a dry run that marks destructive changes. `check` compares every stored
 record with its model and exits 1 on a mismatch.
 
+**Nexo's own migrations.** When a Nexo package changes a collection it owns (sign-in
+accounts, files, projects, jobs), its module ships a migration with a `nexo:` id.
+`serve()` and `nexo migrate` collect them from the app's modules and run them before the
+app's own, recorded with the package version. The app can't pass, edit, revert or
+reorder them; the CLI loads the app (`"app"` in `nexo.config.json`, or `--app`) to find them.
+
 **Common mistakes**
+- Doing anything in `up()` besides calling `m`: `up()` runs while planning, again when
+  applying, and again if the app changed a document meanwhile. Sending an email or
+  calling an API there would happen several times.
 - Editing a migration after it was applied: it won't run again (status warns). Write a new one.
 - Importing models into a migration: a migration must keep working after the model
   changes again, so it works on plain documents.

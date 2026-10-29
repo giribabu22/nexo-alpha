@@ -159,25 +159,6 @@ export async function serve(options: ServeOptions = {}): Promise<NexoServedApp> 
       if (serverOptions.logger !== undefined) serverOptions.logger.info(message, fields);
       else if (process.env.NODE_ENV !== "test") console.log(`${message} ${JSON.stringify(fields)}`);
     };
-    let migrations: RunMigrationsResult | undefined;
-    if (migrationsOption !== undefined) {
-      const { list, auto = true, ...runOptions }: ServeMigrationsOptions = Array.isArray(migrationsOption)
-        ? { list: migrationsOption as readonly NexoMigration[] }
-        : (migrationsOption as ServeMigrationsOptions);
-      if (auto) {
-        migrations = await runMigrations(store, list, runOptions);
-        for (const applied of migrations.applied) log("migration applied", { ...applied });
-      } else {
-        const { pending } = await migrationStatus(store, list);
-        if (pending.length > 0) {
-          throw new NexoMigrationError(
-            `serve(): ${pending.length} migration${pending.length === 1 ? " is" : "s are"} pending (${pending.map((m) => m.id).join(", ")}) ` +
-              "and migrations.auto is false. Run nexo migrate up first."
-          );
-        }
-      }
-    }
-
     let auth: NexoAuth | undefined;
     if (authOption !== undefined) {
       const { secret = process.env.AUTH_SECRET, ...rest } = authOption === true ? {} : authOption;
@@ -203,6 +184,27 @@ export async function serve(options: ServeOptions = {}): Promise<NexoServedApp> 
     const served = new Map<NexoModel, NexoResource<NexoModel>>();
     for (const module of app.getModules()) {
       if (isResource(module)) served.set(module.model, module);
+    }
+
+    // After every module is registered (they may ship Nexo's own migrations), before anything starts.
+    let migrations: RunMigrationsResult | undefined;
+    if (migrationsOption !== undefined) {
+      const { list, auto = true, ...runOptions }: ServeMigrationsOptions = Array.isArray(migrationsOption)
+        ? { list: migrationsOption as readonly NexoMigration[] }
+        : (migrationsOption as ServeMigrationsOptions);
+      const withModules = { ...runOptions, modules: app.getModules() };
+      if (auto) {
+        migrations = await runMigrations(store, list, withModules);
+        for (const applied of migrations.applied) log("migration applied", { ...applied });
+      } else {
+        const { pending } = await migrationStatus(store, list, withModules);
+        if (pending.length > 0) {
+          throw new NexoMigrationError(
+            `serve(): ${pending.length} migration${pending.length === 1 ? " is" : "s are"} pending (${pending.map((m) => m.id).join(", ")}) ` +
+              "and migrations.auto is false. Run nexo migrate up first."
+          );
+        }
+      }
     }
 
     await app.start();

@@ -40,7 +40,7 @@ test("nexo migrate status: everything pending, without creating the database", a
 test("nexo migrate status: applied, pending and problems, with paths from nexo.config.json", async () => {
   const dir = await project(["20261029T0700-a", "20261029T0730-b", "20261030T0900-c"]);
   try {
-    await writeFile(join(dir, "nexo.config.json"), JSON.stringify({ app: "./app.js", store: "./app.json", migrations: "./migrations.mjs" }));
+    await writeFile(join(dir, "nexo.config.json"), JSON.stringify({ store: "./app.json", migrations: "./migrations.mjs" }));
     const store = createFileDocumentStore(join(dir, "app.json"));
     const record = (id, checksum) => ({ id, checksum, appliedAt: "2026-10-29T08:00:00.000Z", durationMs: 3, by: "host:1:abcd" });
     await store.put(MIGRATIONS_COLLECTION, "20261029T0700-a", record("20261029T0700-a", "0000000000000000")); // edited since
@@ -145,7 +145,7 @@ test("nexo migrate plan / up / check / down: the whole flow on a JSON file store
 test("nexo migrate down: reverts the newest migration", async () => {
   const dir = await project(["20261029T0700-a"]);
   try {
-    await writeFile(join(dir, "nexo.config.json"), JSON.stringify({ app: "./app.mjs", store: "./app.json", migrations: "./migrations.mjs" }));
+    await writeFile(join(dir, "nexo.config.json"), JSON.stringify({ store: "./app.json", migrations: "./migrations.mjs" }));
     assert.match((await run(dir, "up")).stdout, /applied {2}20261029T0700-a: 0 documents changed/);
     await assert.rejects(run(dir, "down", "20261029T0700-a"), (error) => /has no down\(\)/.test(error.stderr));
     await writeFile(
@@ -193,7 +193,7 @@ test("nexo migrate up takes a backup; backups lists it; restore --app-stopped br
       join(dir, "migrations.mjs"),
       `import { migration } from ${JSON.stringify(coreUrl)};\nexport default [migration({ id: "20261029T0700-drop-name", up: (m) => m.removeField("users", "name") })];\n`
     );
-    await writeFile(join(dir, "nexo.config.json"), JSON.stringify({ app: "./app.mjs", store: "./app.json", migrations: "./migrations.mjs" }));
+    await writeFile(join(dir, "nexo.config.json"), JSON.stringify({ store: "./app.json", migrations: "./migrations.mjs" }));
 
     assert.match((await run(dir, "plan")).stdout, /A checked backup of the store will be taken first\./);
     const up = (await run(dir, "up")).stdout;
@@ -224,13 +224,35 @@ test("nexo migrate plan and up show the uploaded files a migration releases", as
       join(dir, "migrations.mjs"),
       `import { migration } from ${JSON.stringify(coreUrl)};\nexport default [migration({ id: "20261029T0700-drop-users", up: (m) => m.update("users", () => m.remove) })];\n`
     );
-    await writeFile(join(dir, "nexo.config.json"), JSON.stringify({ app: "./app.mjs", store: "./app.json", migrations: "./migrations.mjs" }));
+    await writeFile(join(dir, "nexo.config.json"), JSON.stringify({ store: "./app.json", migrations: "./migrations.mjs" }));
 
     assert.match((await run(dir, "plan")).stdout, /releases 1 uploaded file: ann\.png \(users\/u1\)/);
     assert.match((await run(dir, "up", "--no-backup")).stdout, /20261029T0700-drop-users: 1 document changed, 1 uploaded file released \(destructive\)/);
     const file = JSON.parse(await readFile(join(dir, "app.json"), "utf8")).files.f1;
     assert.equal(file.attachedTo, undefined);
     assert.ok(file.detachedAt);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("nexo migrate status and up include Nexo's own migrations from the configured app's modules", async () => {
+  const dir = await project(["20261029T0700-a"]);
+  try {
+    await writeFile(
+      join(dir, "app.mjs"),
+      [
+        `import { createApplication, migration } from ${JSON.stringify(coreUrl)};`,
+        'export const app = createApplication({ name: "with-nexo-migrations" });',
+        'app.module({ name: "tagger", migrations: [migration({ id: "nexo:20261029T0600-tag", package: "@nexo-alpha/example@1.0.0", up: () => undefined })] });'
+      ].join("\n")
+    );
+    await writeFile(join(dir, "nexo.config.json"), JSON.stringify({ app: "./app.mjs", store: "./app.json", migrations: "./migrations.mjs" }));
+    assert.match((await run(dir, "status")).stdout, /pending {2}nexo:20261029T0600-tag\r?\n {2}pending {2}20261029T0700-a/);
+    assert.match((await run(dir, "up")).stdout, /applied {2}nexo:20261029T0600-tag: 0 documents changed\r?\napplied {2}20261029T0700-a/);
+    const status = (await run(dir, "status")).stdout;
+    assert.match(status, /2 applied, 0 pending/);
+    assert.doesNotMatch(status, /Problems/);
   } finally {
     await rm(dir, { recursive: true, force: true });
   }

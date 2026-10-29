@@ -50,8 +50,9 @@ const MIGRATE_USAGE = `Usage:
   nexo migrate down <id>
   nexo migrate create <name> [--dir src/migrations]
   nexo migrate check [--app <module>] [--json]
-Each takes --store <path> and --migrations <module> (default: "store" and
-"migrations" in nexo.config.json).`;
+Each takes --store <path>, --migrations <module> and --app <module> (default:
+"store", "migrations" and "app" in nexo.config.json). The app is loaded for
+Nexo's own migrations, which its modules ship.`;
 import { GENERATOR_KINDS, generateFiles, writeGeneratedFiles, type GeneratorKind } from "./generate.js";
 
 const USAGE = `Usage:
@@ -195,7 +196,17 @@ async function main(): Promise<void> {
 
   if (command === "migrate") {
     const [sub, ...args] = rest;
+    // The app, if configured: its modules may ship Nexo's own migrations (and "check" needs its models).
+    const appPath = await resolveAppPathFrom(extractFlagValue(args, "--app")).catch(() => undefined);
+    const app = appPath === undefined || sub === "create" || sub === "backups" || sub === "restore"
+      ? undefined
+      : (await loadApplication(appPath).catch((error: unknown) => {
+          throw new Error(
+            `The app at ${appPath} couldn't be loaded (build it first, or pass --app): ${error instanceof Error ? error.message : String(error)}`
+          );
+        })).app;
     const flags = {
+      app,
       store: extractFlagValue(args, "--store"),
       migrations: extractFlagValue(args, "--migrations"),
       cwd: process.cwd(),
@@ -245,13 +256,11 @@ async function main(): Promise<void> {
         return;
       }
       case "check": {
-        const appPath = await resolveAppPathFrom(extractFlagValue(args, "--app"));
-        if (appPath === undefined) {
+        if (app === undefined) {
           console.error(`nexo migrate check needs the app: pass --app <module> or set "app" in nexo.config.json.`);
           process.exitCode = 1;
           return;
         }
-        const { app } = await loadApplication(appPath);
         const result = await migrateCheck({ ...flags, app });
         print(result, renderMigrateCheck);
         if (result.problems.length > 0) process.exitCode = 1;

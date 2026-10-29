@@ -1,6 +1,7 @@
 import type { NexoApi } from "./api.js";
 import type { NexoService } from "./service.js";
 import type { NexoJob } from "./job.js";
+import type { NexoMigration } from "./migrations.js";
 
 export interface NexoModule {
   readonly name: string;
@@ -24,6 +25,13 @@ export interface NexoModule {
    * linked, not treated as an error.
    */
   readonly sourceFiles?: readonly string[];
+  /**
+   * Migrations for the collections this module owns, shipped by the package
+   * that provides it (e.g. sign-in accounts). Ids start "nexo:". Runners
+   * collect them from the app's modules and run them before the app's own;
+   * apps can't pass, edit or reorder them.
+   */
+  readonly migrations?: readonly NexoMigration[];
 
   initialize?(): Promise<void> | void;
   start?(): Promise<void> | void;

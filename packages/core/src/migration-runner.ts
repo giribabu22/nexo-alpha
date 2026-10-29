@@ -21,6 +21,7 @@ import { takeBackup, type BackupInfo } from "./migration-backup.js";
 import { acquireMigrationLock, MIGRATIONS_COLLECTION, type MigrationLockOptions } from "./migration-lock.js";
 import { assertMigratable, computeMigration, withWrites, type DestructiveChange, type MigrationPlan, type MigrationReader } from "./migration-plan.js";
 import {
+  allMigrations,
   createMigrationRecord,
   migrationStatus,
   readMigrationRecords,
@@ -31,6 +32,7 @@ import {
   type NexoMigration
 } from "./migrations.js";
 import type { NexoDocumentStore } from "./storage.js";
+import type { NexoModule } from "./module.js";
 
 const MAX_ATTEMPTS = 5;
 
@@ -52,6 +54,8 @@ export interface MigrationRunOptions {
    * platform snapshots disks); destructive migrations then run without one.
    */
   readonly backup?: false | { readonly retain?: number; readonly directory?: string };
+  /** The app's modules: Nexo's own migrations (`module.migrations`) are collected from them and run first. */
+  readonly modules?: readonly NexoModule[];
 }
 
 export interface AppliedMigration {
@@ -159,7 +163,7 @@ export async function planMigrations(
   options: MigrationRunOptions = {}
 ): Promise<PlannedMigrations> {
   assertMigratable(store);
-  const status = await migrationStatus(store, list);
+  const status = await migrationStatus(store, list, { modules: options.modules ?? [] });
   const s = settings(options);
   const { plans, refusals, backupNeeded } = await planPending(store, status, s);
   const order =
@@ -196,7 +200,7 @@ export async function runMigrations(
 
   const result = await runPendingMigrations(
     store,
-    list,
+    allMigrations(list, options.modules),
     async (item, { by, startedAt, assertHeld }) => {
       for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
         const plan = await computeMigration(store, item, "up");
@@ -226,6 +230,7 @@ export async function runMigrations(
       ...(options.lock !== undefined ? { lock: options.lock } : {}),
       ...(options.allowOutOfOrder !== undefined ? { allowOutOfOrder: options.allowOutOfOrder } : {}),
       onWarning: s.warn,
+      allowNexoNamespace: true,
       prepare: async (pending, status) => {
         const { refusals, backupNeeded } = await planPending(store, status, s);
         if (refusals.length > 0) throw new NexoMigrationError(`Nothing was applied. ${refusals.join(" ")}`);
@@ -259,6 +264,9 @@ export async function revertMigration(
 ): Promise<AppliedMigration> {
   assertMigratable(store);
   const s = settings(options);
+  if (id.startsWith("nexo:")) {
+    throw new NexoMigrationError(`"${id}" is one of Nexo's own migrations; it can't be reverted. Restore a backup taken before it instead.`);
+  }
   const item = validateMigrationList(list).find((candidate) => candidate.id === id);
   if (item === undefined) throw new NexoMigrationError(`Migration "${id}" isn't in the list.`);
   if (item.down === undefined) throw new NexoMigrationError(`Migration "${id}" has no down(); it can't be reverted. Write a new migration instead.`);
@@ -266,7 +274,7 @@ export async function revertMigration(
   const lock = await acquireMigrationLock(store, options.lock ?? {});
   try {
     const latest = (await readMigrationRecords(store))
-      .filter((record) => record.id.startsWith("nexo:") === id.startsWith("nexo:"))
+      .filter((record) => !record.id.startsWith("nexo:"))
       .sort((a, b) => (a.appliedAt < b.appliedAt ? -1 : a.appliedAt > b.appliedAt ? 1 : a.id < b.id ? -1 : 1))
       .at(-1);
     if (latest?.id !== id) {

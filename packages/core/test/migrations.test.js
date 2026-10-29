@@ -58,7 +58,7 @@ test("migration(): checks the id and functions, and fingerprints the code", () =
   assert.notEqual(migration({ id: m1.id, up: () => 1 }).checksum, m1.checksum, "different code, different checksum");
   assert.equal(migration({ id: m1.id, up: noop }).checksum, m1.checksum, "same code, same checksum");
   assert.ok(Object.isFrozen(m1));
-  assert.equal(migration({ id: "nexo:20261029T0700-auth-users-email", up: noop }).id, "nexo:20261029T0700-auth-users-email");
+  assert.equal(migration({ id: "nexo:20261029T0700-auth-users-email", package: "@nexo-alpha/core@0.9.0", up: noop }).id, "nexo:20261029T0700-auth-users-email");
 
   for (const id of ["rename-user-name", "2026-10-29-rename", "20261029T0730_rename", "20261029T0730-Rename", "20261029T07-x", "__lock", 42]) {
     assert.throws(() => migration({ id, up: noop }), NexoMigrationError, String(id));
@@ -75,7 +75,7 @@ for (const backend of BACKENDS) {
       const run = (list) => runPendingMigrations(store, list, recordOnly(store));
       await assert.rejects(run([m1, m1]), /"20261029T0700-create-users" is used twice/);
       await assert.rejects(run([m1, { id: "20261029T0800-hand-made", up: noop }]), /#2 wasn't made with migration/);
-      await assert.rejects(run([migration({ id: "nexo:20261029T0700-auth", up: noop })]), /belong to Nexo's own migrations/);
+      await assert.rejects(run([migration({ id: "nexo:20261029T0700-auth", package: "@nexo-alpha/core@0.9.0", up: noop })]), /belong to Nexo's own migrations/);
       await assert.rejects(run("not a list"), /must be an array/);
       assert.deepEqual(await store.list(MIGRATIONS_COLLECTION), [], "no lock, no records");
     })
@@ -278,6 +278,7 @@ console.log(JSON.stringify(result));
     assert.deepEqual(results.map((r) => r.applied.length).sort(), [0, 3], "one process applied all three");
     assert.deepEqual(results.map((r) => r.skipped), [[], []], "the other waited for the lock, then found nothing pending");
   } finally {
-    await rm(dir, { recursive: true, force: true });
+    // On Windows the workers' database handles can linger for a moment after they exit (EBUSY).
+    await rm(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
   }
 });

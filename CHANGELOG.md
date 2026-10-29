@@ -2,16 +2,21 @@
 
 ## Unreleased
 
-Migrations ([design](./docs/architecture/migrations-design.md)): applying, backups, and releasing uploaded files work. Nexo's own `nexo:` migrations come next.
+Migrations ([design](./docs/architecture/migrations-design.md)): every step of the design is in place.
 
 ### Added
 
+- **Nexo's own migrations** (design step 5). A module can ship `migrations` for the collections it owns, with `nexo:` ids and a `package` ("@nexo-alpha/core@0.9.0"). `runMigrations`, `planMigrations` and `migrationStatus` take `modules` and run those first, recorded with their package; `serve()` passes the app's modules, and `nexo migrate` loads the app to find them. The app's list can't contain them, and `revertMigration` refuses them.
 - **Migrations release uploaded files** (design step 4). When a migration deletes a record, or the record no longer mentions one of its files (in any field), the file is released (`attachedTo` removed, `detachedAt` set) in the same batch as the change. The existing cleanup then removes the contents after `removeDetachedAfterMs`, unless a record takes the file back. Plans list the files (`filesReleased`), `nexo migrate plan` and `up` show them, and records count them.
 - **Backups before migrating** (design step 3). Before a run with a destructive migration, and the first run against a store, `runMigrations` takes a backup through a new optional store method, `backup()`: SQLite uses `VACUUM INTO` and checks the copy (`PRAGMA integrity_check` and per-collection counts); the JSON file store copies its data while other writes wait, and checks the counts. If the backup fails, nothing is applied. Each backup gets a manifest with a SHA-256 checksum; the newest 5 per store are kept (`backup: { retain, directory }`, or `backup: false`), and older ones are deleted only after a new one is checked. `restoreBackup` (and `nexo migrate restore <backup> --app-stopped`) verifies the checksum, refuses while a migration holds the lock, moves the current file aside, and puts the backup in place. `nexo migrate backups` lists them; `up` takes `--no-backup` and `--backup-dir`.
 - **Applying migrations** (design step 2). `runMigrations(store, list)` applies pending migrations in order, each all-or-nothing together with its record, through a new optional store method, `writeBatch()` (SQLite: one transaction; JSON file: one file write; memory: one step), and recomputes a migration if the app changed a document meanwhile. A migration's `up(m)` works on plain documents: `m.renameField`, `m.removeField`, `m.setField`, `m.update`, `m.insert`, `m.index`, and `perProject` for `scopeByProject` data. Destructive changes (deleted documents, removed values, changed types) are detected from what a migration would do, and in production run only with `allowDestructive`. If any pending migration would be refused, or exceeds `maxChanges` (default 100,000), nothing runs. `planMigrations` is the dry run, and `revertMigration` runs the newest one's `down()`. Stores without `writeBatch()` and `entries()` are refused.
 - **`serve({ migrations })`** applies pending migrations before the app starts; if one fails or is refused, nothing listens. `migrations: { list, auto: false }` only checks, and refuses to start while any are pending.
 - **`nexo migrate plan | up | down <id> | create <name> | check`**, next to `status`. `check` compares every stored record with its resource's model and exits 1 on a mismatch.
 - **Migration tracking and locking** (design step 1). `migration({ id, up, down? })` defines a migration, and `migrationStatus(store, list)` reports which are applied and pending, plus pending ones that sort before applied ones, applied ones edited since, and applied ones missing from the list. Applied migrations are recorded in the store's `nexo_migrations` collection. A lease lock in the same collection keeps two processes from migrating at once, and a crashed holder's lease expires. `nexo migrate status` prints the report without creating a database; `--store` and `--migrations` default to new `store` and `migrations` keys in `nexo.config.json`.
+
+### Fixed
+
+- **Several processes opening the same new SQLite database at once** no longer fail with "database is locked". Switching a new database to WAL needs an exclusive lock, and SQLite returns SQLITE_BUSY without waiting when waiting could deadlock; `createSqliteDocumentStore` now sets the busy timeout first and retries those statements briefly.
 
 ## 0.8.0
 

@@ -107,7 +107,7 @@ export type { NexoFiles, NexoBlobStore, CreateFilesOptions, FilesCleanupOptions,
 export { FILES_PATH, mimeMatches } from "./files-contract.js";
 export type { NexoFile } from "./files-contract.js";
 
-export { migration, migrationStatus, MIGRATION_ID } from "./migrations.js";
+export { migration, migrationStatus, moduleMigrations, MIGRATION_ID } from "./migrations.js";
 export type {
   NexoMigration,
   MigrationDefinition,
