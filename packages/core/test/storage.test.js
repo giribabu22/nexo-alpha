@@ -212,3 +212,36 @@ test("DocumentStore (File): a failed write rejects, and the store reloads from d
     await fs.rm(dir, { recursive: true, force: true });
   }
 });
+
+test("DocumentStore (Sqlite): several processes opening the same new database at once all succeed", { skip: !HAS_SQLITE && "node:sqlite not available" }, async () => {
+  const { spawn } = await import("node:child_process");
+  const { pathToFileURL } = await import("node:url");
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), "nexo-sqlite-open-"));
+  const worker = path.join(dir, "open.mjs");
+  const dist = pathToFileURL(path.join(import.meta.dirname, "..", "dist", "index.js")).href;
+  await fs.writeFile(
+    worker,
+    `import { createSqliteDocumentStore } from ${JSON.stringify(dist)};
+const store = await createSqliteDocumentStore(process.argv[2]);
+await store.put("opened", String(process.pid), { pid: process.pid });
+await store.close();
+`
+  );
+  const database = path.join(dir, "shared.db");
+  const open = () =>
+    new Promise((resolve) => {
+      const child = spawn(process.execPath, [worker, database], { stdio: ["ignore", "ignore", "pipe"] });
+      let err = "";
+      child.stderr.on("data", (d) => (err += d));
+      child.on("exit", (code) => resolve(code === 0 ? "ok" : err.split("\n").find((l) => /Error/.test(l)) ?? `exit ${code}`));
+    });
+  try {
+    // A new database: the first opens switch it to WAL, which used to fail with "database is locked".
+    assert.deepEqual(await Promise.all(Array.from({ length: 6 }, open)), Array(6).fill("ok"));
+    const store = await createSqliteDocumentStore(database);
+    assert.equal((await store.list("opened")).length, 6);
+    await store.close();
+  } finally {
+    await fs.rm(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
+  }
+});
