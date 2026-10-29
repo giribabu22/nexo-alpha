@@ -28,7 +28,8 @@ const FEATURES = [
   ["product-search", "Product search + filter + pagination (full stack)"],
   ["relationship", "Relationship: orders → customers (backend)"],
   ["authentication", "Authentication: register, login, logout, me + login page (full stack)"],
-  ["file-upload", "File upload + safe download (backend)"]
+  ["file-upload", "File upload + safe download (backend)"],
+  ["app-startup", "App startup: store, resource, server, clean shutdown (backend)"]
 ];
 
 function measureSource(text) {
@@ -121,6 +122,9 @@ failed sign-ins, offers sign-up in the form, and signs the client out when the s
 File upload is the one feature whose requests differ: **before**, handlers only received parsed
 JSON, so files travel base64-encoded (about 33% larger, and capped near 750 KB by the default 1 MB
 body limit); **after** sends the raw bytes. Everything checked after the upload is identical.
+App startup compares \`app.start()\` + \`startHapiServer()\` with \`serve()\`; the model both start is
+shared and not counted. There **after** also undoes a failed start (e.g. a taken port) by stopping the
+application and closing the store.
 
 | Feature | LOC | Files | Imports | Framework concepts | Hand-written shapes |
 |---|---|---|---|---|---|

@@ -5,7 +5,7 @@
  */
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, readdir, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import React from "react";
@@ -190,6 +190,32 @@ for (const variant of VARIANTS) {
     assert.equal((await upload(Buffer.alloc(600 * 1024), "image/png", "big.png")).statusCode, 201);
     assert.equal((await upload("<html>", "text/html", "x.html")).statusCode, 415);
     assert.equal((await server.inject("/api/files/no-such-file")).statusCode, 404);
+  });
+
+  test(`[${variant}] app startup: SQLite store, API on $PORT, records kept across a restart`, async () => {
+    const { start } = await import(`../dist/app-startup/${variant}/server.js`);
+    const dir = await mkdtemp(join(tmpdir(), "code-to-intent-startup-"));
+    const cwd = process.cwd();
+    process.chdir(dir);
+    process.env.PORT = "0";
+    try {
+      const first = await start();
+      const post = (body) => fetch(`${first.url}/api/tasks`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
+      assert.equal((await post({ title: "Ship it" })).status, 201);
+      assert.equal((await post({ title: "" })).status, 400);
+      await first.stop();
+      await assert.rejects(fetch(`${first.url}/api/tasks`));
+
+      const second = await start();
+      const list = await (await fetch(`${second.url}/api/tasks`)).json();
+      assert.deepEqual(list.items.map((task) => [task.title, task.done]), [["Ship it", false]]);
+      await second.stop();
+      assert.deepEqual(await readdir(join(dir, "data")).then((files) => files.includes("app.db")), true);
+    } finally {
+      delete process.env.PORT;
+      process.chdir(cwd);
+      await rm(dir, { recursive: true, force: true });
+    }
   });
 
   test(`[${variant}] pages render`, async () => {

@@ -10,6 +10,12 @@ endpoints the feature needs, rejects unknown fields, validates forms in the brow
 errors next to their fields, and refreshes lists after any write. For authentication, **after**
 also claims emails atomically, takes as long for unknown emails as for wrong passwords, limits
 failed sign-ins, offers sign-up in the form, and signs the client out when the server ends a session.
+File upload is the one feature whose requests differ: **before**, handlers only received parsed
+JSON, so files travel base64-encoded (about 33% larger, and capped near 750 KB by the default 1 MB
+body limit); **after** sends the raw bytes. Everything checked after the upload is identical.
+App startup compares `app.start()` + `startHapiServer()` with `serve()`; the model both start is
+shared and not counted. There **after** also undoes a failed start (e.g. a taken port) by stopping the
+application and closing the store.
 
 | Feature | LOC | Files | Imports | Framework concepts | Hand-written shapes |
 |---|---|---|---|---|---|
@@ -20,7 +26,8 @@ failed sign-ins, offers sign-up in the form, and signs the client out when the s
 | Relationship: orders → customers (backend) | 77 → **11** (−86%) | 1 → 1 | 2 → 1 | 4 → 5 | 4 → 2 |
 | Authentication: register, login, logout, me + login page (full stack) | 181 → **10** (−94%) | 2 → 2 | 4 → 3 | 14 → 5 | 4 → 0 |
 | File upload + safe download (backend) | 77 → **11** (−86%) | 1 → 1 | 4 → 1 | 4 → 4 | 2 → 0 |
-| **Total** | 731 → **90** (−88%) | 12 → 12 | 27 → 19 | | 17 → 5 |
+| App startup: store, resource, server, clean shutdown (backend) | 28 → **6** (−79%) | 1 → 1 | 3 → 2 | 4 → 1 | 0 → 0 |
+| **Total** | 759 → **96** (−87%) | 13 → 13 | 30 → 21 | | 17 → 5 |
 
 **Metrics.** LOC: lines that are not blank and not only a comment. Concepts: distinct names
 imported from `@nexo-alpha/*`. Hand-written shapes: `interface X {`, `properties` field
@@ -77,3 +84,10 @@ as `Pick<…>` and `Infer<…>` are not counted.
   concepts: NexoDocumentStore, NexoHttpError, NexoModule, httpResponse
 - after: files.api.ts (11)
   concepts: NexoDocumentStore, NexoModule, createDiskBlobStore, createFiles
+
+### App startup: store, resource, server, clean shutdown (backend)
+
+- before: server.ts (28)
+  concepts: createApplication, createSqliteDocumentStore, resource, startHapiServer
+- after: server.ts (6)
+  concepts: serve
