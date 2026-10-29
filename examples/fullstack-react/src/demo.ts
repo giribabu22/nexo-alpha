@@ -1,5 +1,5 @@
 import { app, scheduler, jobQueue, type TodoItem } from "./app.js";
-import { startHapiServer } from "@nexo-alpha/hapi";
+import { serve } from "@nexo-alpha/hapi";
 import { createNexoClient } from "@nexo-alpha/frontend/client";
 import { renderStudioHtml } from "./render-studio.js";
 
@@ -10,13 +10,10 @@ async function runDemo() {
 
   // Step 1: Start Application, Scheduler & Hapi Server
   console.log("1. Starting Nexo Application, Schedulers & Hapi Server...");
-  await app.start();
+  const served = await serve({ app, port: 4055 });
   scheduler.start();
   await jobQueue.start();
-
-  const PORT = 4055;
-  const server = await startHapiServer(app, { port: PORT });
-  const baseUrl = server.info.uri;
+  const baseUrl = served.url;
 
   console.log(`   ✅ App started: ${app.name} (v${app.version})`);
   console.log(`   ✅ Registered Modules (${app.getModules().length}): [${app.getModules().map((m: { name: string }) => m.name).join(", ")}]`);
@@ -128,8 +125,7 @@ async function runDemo() {
   console.log("\n10. Shutting down demo servers cleanly...");
   scheduler.stop();
   await jobQueue.stop();
-  await server.stop();
-  await app.stop();
+  await served.stop();
 
   console.log("\n===============================================================");
   console.log("🎉 ALL FULLSTACK STUDIO MODULE CHECKS PASSED WITH FLYING COLORS!");

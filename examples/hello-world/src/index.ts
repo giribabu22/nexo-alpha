@@ -1,14 +1,13 @@
 import { app } from "./app.js";
-import { startHapiServer } from "@nexo-alpha/hapi";
+import { serve } from "@nexo-alpha/hapi";
 
-await app.start();
-
-const server = await startHapiServer(app, { port: 3000 });
+// Starts the application and serves it on $PORT or 3000; Ctrl+C stops cleanly.
+const { url } = await serve({ app });
 
 console.log({
   name: app.name,
   version: app.version,
   state: app.state,
   modules: app.getModules().map((module) => module.name),
-  uri: server.info.uri
+  uri: url
 });

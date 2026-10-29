@@ -1,5 +1,5 @@
 import { createFileDocumentStore, createLogger, createSqliteDocumentStore, signToken, type NexoDocumentStore } from "@nexo-alpha/core";
-import { startHapiServer } from "@nexo-alpha/hapi";
+import { serve } from "@nexo-alpha/hapi";
 import { createSupportDesk, DEMO_PROJECTS, PLATFORM_ADMINS, seedDemoProjects } from "./app.js";
 
 const logger = createLogger({ fields: { service: "support-desk" } });
@@ -24,9 +24,9 @@ try {
 
 const desk = createSupportDesk({ store, jwtSecret, logger });
 if (process.env.SEED_DEMO !== "false") await seedDemoProjects(desk.projects);
-await desk.app.start();
-await desk.queue.start();
-const server = await startHapiServer(desk.app, {
+// Signals are handled below, so the queue stops first.
+const served = await serve({
+  app: desk.app,
   port,
   host,
   logger,
@@ -36,10 +36,10 @@ const server = await startHapiServer(desk.app, {
     windowMs: 60_000,
     max: 300,
     key: (request) => (request.path === "/health" ? undefined : request.remoteAddress)
-  }
+  },
+  handleSignals: false
 });
-
-logger.info("support desk listening", { url: server.info.uri });
+await desk.queue.start();
 if (process.env.JWT_SECRET === undefined) {
   const users = [...new Set([...DEMO_PROJECTS.flatMap((project) => Object.keys(project.members)), ...PLATFORM_ADMINS])];
   for (const user of users) {
@@ -47,12 +47,12 @@ if (process.env.JWT_SECRET === undefined) {
     console.log(`\n${user}:\n  export TOKEN_${user.toUpperCase()}=${token}`);
   }
   console.log(`\nProjects: ${DEMO_PROJECTS.map((p) => `${p.id} (${Object.entries(p.members).map(([u, r]) => `${u}: ${r.join(",")}`).join("; ")})`).join(" | ")}`);
-  console.log(`\nTry:\n  curl -X POST ${server.info.uri}/workflows/refunds/runs -H "authorization: Bearer $TOKEN_SAM" -H "x-project-id: acme" -H "content-type: application/json" -d '{"goal":"Refund order o-1"}'\n`);
+  console.log(`\nTry:\n  curl -X POST ${served.url}/workflows/refunds/runs -H "authorization: Bearer $TOKEN_SAM" -H "x-project-id: acme" -H "content-type: application/json" -d '{"goal":"Refund order o-1"}'\n`);
 }
 
 const shutdown = async (): Promise<void> => {
-  await server.stop();
   await desk.queue.stop();
+  await served.stop();
   await store.close();
   process.exit(0);
 };
