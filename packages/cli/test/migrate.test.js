@@ -212,3 +212,26 @@ test("nexo migrate up takes a backup; backups lists it; restore --app-stopped br
     await rm(dir, { recursive: true, force: true });
   }
 });
+
+test("nexo migrate plan and up show the uploaded files a migration releases", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "nexo-migrate-cli-"));
+  try {
+    const store = createFileDocumentStore(join(dir, "app.json"));
+    await store.put("users", "u1", { id: "u1", name: "Ann", photo: "f1" });
+    await store.put("files", "f1", { id: "f1", name: "ann.png", type: "image/png", size: 5, sha256: "x", url: "/api/files/f1", attachedTo: "users/u1", createdAt: "2026-10-29T08:00:00.000Z" });
+    await store.close();
+    await writeFile(
+      join(dir, "migrations.mjs"),
+      `import { migration } from ${JSON.stringify(coreUrl)};\nexport default [migration({ id: "20261029T0700-drop-users", up: (m) => m.update("users", () => m.remove) })];\n`
+    );
+    await writeFile(join(dir, "nexo.config.json"), JSON.stringify({ app: "./app.mjs", store: "./app.json", migrations: "./migrations.mjs" }));
+
+    assert.match((await run(dir, "plan")).stdout, /releases 1 uploaded file: ann\.png \(users\/u1\)/);
+    assert.match((await run(dir, "up", "--no-backup")).stdout, /20261029T0700-drop-users: 1 document changed, 1 uploaded file released \(destructive\)/);
+    const file = JSON.parse(await readFile(join(dir, "app.json"), "utf8")).files.f1;
+    assert.equal(file.attachedTo, undefined);
+    assert.ok(file.detachedAt);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});

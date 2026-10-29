@@ -583,10 +583,16 @@ await serve({ resources: [User], migrations });    // pending ones run before th
   is applied. The newest 5 are kept in `backups/` next to the store
   (`migrations: { list, backup: { retain, directory } }`, or `backup: false`).
   `nexo migrate restore <backup> --app-stopped` puts one back.
+- Uploaded files of records a migration deletes, or that stop mentioning them,
+  are released in the same batch. Cleanup (`createFiles({ cleanup })`) removes
+  their contents after its delay (default 1 hour), unless a record takes them
+  back first. `plan` lists them.
 
 **What backups don't cover:** uploaded file contents, other databases and services.
 They sit on the same disk as the store unless `directory` points elsewhere, and
-Nexo doesn't encrypt them. Test restoring now and then.
+Nexo doesn't encrypt them. Test restoring now and then. A restore after cleanup
+removed released files brings back their records, not their contents: raise
+`removeDetachedAfterMs` if you may need to restore later than that.
 
 **CLI.** `nexo migrate status | plan | up | down <id> | create <name> | check | backups | restore`, with
 `--store` and `--migrations` (or `"store"` and `"migrations"` in `nexo.config.json`).
@@ -602,8 +608,8 @@ record with its model and exits 1 on a mismatch.
 - A custom store without `writeBatch()` and `entries()`: migrations refuse it rather than
   apply changes one by one.
 
-Not yet: releasing uploaded files of deleted records (see the
-[design](./architecture/migrations-design.md), step 4).
+A `down()` that brings a deleted record back doesn't claim its file again: saving the
+record through its resource does, if cleanup hasn't removed the file yet.
 
 ---
 

@@ -58,6 +58,8 @@ export interface AppliedMigration {
   readonly id: string;
   readonly documentsChanged: number;
   readonly destructive: boolean;
+  /** Uploaded files released for cleanup, because their records were deleted or no longer use them. */
+  readonly filesReleased: number;
 }
 
 export interface RunMigrationsResult {
@@ -136,7 +138,7 @@ async function planPending(
   for (const item of status.pending) {
     const plan = await computeMigration(view, item, "up");
     plans.push(plan);
-    view = withWrites(view, plan.writes);
+    view = withWrites(view, [...plan.writes, ...plan.fileWrites]);
   }
   const refusals = plans.map((plan) => refusal(plan, s)).filter((r): r is string => r !== undefined);
   const destructive = plans.filter((plan) => plan.destructive.length > 0);
@@ -203,13 +205,15 @@ export async function runMigrations(
         const destructive = plan.destructive.length > 0;
         const record = createMigrationRecord(item, by, startedAt, Date.now(), {
           documentsChanged: plan.writes.length,
+          filesReleased: plan.filesReleased.length,
           destructive,
           ...(backup !== undefined ? { backup: backup.path } : {})
         });
         assertHeld();
-        if (await store.writeBatch([...plan.writes, { collection: MIGRATIONS_COLLECTION, id: item.id, expected: undefined, next: record }])) {
+        const batch = [...plan.writes, ...plan.fileWrites, { collection: MIGRATIONS_COLLECTION, id: item.id, expected: undefined, next: record }];
+        if (await store.writeBatch(batch)) {
           await requestIndexes(store, plan, s.warn);
-          applied.push({ id: item.id, documentsChanged: plan.writes.length, destructive });
+          applied.push({ id: item.id, documentsChanged: plan.writes.length, destructive, filesReleased: plan.filesReleased.length });
           return true;
         }
         if ((await store.get(MIGRATIONS_COLLECTION, item.id)) !== undefined) return false; // applied by another process
@@ -278,9 +282,9 @@ export async function revertMigration(
       if (refused !== undefined) throw new NexoMigrationError(refused);
       const record = await store.get<MigrationRecord>(MIGRATIONS_COLLECTION, id);
       lock.assertHeld();
-      if (await store.writeBatch([...plan.writes, { collection: MIGRATIONS_COLLECTION, id, expected: record, next: undefined }])) {
+      if (await store.writeBatch([...plan.writes, ...plan.fileWrites, { collection: MIGRATIONS_COLLECTION, id, expected: record, next: undefined }])) {
         await requestIndexes(store, plan, s.warn);
-        return { id, documentsChanged: plan.writes.length, destructive: plan.destructive.length > 0 };
+        return { id, documentsChanged: plan.writes.length, destructive: plan.destructive.length > 0, filesReleased: plan.filesReleased.length };
       }
     }
     throw new NexoMigrationError(`Reverting "${id}" kept conflicting with other writes (${MAX_ATTEMPTS} attempts); nothing was written.`);

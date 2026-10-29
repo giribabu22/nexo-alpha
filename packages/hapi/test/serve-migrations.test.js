@@ -51,7 +51,7 @@ test("serve({ migrations }): applies pending migrations, then serves the migrate
   withV1Data(async (path) => {
     const served = await serve({ ...base, store: path, migrations: [rename] });
     try {
-      assert.deepEqual(served.migrations.applied, [{ id: rename.id, documentsChanged: 1, destructive: false }]);
+      assert.deepEqual(served.migrations.applied, [{ id: rename.id, documentsChanged: 1, destructive: false, filesReleased: 0 }]);
       // The first run against a store takes a backup, in "backups" next to it.
       assert.equal(served.migrations.backup.path, join(dirname(path), "backups", served.migrations.backup.file));
       assert.deepEqual(served.migrations.backup.counts.users, 1);

@@ -151,6 +151,13 @@ export function renderMigratePlan(result: MigratePlanResult): string {
     lines.push("", `  ${plan.id}${plan.description !== undefined ? `  ${plan.description}` : ""}`);
     lines.push(`    ${counts === "" ? "changes no documents" : counts}`);
     if (plan.destructive.length > 0) lines.push(`    DESTRUCTIVE: ${describeDestructive(plan.destructive)}`);
+    if (plan.filesReleased.length > 0) {
+      const shown = plan.filesReleased.slice(0, 3).map((f) => `${f.name ?? f.id} (${f.owner})`).join(", ");
+      lines.push(
+        `    releases ${plan.filesReleased.length} uploaded file${plan.filesReleased.length === 1 ? "" : "s"}: ${shown}${plan.filesReleased.length > 3 ? ", …" : ""}`,
+        "      (cleanup removes their contents after its delay; restoring a backup after that brings back the records, not the contents)"
+      );
+    }
     if (plan.indexes.length > 0) lines.push(`    indexes: ${plan.indexes.map((i) => `${i.collection}.${i.field}`).join(", ")}`);
   }
   for (const warning of result.warnings) lines.push("", `Warning: ${warning}`);
@@ -178,7 +185,9 @@ export async function migrateUp(flags: MigrateRunFlags): Promise<MigrateUpResult
 }
 
 const describeApplied = (a: AppliedMigration) =>
-  `${a.id}: ${a.documentsChanged} document${a.documentsChanged === 1 ? "" : "s"} changed${a.destructive ? " (destructive)" : ""}`;
+  `${a.id}: ${a.documentsChanged} document${a.documentsChanged === 1 ? "" : "s"} changed` +
+  (a.filesReleased > 0 ? `, ${a.filesReleased} uploaded file${a.filesReleased === 1 ? "" : "s"} released` : "") +
+  (a.destructive ? " (destructive)" : "");
 
 export function renderMigrateUp(result: MigrateUpResult): string {
   const lines = result.warnings.map((warning) => `Warning: ${warning}`);

@@ -211,7 +211,7 @@ for (const backend of BACKENDS) {
       assert.notDeepEqual((await contents(store)).users, before);
 
       const reverted = await revertMigration(store, [rename], rename.id, quiet);
-      assert.deepEqual(reverted, { id: rename.id, documentsChanged: 2, destructive: false });
+      assert.deepEqual(reverted, { id: rename.id, documentsChanged: 2, destructive: false, filesReleased: 0 });
       assert.deepEqual((await contents(store)).users, before, "back to the original records");
       assert.deepEqual((await migrationStatus(store, [rename])).pending.map((m) => m.id), [rename.id], "its record is gone");
       await assert.rejects(revertMigration(store, [rename], rename.id, quiet), /isn't applied/);

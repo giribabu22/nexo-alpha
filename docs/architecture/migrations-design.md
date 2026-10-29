@@ -301,6 +301,8 @@ Progress: steps 1 and 2 are done. Step 1: `migrations.ts`, `migration-lock.ts`, 
 - **Restore asks the person to confirm the app is stopped** (`--app-stopped`). The lock only shows a migration in progress; an idle running app can't be detected on either store.
 - **A restored copy's lock is released.** Backups are taken inside the migration lock, so without this a restore would bring back a held lock and block migrations until it expired.
 
+Step 4 is done (`fileReleases` in `migration-plan.ts`; files are released in the migration's batch). A file counts as still used if the record mentions its id anywhere, so a renamed file field keeps it. One limit, documented: a `down()` that brings back a deleted record doesn't claim its file again; saving the record through its resource does, if cleanup hasn't run.
+
 1. **Tracking and locking:** `migration()`, validation, the `nexo_migrations` record, ordering and
    checksums, the lease lock, `status`. Applying uses the store's existing single-document writes
    only for the record and lock, which are atomic on their own.

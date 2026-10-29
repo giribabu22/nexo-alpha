@@ -90,6 +90,8 @@ export interface MigrationRecord {
   readonly by: string;
   /** Documents inserted, updated or deleted. */
   readonly documentsChanged?: number;
+  /** Uploaded files released for cleanup. */
+  readonly filesReleased?: number;
   /** Whether it deleted documents, removed values or changed their types. */
   readonly destructive?: boolean;
   /** The backup taken before the run that applied it, if one was. */
@@ -198,7 +200,12 @@ export function createMigrationRecord(
   by: string,
   startedAt: number,
   now = Date.now(),
-  changes?: { readonly documentsChanged: number; readonly destructive: boolean; readonly backup?: string }
+  changes?: {
+    readonly documentsChanged: number;
+    readonly filesReleased?: number;
+    readonly destructive: boolean;
+    readonly backup?: string;
+  }
 ): MigrationRecord {
   return {
     id: item.id,

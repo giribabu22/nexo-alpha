@@ -120,7 +120,7 @@ export type {
 export { MIGRATIONS_COLLECTION } from "./migration-lock.js";
 export { runMigrations, planMigrations, revertMigration, describeDestructive } from "./migration-runner.js";
 export type { MigrationRunOptions, RunMigrationsResult, AppliedMigration, PlannedMigrations } from "./migration-runner.js";
-export type { MigrationPlan, DestructiveChange } from "./migration-plan.js";
+export type { MigrationPlan, DestructiveChange, ReleasedFile } from "./migration-plan.js";
 export { takeBackup, listBackups, restoreBackup } from "./migration-backup.js";
 export type { BackupInfo, BackupManifest, TakeBackupOptions, RestoreResult } from "./migration-backup.js";
 

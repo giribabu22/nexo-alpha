@@ -11,6 +11,7 @@ import { MIGRATIONS_COLLECTION } from "./migration-lock.js";
 import type { MigrationContext, MigrationDocument, MigrationRemove, NexoMigration } from "./migrations.js";
 import type { DocumentWrite, NexoDocumentStore } from "./storage.js";
 import { FILES_COLLECTION } from "./file-attachments.js";
+import type { NexoFile } from "./files-contract.js";
 
 /** What computing a migration reads: any store with `entries`, or a plan overlay. */
 export interface MigrationReader {
@@ -31,6 +32,16 @@ export type DestructiveChange =
       readonly to: string;
     };
 
+/** An uploaded file a migration lets go of: its record was deleted or no longer mentions it. */
+export interface ReleasedFile {
+  /** The files collection, e.g. "files" (or "acme::files" in a project). */
+  readonly collection: string;
+  readonly id: string;
+  /** The record that owned it, e.g. "users/6f1c…". */
+  readonly owner: string;
+  readonly name: string | undefined;
+}
+
 export interface MigrationPlan {
   readonly id: string;
   readonly description?: string;
@@ -40,6 +51,14 @@ export interface MigrationPlan {
   /** Counts per collection. */
   readonly collections: Readonly<Record<string, { readonly inserted: number; readonly updated: number; readonly deleted: number }>>;
   readonly destructive: readonly DestructiveChange[];
+  /**
+   * Files to release in the same batch (`attachedTo` removed, `detachedAt`
+   * set), so cleanup removes their contents after its delay, unless a record
+   * takes them back first.
+   */
+  readonly filesReleased: readonly ReleasedFile[];
+  /** The writes that release them; separate from `writes`, which are documents. */
+  readonly fileWrites: readonly DocumentWrite[];
   /** Index requests, run after the migration commits. */
   readonly indexes: readonly { readonly collection: string; readonly field: string }[];
 }
@@ -234,8 +253,59 @@ export async function computeMigration(
     writes,
     collections,
     destructive,
+    ...(await fileReleases(reader, writes)),
     indexes
   };
+}
+
+/** Every string anywhere in a document: a file is kept if the record still mentions its id, in any field. */
+function stringsIn(value: unknown, out = new Set<string>()): Set<string> {
+  if (typeof value === "string") out.add(value);
+  else if (Array.isArray(value)) for (const item of value) stringsIn(item, out);
+  else if (isPlainObject(value)) for (const item of Object.values(value)) stringsIn(item, out);
+  return out;
+}
+
+/**
+ * Files owned by changed documents that their new version no longer mentions
+ * (or that were deleted), with the writes that release them. Owners are
+ * "<collection>/<id>" without a project prefix, as `resource()` records them;
+ * a project's files live in "<project>::files".
+ */
+async function fileReleases(
+  reader: MigrationReader,
+  writes: readonly DocumentWrite[]
+): Promise<{ fileWrites: DocumentWrite[]; filesReleased: ReleasedFile[] }> {
+  const fileWrites: DocumentWrite[] = [];
+  const filesReleased: ReleasedFile[] = [];
+  const byPrefix = new Map<string, DocumentWrite[]>();
+  for (const write of writes) {
+    if (write.expected === undefined) continue; // an inserted document owns nothing yet
+    const prefix = /^(.*::)/.exec(write.collection)?.[1] ?? "";
+    byPrefix.set(prefix, [...(byPrefix.get(prefix) ?? []), write]);
+  }
+  const detachedAt = new Date().toISOString();
+  for (const [prefix, changed] of byPrefix) {
+    const collection = prefix + FILES_COLLECTION;
+    const owned = new Map<string, Array<[string, NexoFile & { removing?: boolean }]>>();
+    for (const [key, file] of await reader.entries<NexoFile & { removing?: boolean }>(collection)) {
+      if (file.attachedTo === undefined || file.removing === true) continue;
+      owned.set(file.attachedTo, [...(owned.get(file.attachedTo) ?? []), [key, file]]);
+    }
+    for (const write of changed) {
+      const owner = `${write.collection.slice(prefix.length)}/${write.id}`;
+      const files = owned.get(owner);
+      if (files === undefined) continue;
+      const kept = write.next === undefined ? new Set<string>() : stringsIn(write.next);
+      for (const [key, file] of files) {
+        if (kept.has(file.id)) continue;
+        const { attachedTo: _owner, ...rest } = file;
+        fileWrites.push({ collection, id: key, expected: file, next: { ...rest, detachedAt } });
+        filesReleased.push({ collection, id: key, owner, name: file.name });
+      }
+    }
+  }
+  return { fileWrites, filesReleased };
 }
 
 /**
