@@ -61,6 +61,11 @@ Third-party versions installed on 2026-10-29 included `@hapi/hapi` 21.4.12,
   from `create-nexo-app`'s own version, so a generated project always asks for the release that generated it.
 - **The minimal template didn't build** (`@hapi/hapi`'s types import `joi`, which isn't
   installed). Its `tsconfig.json` now has `skipLibCheck`, like the other templates.
+- **Several processes opening the same new SQLite database at once failed** with "database is
+  locked" (found later, while testing migrations under load; commit `1253971`). Opening now sets the
+  busy timeout first and retries briefly. A regression test opens one new file from six processes.
+  After the fix, build, typecheck and tests (60 of 60) and `pnpm release:check` were run again on
+  this branch and pass.
 
 ## Not verified
 
