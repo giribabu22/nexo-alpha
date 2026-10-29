@@ -23,15 +23,19 @@ import {
 } from "./commands.js";
 import { doctor, renderDoctorReport } from "./doctor.js";
 import {
+  migrateBackups,
   migrateCheck,
   migrateCreate,
   migrateDown,
   migratePlan,
+  migrateRestore,
   migrateStatus,
   migrateUp,
+  renderMigrateBackups,
   renderMigrateCheck,
   renderMigrateDown,
   renderMigratePlan,
+  renderMigrateRestore,
   renderMigrateStatus,
   renderMigrateUp
 } from "./migrate.js";
@@ -39,7 +43,10 @@ import {
 const MIGRATE_USAGE = `Usage:
   nexo migrate status [--json]
   nexo migrate plan [--production] [--allow-destructive <id>]... [--max-changes <n>] [--json]
-  nexo migrate up [--production] [--allow-destructive <id>]... [--allow-out-of-order] [--max-changes <n>] [--json]
+  nexo migrate up [--production] [--allow-destructive <id>]... [--allow-out-of-order] [--max-changes <n>]
+                  [--no-backup] [--backup-dir <dir>] [--json]
+  nexo migrate backups [--backup-dir <dir>]
+  nexo migrate restore <backup> --app-stopped
   nexo migrate down <id>
   nexo migrate create <name> [--dir src/migrations]
   nexo migrate check [--app <module>] [--json]
@@ -112,8 +119,12 @@ with --production (or NODE_ENV=production) a destructive one runs only if
 named with --allow-destructive. "down <id>" reverts the newest applied
 migration. "create <name>" writes a timestamped migration file and adds
 it to the list. "check" compares every stored record with its resource's
-model and exits 1 on any mismatch. status, plan and check only read and
-don't create a database. --store and --migrations default to the "store"
+model and exits 1 on any mismatch. "up" first takes a checked backup when
+a pending migration is destructive or none has been applied yet ("backups"
+next to the store; the newest 5 are kept). "backups" lists them, and
+"restore <backup> --app-stopped" puts one back after checking its checksum,
+moving the replaced file aside. status, plan, check and backups only read
+and don't create a database. --store and --migrations default to the "store"
 and "migrations" paths in nexo.config.json.
 
 "nexo intents" renders recorded intents ("why does this entity exist" —
@@ -191,7 +202,9 @@ async function main(): Promise<void> {
       production: args.includes("--production"),
       allowDestructive: args.flatMap((arg, i) => (arg === "--allow-destructive" && args[i + 1] !== undefined ? [args[i + 1]!] : [])),
       allowOutOfOrder: args.includes("--allow-out-of-order"),
-      maxChanges: extractFlagValue(args, "--max-changes") === undefined ? undefined : Number(extractFlagValue(args, "--max-changes"))
+      maxChanges: extractFlagValue(args, "--max-changes") === undefined ? undefined : Number(extractFlagValue(args, "--max-changes")),
+      noBackup: args.includes("--no-backup"),
+      backupDir: extractFlagValue(args, "--backup-dir")
     };
     const json = args.includes("--json");
     const print = <T>(result: T, render: (r: T) => string) => console.log(json ? JSON.stringify(result, null, 2) : render(result));
@@ -220,6 +233,15 @@ async function main(): Promise<void> {
         const created = await migrateCreate({ name, dir: extractFlagValue(args, "--dir") ?? "src/migrations", cwd: process.cwd() });
         console.log(`Created ${created.file}`);
         console.log(created.registered ? `Added it to ${created.index}` : `Add it to the list in ${created.index} yourself (no "export default [...]" found).`);
+        return;
+      }
+      case "backups":
+        print(await migrateBackups(flags), renderMigrateBackups);
+        return;
+      case "restore": {
+        const backup = args[0];
+        if (backup === undefined || backup.startsWith("--")) break;
+        print(await migrateRestore({ backup, cwd: process.cwd(), appStopped: args.includes("--app-stopped") }), renderMigrateRestore);
         return;
       }
       case "check": {

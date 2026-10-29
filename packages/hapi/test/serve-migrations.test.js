@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 import { mkdtemp, rm } from "node:fs/promises";
 import { createServer } from "node:net";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 
 import { createFileDocumentStore, field, migration, migrationStatus, model, resource, MIGRATIONS_COLLECTION } from "@nexo-alpha/core";
 import { serve } from "../dist/index.js";
@@ -51,7 +51,10 @@ test("serve({ migrations }): applies pending migrations, then serves the migrate
   withV1Data(async (path) => {
     const served = await serve({ ...base, store: path, migrations: [rename] });
     try {
-      assert.deepEqual(served.migrations, { applied: [{ id: rename.id, documentsChanged: 1, destructive: false }], skipped: [] });
+      assert.deepEqual(served.migrations.applied, [{ id: rename.id, documentsChanged: 1, destructive: false }]);
+      // The first run against a store takes a backup, in "backups" next to it.
+      assert.equal(served.migrations.backup.path, join(dirname(path), "backups", served.migrations.backup.file));
+      assert.deepEqual(served.migrations.backup.counts.users, 1);
       const body = await (await fetch(`${served.url}/api/users?fullName=Ann`)).json();
       assert.equal(body.total, 1);
       assert.equal(body.items[0].name, undefined);

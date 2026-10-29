@@ -92,6 +92,8 @@ export interface MigrationRecord {
   readonly documentsChanged?: number;
   /** Whether it deleted documents, removed values or changed their types. */
   readonly destructive?: boolean;
+  /** The backup taken before the run that applied it, if one was. */
+  readonly backup?: string;
 }
 
 export interface MigrationStatus {
@@ -196,7 +198,7 @@ export function createMigrationRecord(
   by: string,
   startedAt: number,
   now = Date.now(),
-  changes?: { readonly documentsChanged: number; readonly destructive: boolean }
+  changes?: { readonly documentsChanged: number; readonly destructive: boolean; readonly backup?: string }
 ): MigrationRecord {
   return {
     id: item.id,
@@ -219,7 +221,7 @@ export interface RunPendingOptions {
   /** Nexo's own migrations are in the list (packages, not apps). */
   readonly allowNexoNamespace?: boolean;
   /** Runs inside the lock, after the order checks and before anything is applied; throw to stop. */
-  readonly prepare?: (pending: readonly NexoMigration[]) => Promise<void>;
+  readonly prepare?: (pending: readonly NexoMigration[], status: MigrationStatus) => Promise<void>;
 }
 
 export interface RunPendingResult {
@@ -272,7 +274,7 @@ export async function runPendingMigrations(
       );
     }
 
-    await options.prepare?.(status.pending);
+    await options.prepare?.(status.pending, status);
 
     const applied: string[] = [];
     const skipped: string[] = [];

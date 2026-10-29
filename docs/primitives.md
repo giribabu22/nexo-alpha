@@ -578,8 +578,17 @@ await serve({ resources: [User], migrations });    // pending ones run before th
   migration would do; a rename isn't destructive.
 - Nothing runs if any pending migration would be refused, or changes more than
   `maxChanges` documents (default 100,000).
+- Before a destructive run, and the first run against a store, a backup is taken
+  and checked (SQLite integrity check and document counts); if that fails, nothing
+  is applied. The newest 5 are kept in `backups/` next to the store
+  (`migrations: { list, backup: { retain, directory } }`, or `backup: false`).
+  `nexo migrate restore <backup> --app-stopped` puts one back.
 
-**CLI.** `nexo migrate status | plan | up | down <id> | create <name> | check`, with
+**What backups don't cover:** uploaded file contents, other databases and services.
+They sit on the same disk as the store unless `directory` points elsewhere, and
+Nexo doesn't encrypt them. Test restoring now and then.
+
+**CLI.** `nexo migrate status | plan | up | down <id> | create <name> | check | backups | restore`, with
 `--store` and `--migrations` (or `"store"` and `"migrations"` in `nexo.config.json`).
 `plan` is a dry run that marks destructive changes. `check` compares every stored
 record with its model and exits 1 on a mismatch.
@@ -593,8 +602,8 @@ record with its model and exits 1 on a mismatch.
 - A custom store without `writeBatch()` and `entries()`: migrations refuse it rather than
   apply changes one by one.
 
-Not yet: backups before migrating, and releasing uploaded files of deleted records
-(see the [design](./architecture/migrations-design.md), steps 3 and 4).
+Not yet: releasing uploaded files of deleted records (see the
+[design](./architecture/migrations-design.md), step 4).
 
 ---
 

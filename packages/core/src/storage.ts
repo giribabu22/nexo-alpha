@@ -77,8 +77,25 @@ export interface NexoDocumentStore {
    * one transaction), so nothing else interleaves.
    */
   writeBatch?(writes: readonly DocumentWrite[]): Promise<boolean>;
+  /**
+   * Writes a copy of everything into `directory` (default: a "backups" folder
+   * next to the store's file) as `<name>.<ext>`, checks it, and describes it.
+   * Resolves with undefined if there is nothing to back up (in memory).
+   * Never overwrites a file. Optional; migrations use it before destructive changes.
+   */
+  backup?(options: { readonly directory?: string | undefined; readonly name: string }): Promise<StoreBackup | undefined>;
   /** Releases resources (file handles, connections). The store must not be used afterwards. */
   close(): Promise<void>;
+}
+
+/** A copy written by {@link NexoDocumentStore.backup}, already checked against the store. */
+export interface StoreBackup {
+  readonly path: string;
+  readonly kind: "sqlite" | "json";
+  /** The store's own file, which a restore replaces. */
+  readonly source: string;
+  /** Documents per collection in the copy (and in the store when it was taken). */
+  readonly counts: Readonly<Record<string, number>>;
 }
 
 /** One write of a {@link NexoDocumentStore.writeBatch}. */
@@ -185,6 +202,9 @@ export function createInMemoryDocumentStore(): NexoDocumentStore {
       }
       return true;
     },
+    async backup() {
+      return undefined; // nothing outlives the process, so nothing to back up
+    },
     async close() {
       collections.clear();
     }
@@ -286,6 +306,24 @@ export function createFileDocumentStore(filePath: string): NexoDocumentStore {
     return change(all);
   }
 
+  /**
+   * Runs `work` while other changes wait, after earlier ones have finished
+   * saving, so the file matches memory when `work` starts.
+   */
+  async function exclusive<T>(work: (all: FileContents) => Promise<T>): Promise<T> {
+    while (batching !== undefined) await batching;
+    let release!: () => void;
+    batching = new Promise<void>((resolve) => (release = resolve));
+    try {
+      await pending?.catch(() => undefined);
+      await writing.catch(() => undefined);
+      return await work(await data()); // a failed save drops the cache; data() reloads it
+    } finally {
+      batching = undefined;
+      release();
+    }
+  }
+
   const json = (document: unknown) => (document === undefined ? undefined : JSON.stringify(document));
 
   return {
@@ -356,14 +394,7 @@ export function createFileDocumentStore(filePath: string): NexoDocumentStore {
      */
     async writeBatch(writes) {
       const checked = checkWrites(writes);
-      while (batching !== undefined) await batching;
-      let release!: () => void;
-      batching = new Promise<void>((resolve) => (release = resolve));
-      try {
-        // Let earlier changes finish saving, so the file matches memory before this write.
-        await pending?.catch(() => undefined);
-        await writing.catch(() => undefined);
-        const all = await data(); // a failed save drops the cache; this reloads it
+      return exclusive(async (all) => {
         if (checked.some((w) => json(all[w.collection]?.[w.id]) !== w.expectedJson)) return false;
         const copy: FileContents = { ...all };
         for (const w of checked) {
@@ -375,10 +406,29 @@ export function createFileDocumentStore(filePath: string): NexoDocumentStore {
         await writeSnapshot(JSON.stringify(copy, null, 2));
         cache = copy;
         return true;
-      } finally {
-        batching = undefined;
-        release();
-      }
+      });
+    },
+
+    /** Copies the file while other changes wait, so the copy is exactly the data at one moment. */
+    async backup({ directory, name }) {
+      const target = path.join(directory ?? path.join(path.dirname(filePath), "backups"), `${name}.json`);
+      return exclusive(async (all) => {
+        const counts = Object.fromEntries(Object.entries(all).map(([collection, docs]) => [collection, Object.keys(docs).length]));
+        await fs.mkdir(path.dirname(target), { recursive: true });
+        try {
+          // "wx": never overwrite an existing backup.
+          await fs.writeFile(target, JSON.stringify(all, null, 2), { encoding: "utf-8", flag: "wx" });
+          const copy = JSON.parse(await fs.readFile(target, "utf-8")) as FileContents;
+          const copied = Object.fromEntries(Object.entries(copy).map(([collection, docs]) => [collection, Object.keys(docs).length]));
+          if (JSON.stringify(copied) !== JSON.stringify(counts)) {
+            throw new NexoConfigurationError(`Backup ${target} doesn't hold every document (${JSON.stringify(copied)} of ${JSON.stringify(counts)}).`);
+          }
+        } catch (error) {
+          if ((error as NodeJS.ErrnoException).code !== "EEXIST") await fs.rm(target, { force: true });
+          throw error;
+        }
+        return { path: target, kind: "json" as const, source: path.resolve(filePath), counts };
+      });
     },
 
     async close() {
@@ -407,6 +457,37 @@ interface SqliteDatabase {
 export interface SqliteDocumentStoreOptions {
   /** Table name. Letters, digits and underscores only. Default: "nexo_documents" */
   readonly table?: string;
+}
+
+function sqliteCounts(db: SqliteDatabase, table: string): Record<string, number> {
+  const rows = db.prepare(`SELECT collection, COUNT(*) AS n FROM ${table} GROUP BY collection ORDER BY collection`).all() as {
+    collection: string;
+    n: number | bigint;
+  }[];
+  return Object.fromEntries(rows.map((row) => [row.collection, Number(row.n)]));
+}
+
+/**
+ * Checks a SQLite backup: it opens, passes `PRAGMA integrity_check`, and
+ * holds `expected` documents per collection. Throws NexoConfigurationError otherwise.
+ */
+export async function checkSqliteBackup(file: string, expected: Readonly<Record<string, number>>, table = "nexo_documents"): Promise<void> {
+  const specifier = "node:sqlite";
+  const { DatabaseSync } = (await import(specifier)) as { DatabaseSync: new (location: string) => SqliteDatabase };
+  let db: SqliteDatabase | undefined;
+  try {
+    db = new DatabaseSync(file);
+    const integrity = (db.prepare("PRAGMA integrity_check").all() as Record<string, unknown>[]).map((row) => Object.values(row)[0]);
+    if (integrity.length !== 1 || integrity[0] !== "ok") throw new Error(`integrity check: ${integrity.join("; ")}`);
+    const counts = sqliteCounts(db, table);
+    if (JSON.stringify(counts) !== JSON.stringify(expected)) {
+      throw new Error(`it holds ${JSON.stringify(counts)}, the store held ${JSON.stringify(expected)}`);
+    }
+  } catch (error) {
+    throw new NexoConfigurationError(`Backup ${file} failed its check: ${error instanceof Error ? error.message : String(error)}`);
+  } finally {
+    db?.close();
+  }
 }
 
 /**
@@ -583,6 +664,36 @@ export async function createSqliteDocumentStore(
      * processes wait (busy timeout) rather than change rows between the
      * checks and the writes.
      */
+    /**
+     * VACUUM INTO: a consistent copy of the live database. It can't run inside
+     * a transaction, so the counts are compared before and after; if another
+     * process wrote meanwhile, the copy is discarded and taken again.
+     */
+    async backup({ directory, name }) {
+      open();
+      if (inMemory) return undefined;
+      const target = path.join(directory ?? path.join(path.dirname(filePath), "backups"), `${name}.db`);
+      await fs.mkdir(path.dirname(target), { recursive: true });
+      for (let attempt = 0; attempt < 3; attempt++) {
+        if (await fs.access(target).then(() => true, () => false)) {
+          throw new NexoConfigurationError(`Backup ${target} already exists; backups are never overwritten.`);
+        }
+        const before = sqliteCounts(db, table);
+        db.exec(`VACUUM INTO '${target.replace(/'/g, "''")}'`);
+        if (JSON.stringify(sqliteCounts(db, table)) !== JSON.stringify(before)) {
+          await fs.rm(target, { force: true });
+          continue;
+        }
+        try {
+          await checkSqliteBackup(target, before, table);
+        } catch (error) {
+          await fs.rm(target, { force: true });
+          throw error;
+        }
+        return { path: target, kind: "sqlite" as const, source: path.resolve(filePath), counts: before };
+      }
+      throw new NexoConfigurationError("The database kept changing while it was being backed up (3 attempts); try again.");
+    },
     async writeBatch(writes) {
       open();
       const checked = checkWrites(writes);

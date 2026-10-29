@@ -181,3 +181,34 @@ test("nexo migrate create: writes a timestamped migration and adds it to index.t
   }
 });
 
+
+test("nexo migrate up takes a backup; backups lists it; restore --app-stopped brings the data back", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "nexo-migrate-cli-"));
+  try {
+    const store = createFileDocumentStore(join(dir, "app.json"));
+    await resource(model("users", { name: field.string() }), { store }).create({ name: "Ann" });
+    await store.close();
+    const original = JSON.parse(await readFile(join(dir, "app.json"), "utf8")).users;
+    await writeFile(
+      join(dir, "migrations.mjs"),
+      `import { migration } from ${JSON.stringify(coreUrl)};\nexport default [migration({ id: "20261029T0700-drop-name", up: (m) => m.removeField("users", "name") })];\n`
+    );
+    await writeFile(join(dir, "nexo.config.json"), JSON.stringify({ app: "./app.mjs", store: "./app.json", migrations: "./migrations.mjs" }));
+
+    assert.match((await run(dir, "plan")).stdout, /A checked backup of the store will be taken first\./);
+    const up = (await run(dir, "up")).stdout;
+    const backup = /backup {3}(.+\.json)\r?\n/.exec(up)[1];
+    assert.ok(backup.startsWith(join(dir, "backups")), backup);
+    assert.match((await run(dir, "backups")).stdout, /before 20261029T0700-drop-name {2}users: 1/);
+
+    await assert.rejects(run(dir, "restore", backup), (error) => error.code === 1 && /Stop the app that uses this store first/.test(error.stderr));
+    const restored = (await run(dir, "restore", backup, "--app-stopped")).stdout;
+    assert.match(restored, /Restored .*app\.json\./);
+    assert.match(restored, /The file it replaced is at .*app\.json\.before-restore-/);
+    assert.deepEqual(JSON.parse(await readFile(join(dir, "app.json"), "utf8")).users, original);
+    assert.match((await run(dir, "status")).stdout, /0 applied, 1 pending/);
+    assert.equal((await run(dir, "up", "--no-backup")).stdout.includes("backup   "), false);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});

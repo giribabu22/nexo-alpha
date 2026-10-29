@@ -10,9 +10,14 @@
  * Each migration is computed from fresh reads, then written with its record
  * in one `writeBatch`. If the app changed a document in between, the batch
  * writes nothing and the migration is computed again (up to 5 times).
+ *
+ * Before the first migration of a run, a checked backup is taken if any
+ * pending migration is destructive, or none has ever been applied to the
+ * store. If it can't be taken, nothing is applied.
  */
 
 import { NexoMigrationError } from "./errors.js";
+import { takeBackup, type BackupInfo } from "./migration-backup.js";
 import { acquireMigrationLock, MIGRATIONS_COLLECTION, type MigrationLockOptions } from "./migration-lock.js";
 import { assertMigratable, computeMigration, withWrites, type DestructiveChange, type MigrationPlan, type MigrationReader } from "./migration-plan.js";
 import {
@@ -41,6 +46,12 @@ export interface MigrationRunOptions {
   readonly lock?: MigrationLockOptions;
   /** Edited or unknown migrations, failed index requests. Default: console.warn */
   readonly onWarning?: (message: string) => void;
+  /**
+   * Backups before migrating. Default: on, newest 5 kept, in a "backups"
+   * folder next to the store's file. `false` turns them off (e.g. when the
+   * platform snapshots disks); destructive migrations then run without one.
+   */
+  readonly backup?: false | { readonly retain?: number; readonly directory?: string };
 }
 
 export interface AppliedMigration {
@@ -54,9 +65,13 @@ export interface RunMigrationsResult {
   readonly applied: readonly AppliedMigration[];
   /** Applied meanwhile by another process. */
   readonly skipped: readonly string[];
+  /** The backup taken before applying; undefined if none was needed or the store is in memory. */
+  readonly backup: BackupInfo | undefined;
 }
 
 export interface PlannedMigrations extends MigrationStatus {
+  /** Whether running now would take a backup first. */
+  readonly backupNeeded: boolean;
   /** One plan per pending migration, each computed as if the ones before it had been applied. */
   readonly plans: readonly MigrationPlan[];
   /** Why running now would stop before applying anything; empty if it would run. */
@@ -68,6 +83,7 @@ function settings(options: MigrationRunOptions) {
     production: options.production ?? process.env.NODE_ENV === "production",
     allowDestructive: new Set(options.allowDestructive ?? []),
     maxChanges: options.maxChanges ?? 100_000,
+    backup: options.backup === false ? undefined : (options.backup ?? {}),
     warn: options.onWarning ?? ((message: string) => console.warn(`nexo migrations: ${message}`))
   };
 }
@@ -111,18 +127,27 @@ function refusal(plan: MigrationPlan, s: ReturnType<typeof settings>): string | 
 }
 
 async function planPending(
-  reader: MigrationReader,
-  pending: readonly NexoMigration[],
+  store: NexoDocumentStore,
+  status: MigrationStatus,
   s: ReturnType<typeof settings>
-): Promise<{ plans: MigrationPlan[]; refusals: string[] }> {
+): Promise<{ plans: MigrationPlan[]; refusals: string[]; backupNeeded: boolean }> {
   const plans: MigrationPlan[] = [];
-  let view = reader;
-  for (const item of pending) {
+  let view: MigrationReader = store as MigrationReader;
+  for (const item of status.pending) {
     const plan = await computeMigration(view, item, "up");
     plans.push(plan);
     view = withWrites(view, plan.writes);
   }
-  return { plans, refusals: plans.map((plan) => refusal(plan, s)).filter((r): r is string => r !== undefined) };
+  const refusals = plans.map((plan) => refusal(plan, s)).filter((r): r is string => r !== undefined);
+  const destructive = plans.filter((plan) => plan.destructive.length > 0);
+  const backupNeeded = s.backup !== undefined && plans.length > 0 && (destructive.length > 0 || status.applied.length === 0);
+  if (backupNeeded && destructive.length > 0 && store.backup === undefined) {
+    refusals.push(
+      `Migration "${destructive[0]!.id}" is destructive, and this store can't back itself up (no backup()). ` +
+        "Pass backup: false to run destructive migrations without a backup."
+    );
+  }
+  return { plans, refusals, backupNeeded };
 }
 
 /** What running the pending migrations would do now. Reads only. */
@@ -134,12 +159,12 @@ export async function planMigrations(
   assertMigratable(store);
   const status = await migrationStatus(store, list);
   const s = settings(options);
-  const { plans, refusals } = await planPending(store, status.pending, s);
+  const { plans, refusals, backupNeeded } = await planPending(store, status, s);
   const order =
     status.outOfOrder.length > 0 && options.allowOutOfOrder !== true
       ? [`Pending migrations are out of order: ${status.outOfOrder.map(({ id, after }) => `"${id}" sorts before applied "${after}"`).join("; ")}.`]
       : [];
-  return { ...status, plans, refusals: [...order, ...refusals] };
+  return { ...status, plans, backupNeeded, refusals: [...order, ...refusals] };
 }
 
 async function requestIndexes(store: NexoDocumentStore, plan: MigrationPlan, warn: (message: string) => void): Promise<void> {
@@ -165,6 +190,7 @@ export async function runMigrations(
   assertMigratable(store);
   const s = settings(options);
   const applied: AppliedMigration[] = [];
+  let backup: BackupInfo | undefined;
 
   const result = await runPendingMigrations(
     store,
@@ -175,7 +201,11 @@ export async function runMigrations(
         const refused = refusal(plan, s);
         if (refused !== undefined) throw new NexoMigrationError(refused);
         const destructive = plan.destructive.length > 0;
-        const record = createMigrationRecord(item, by, startedAt, Date.now(), { documentsChanged: plan.writes.length, destructive });
+        const record = createMigrationRecord(item, by, startedAt, Date.now(), {
+          documentsChanged: plan.writes.length,
+          destructive,
+          ...(backup !== undefined ? { backup: backup.path } : {})
+        });
         assertHeld();
         if (await store.writeBatch([...plan.writes, { collection: MIGRATIONS_COLLECTION, id: item.id, expected: undefined, next: record }])) {
           await requestIndexes(store, plan, s.warn);
@@ -192,13 +222,25 @@ export async function runMigrations(
       ...(options.lock !== undefined ? { lock: options.lock } : {}),
       ...(options.allowOutOfOrder !== undefined ? { allowOutOfOrder: options.allowOutOfOrder } : {}),
       onWarning: s.warn,
-      prepare: async (pending) => {
-        const { refusals } = await planPending(store, pending, s);
+      prepare: async (pending, status) => {
+        const { refusals, backupNeeded } = await planPending(store, status, s);
         if (refusals.length > 0) throw new NexoMigrationError(`Nothing was applied. ${refusals.join(" ")}`);
+        if (!backupNeeded || s.backup === undefined) return;
+        if (store.backup === undefined) {
+          s.warn("this store can't back itself up (no backup()); migrating without a backup.");
+          return;
+        }
+        try {
+          backup = await takeBackup(store, { ...s.backup, reason: `before ${pending[0]!.id}` });
+        } catch (error) {
+          throw new NexoMigrationError(
+            `The backup before migrating failed, so nothing was applied: ${error instanceof Error ? error.message : String(error)}`
+          );
+        }
       }
     }
   );
-  return { applied, skipped: result.skipped };
+  return { applied, skipped: result.skipped, backup };
 }
 
 /**

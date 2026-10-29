@@ -1,6 +1,6 @@
 import { existsSync } from "node:fs";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
-import { join, resolve } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import {
   createFileDocumentStore,
@@ -8,17 +8,21 @@ import {
   createSqliteDocumentStore,
   describeDestructive,
   isResource,
+  listBackups,
   migrationStatus,
   planMigrations,
+  restoreBackup,
   revertMigration,
   runMigrations,
   type AppliedMigration,
+  type BackupInfo,
   type MigrationRunOptions,
   type MigrationStatus,
   type NexoApplication,
   type NexoDocumentStore,
   type NexoMigration,
   type PlannedMigrations,
+  type RestoreResult,
   type RunMigrationsResult
 } from "@nexo-alpha/core";
 import { resolveConfiguredMigrations } from "./config.js";
@@ -107,6 +111,10 @@ export interface MigrateRunFlags extends MigrateOptions {
   readonly allowDestructive?: readonly string[];
   readonly allowOutOfOrder?: boolean;
   readonly maxChanges?: number | undefined;
+  /** --no-backup */
+  readonly noBackup?: boolean;
+  /** --backup-dir; default: "backups" next to the store */
+  readonly backupDir?: string | undefined;
 }
 
 function runOptions(flags: MigrateRunFlags, warnings: string[]): MigrationRunOptions {
@@ -115,6 +123,7 @@ function runOptions(flags: MigrateRunFlags, warnings: string[]): MigrationRunOpt
     allowDestructive: flags.allowDestructive ?? [],
     allowOutOfOrder: flags.allowOutOfOrder === true,
     ...(flags.maxChanges !== undefined ? { maxChanges: flags.maxChanges } : {}),
+    backup: flags.noBackup === true ? false : flags.backupDir !== undefined ? { directory: resolve(flags.cwd, flags.backupDir) } : {},
     onWarning: (message) => warnings.push(message)
   };
 }
@@ -145,6 +154,7 @@ export function renderMigratePlan(result: MigratePlanResult): string {
     if (plan.indexes.length > 0) lines.push(`    indexes: ${plan.indexes.map((i) => `${i.collection}.${i.field}`).join(", ")}`);
   }
   for (const warning of result.warnings) lines.push("", `Warning: ${warning}`);
+  if (result.backupNeeded && result.refusals.length === 0) lines.push("", "A checked backup of the store will be taken first.");
   if (result.refusals.length > 0) lines.push("", "nexo migrate up would stop without applying anything:", ...result.refusals.map((r) => `  ${r}`));
   else if (result.plans.length > 0) lines.push("", "nexo migrate up would apply all of these.");
   return lines.join("\n");
@@ -172,6 +182,7 @@ const describeApplied = (a: AppliedMigration) =>
 
 export function renderMigrateUp(result: MigrateUpResult): string {
   const lines = result.warnings.map((warning) => `Warning: ${warning}`);
+  if (result.backup !== undefined) lines.push(`backup   ${result.backup.path}`);
   if (result.applied.length === 0 && result.skipped.length === 0) lines.push(`Nothing to apply to ${result.store}.`);
   for (const applied of result.applied) lines.push(`applied  ${describeApplied(applied)}`);
   for (const id of result.skipped) lines.push(`skipped  ${id} (applied meanwhile by another process)`);
@@ -310,4 +321,52 @@ export function renderMigrateCheck(result: MigrateCheckResult): string {
   if (result.problems.length > 50) lines.push(`  … and ${result.problems.length - 50} more`);
   lines.push("", "Write a migration that brings them in line: nexo migrate create <name>");
   return lines.join("\n");
+}
+
+const backupsFolder = (flags: MigrateRunFlags, store: string) =>
+  flags.backupDir !== undefined ? resolve(flags.cwd, flags.backupDir) : join(dirname(store), "backups");
+
+export interface MigrateBackupsResult {
+  readonly store: string;
+  readonly directory: string;
+  readonly backups: readonly BackupInfo[];
+}
+
+/** `nexo migrate backups`: the store's backups, oldest first. */
+export async function migrateBackups(flags: MigrateRunFlags): Promise<MigrateBackupsResult> {
+  const { store } = await resolvePaths(flags, { store: true, migrations: false });
+  const directory = backupsFolder(flags, store);
+  return { store, directory, backups: await listBackups(directory, store) };
+}
+
+export function renderMigrateBackups(result: MigrateBackupsResult): string {
+  if (result.backups.length === 0) return `No backups of ${result.store} in ${result.directory}.`;
+  return [
+    `Backups of ${result.store} (oldest first):`,
+    ...result.backups.map((b) => `  ${b.path}  ${b.createdAt}  ${b.reason}  ${Object.entries(b.counts).map(([c, n]) => `${c}: ${n}`).join(", ")}`),
+    "",
+    "Restore one with: nexo migrate restore <path> --app-stopped"
+  ].join("\n");
+}
+
+/**
+ * `nexo migrate restore <backup> --app-stopped`. An idle app using the store
+ * can't be detected, so the person running it has to say it is stopped.
+ */
+export async function migrateRestore(options: { readonly backup: string; readonly cwd: string; readonly appStopped: boolean }): Promise<RestoreResult> {
+  if (!options.appStopped) {
+    throw new Error(
+      "Stop the app that uses this store first, then run again with --app-stopped. " +
+        "A running app would keep serving, and writing, the data being replaced."
+    );
+  }
+  return restoreBackup(resolve(options.cwd, options.backup));
+}
+
+export function renderMigrateRestore(result: RestoreResult): string {
+  return [
+    `Restored ${result.restored}.`,
+    result.movedAside === undefined ? "There was no store file to replace." : `The file it replaced is at ${result.movedAside}.`,
+    "Uploaded file contents aren't part of a store backup; files released after the backup may be gone."
+  ].join("\n");
 }

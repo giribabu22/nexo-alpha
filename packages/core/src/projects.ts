@@ -94,6 +94,8 @@ export function scopeByProject(store: NexoDocumentStore, options: ScopeByProject
           store.writeBatch!(writes.map((write) => ({ ...write, collection: scoped(write.collection) })))
       }
       : {}),
+    // A backup copies the whole store, every project included.
+    ...(store.backup !== undefined ? { backup: store.backup.bind(store) } : {}),
     ...(store.query !== undefined
       ? { query: async <T>(collection: string, query: DocumentQuery) => store.query!<T>(scoped(collection), query) }
       : {}),

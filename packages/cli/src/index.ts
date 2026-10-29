@@ -14,19 +14,24 @@ export {
 
 export {
   loadMigrations,
+  migrateBackups,
   migrateCheck,
   migrateCreate,
   migrateDown,
   migratePlan,
+  migrateRestore,
   migrateStatus,
   migrateUp,
+  renderMigrateBackups,
   renderMigrateCheck,
   renderMigrateDown,
   renderMigratePlan,
+  renderMigrateRestore,
   renderMigrateStatus,
   renderMigrateUp
 } from "./migrate.js";
 export type {
+  MigrateBackupsResult,
   MigrateCheckResult,
   MigrateCreateResult,
   MigrateOptions,

@@ -121,6 +121,8 @@ export { MIGRATIONS_COLLECTION } from "./migration-lock.js";
 export { runMigrations, planMigrations, revertMigration, describeDestructive } from "./migration-runner.js";
 export type { MigrationRunOptions, RunMigrationsResult, AppliedMigration, PlannedMigrations } from "./migration-runner.js";
 export type { MigrationPlan, DestructiveChange } from "./migration-plan.js";
+export { takeBackup, listBackups, restoreBackup } from "./migration-backup.js";
+export type { BackupInfo, BackupManifest, TakeBackupOptions, RestoreResult } from "./migration-backup.js";
 
 export { createAuth } from "./accounts.js";
 export type {
@@ -187,7 +189,8 @@ export type { DocumentQuery, DocumentQueryResult, DocumentScalar } from "./docum
 export type {
   NexoDocumentStore,
   SqliteDocumentStoreOptions,
-  DocumentWrite
+  DocumentWrite,
+  StoreBackup
 } from "./storage.js";
 
 export type {
