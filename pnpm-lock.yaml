@@ -35,6 +35,9 @@ importers:
 
   benchmarks/code-to-intent:
     dependencies:
+      '@nexo-alpha/cli':
+        specifier: workspace:*
+        version: link:../../packages/cli
       '@nexo-alpha/core':
         specifier: workspace:*
         version: link:../../packages/core

@@ -8,9 +8,11 @@
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "node --test",
-    "measure": "node measure.mjs"
+    "measure": "node measure.mjs",
+    "measure:debugging": "node debugging/measure.mjs"
   },
   "dependencies": {
+    "@nexo-alpha/cli": "workspace:*",
     "@nexo-alpha/core": "workspace:*",
     "@nexo-alpha/frontend": "workspace:*",
     "@nexo-alpha/hapi": "workspace:*"

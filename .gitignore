@@ -8,3 +8,6 @@ coverage/
 
 # Turborepo cache
 .turbo
+
+# Time-to-feature benchmark workspaces (benchmarks/code-to-intent/time/record.mjs)
+.nexo-time-sessions/
