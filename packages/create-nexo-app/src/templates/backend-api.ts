@@ -413,41 +413,11 @@ export function registerHealthModule(app: NexoApplication, knowledge?: Applicati
       },
       {
         path: "src/index.ts",
-        content: `import { app } from "./app.js";
-import { startHapiServer } from "@nexo-alpha/hapi";
+        content: `import { serve } from "@nexo-alpha/hapi";
+import { app } from "./app.js";
 
-async function main() {
-  await app.start();
-
-  const PORT = Number(process.env.PORT) || 3000;
-  const server = await startHapiServer(app, {
-    port: PORT
-  });
-
-  console.log(\`🚀 ${projectName} server running at \${server.info.uri}\`);
-
-  // Graceful shutdown handling
-  const shutdown = async (signal: string) => {
-    console.log(\`\\n\${signal} received. Stopping Nexo server...\`);
-    try {
-      await server.stop({ timeout: 5000 });
-      await app.stop();
-      console.log("Nexo server stopped gracefully.");
-      process.exit(0);
-    } catch (err) {
-      console.error("Error during shutdown:", err);
-      process.exit(1);
-    }
-  };
-
-  process.on("SIGINT", () => shutdown("SIGINT"));
-  process.on("SIGTERM", () => shutdown("SIGTERM"));
-}
-
-main().catch((err) => {
-  console.error("Fatal startup error:", err);
-  process.exit(1);
-});
+// Serves every module registered in app.ts. Port $PORT or 3000; Ctrl+C stops cleanly.
+await serve({ app });
 `
       }
     ];

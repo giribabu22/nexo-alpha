@@ -143,7 +143,7 @@ It is configured to work harmoniously with the Nexo backend:
 ### Hapi.js Backend Integration
 
 Nexo is completely decoupled from HTTP by default. To actually serve your APIs, the templates use **`@nexo-alpha/hapi`**.
-- The HTTP server is booted in `src/index.ts` using `startHapiServer(app, { port: 4000 })`.
+- The HTTP server is booted in `src/index.ts` using `serve({ app })`. It starts the application, listens on `$PORT` (4000 in the full-stack template), and stops cleanly on Ctrl+C. The minimal template passes models directly: `serve({ resources: [Task] })`.
 - Hapi handles the underlying HTTP routing, parsing, and payload validation based directly on your Nexo module API definitions.
 
 ---

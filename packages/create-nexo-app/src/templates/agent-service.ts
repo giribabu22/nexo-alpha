@@ -354,7 +354,7 @@ export const { app } = createService({
   signToken,
   type NexoDocumentStore
 } from "@nexo-alpha/core";
-import { startHapiServer } from "@nexo-alpha/hapi";
+import { serve } from "@nexo-alpha/hapi";
 import { createService, USER_ROLES } from "./app.js";
 
 const logger = createLogger({ fields: { service: "${projectName}" } });
@@ -376,17 +376,16 @@ try {
 }
 
 const service = createService({ store, jwtSecret, logger });
-await service.app.start();
-await service.queue.start();
-
-const server = await startHapiServer(service.app, {
-  port: Number(process.env.PORT ?? 3000),
+// Port $PORT or 3000. Signals are handled below, so the queue stops first.
+const served = await serve({
+  app: service.app,
   host: process.env.HOST ?? "localhost",
   logger,
   authenticate: service.authenticate,
-  rateLimit: { windowMs: 60_000, max: 300, key: (request) => (request.path === "/health" ? undefined : request.remoteAddress) }
+  rateLimit: { windowMs: 60_000, max: 300, key: (request) => (request.path === "/health" ? undefined : request.remoteAddress) },
+  handleSignals: false
 });
-logger.info("listening", { url: server.info.uri });
+await service.queue.start();
 
 if (process.env.JWT_SECRET === undefined) {
   for (const user of Object.keys(USER_ROLES)) {
@@ -396,9 +395,8 @@ if (process.env.JWT_SECRET === undefined) {
 }
 
 const shutdown = async (): Promise<void> => {
-  await server.stop({ timeout: 5000 });
   await service.queue.stop();
-  await service.app.stop();
+  await served.stop();
   await store.close();
   process.exit(0);
 };

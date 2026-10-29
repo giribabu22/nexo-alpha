@@ -479,44 +479,15 @@ export function registerSystemModule(app: NexoApplication, knowledge?: Applicati
       },
       {
         path: "backend/src/index.ts",
-        content: `import { app, todos } from "./app.js";
+        content: `import { serve } from "@nexo-alpha/hapi";
+import { app, todos } from "./app.js";
 import { seedTodos } from "./todos/todos.api.js";
-import { startHapiServer } from "@nexo-alpha/hapi";
 
-async function main() {
-  await app.start();
-  await seedTodos(todos);
+await seedTodos(todos);
 
-  const PORT = Number(process.env.PORT) || 4000;
-  const server = await startHapiServer(app, {
-    port: PORT,
-    cors: true
-  });
-
-  console.log(\`✨ Nexo Backend ready at \${server.info.uri}\`);
-
-  // Graceful shutdown handling
-  const shutdown = async (signal: string) => {
-    console.log(\`\\n\${signal} received. Gracefully stopping Nexo server...\`);
-    try {
-      await server.stop({ timeout: 5000 });
-      await app.stop();
-      console.log("Nexo server gracefully stopped.");
-      process.exit(0);
-    } catch (err) {
-      console.error("Error during graceful shutdown:", err);
-      process.exit(1);
-    }
-  };
-
-  process.on("SIGINT", () => shutdown("SIGINT"));
-  process.on("SIGTERM", () => shutdown("SIGTERM"));
-}
-
-main().catch((err) => {
-  console.error("Failed to start Nexo backend:", err);
-  process.exit(1);
-});
+// Serves every module registered in app.ts; cors lets the Vite dev server call it.
+// Port $PORT or 4000; Ctrl+C stops cleanly.
+await serve({ app, port: Number(process.env.PORT) || 4000, cors: true });
 `
       },
       // Frontend files

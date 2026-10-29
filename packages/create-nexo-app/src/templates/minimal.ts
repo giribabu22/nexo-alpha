@@ -9,6 +9,7 @@ export const minimalTemplate: Template = {
         path: ".gitignore",
         content: `node_modules
 dist
+data
 `
       },
       {
@@ -47,6 +48,7 @@ dist
               moduleResolution: "NodeNext",
               lib: ["ES2022"],
               strict: true,
+              skipLibCheck: true,
               outDir: "./dist",
               rootDir: "./src"
             },
@@ -58,29 +60,19 @@ dist
       },
       {
         path: "src/index.ts",
-        content: `import { createApplication } from "@nexo-alpha/core";
-import { startHapiServer } from "@nexo-alpha/hapi";
+        content: `import { api, field, model } from "@nexo-alpha/core";
+import { serve } from "@nexo-alpha/hapi";
 
-const app = createApplication({
-  name: "${projectName}",
-  version: "0.1.0"
+// Declared once: TypeScript types, validation and a REST API at /api/tasks.
+const Task = model("tasks", {
+  title: field.string({ minLength: 1, maxLength: 200 }),
+  done: field.boolean().default(false)
 });
 
-app.module({
-  name: "core",
-  apis: [
-    {
-      name: "root",
-      method: "GET",
-      path: "/",
-      handler: async () => ({ message: "Hello from ${projectName}!" })
-    }
-  ]
-});
+const hello = { name: "hello", apis: [api.get("/", () => ({ message: "Hello from ${projectName}!" }))] };
 
-await app.start();
-const server = await startHapiServer(app, { port: 3000 });
-console.log(\`Running at \${server.info.uri}\`);
+// Records go to data/app.json. Port $PORT or 3000; Ctrl+C stops cleanly.
+await serve({ name: "${projectName}", store: "data/app.json", resources: [Task], modules: [hello] });
 `
       },
       {
@@ -97,6 +89,13 @@ Minimal application powered by **Nexo — The AI Application Framework**.
 \`\`\`bash
 npm install
 npm run dev
+\`\`\`
+
+\`src/index.ts\` declares a Task model; \`serve()\` stores it and serves it as a REST API:
+
+\`\`\`bash
+curl -X POST localhost:3000/api/tasks -H "content-type: application/json" -d '{"title":"Hello"}'
+curl "localhost:3000/api/tasks?done=false&sort=-createdAt"
 \`\`\`
 `
       }

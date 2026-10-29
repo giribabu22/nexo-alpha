@@ -175,6 +175,10 @@ test("creates minimal project files", async () => {
 
     const pkg = JSON.parse(await fs.readFile(path.join(appDir, "package.json"), "utf8"));
     assert.equal(pkg.name, "quick-test");
+
+    const index = await fs.readFile(path.join(appDir, "src", "index.ts"), "utf8");
+    assert.match(index, /model\("tasks"/);
+    assert.match(index, /serve\(\{ name: "quick-test", store: "data\/app\.json", resources: \[Task\]/);
   } finally {
     await fs.rm(tempDir, { recursive: true, force: true });
   }
@@ -218,6 +222,25 @@ for (const templateName of ["fullstack-react", "backend-api", "agent-service", "
           assert.ok(used, `${path.relative(appDir, dir) || "."}/package.json installs ${dep}, which nothing uses`);
         }
       }
+    } finally {
+      await fs.rm(tempDir, { recursive: true, force: true });
+    }
+  });
+}
+
+for (const [templateName, entry] of [
+  ["fullstack-react", "backend/src/index.ts"],
+  ["backend-api", "src/index.ts"],
+  ["agent-service", "src/index.ts"],
+  ["minimal", "src/index.ts"]
+]) {
+  test(`${templateName}: the server starts with serve()`, async () => {
+    const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "nexo-serve-"));
+    try {
+      await createNexoApp({ targetDir: path.join(tempDir, "app"), templateName });
+      const code = await fs.readFile(path.join(tempDir, "app", entry), "utf8");
+      assert.match(code, /import \{ serve \} from "@nexo-alpha\/hapi"/);
+      assert.doesNotMatch(code, /startHapiServer|app\.start\(\)/);
     } finally {
       await fs.rm(tempDir, { recursive: true, force: true });
     }

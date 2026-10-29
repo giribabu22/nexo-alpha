@@ -20,10 +20,12 @@ Fixes from the package architecture audit (P0): the AI layer no longer reports a
   - `createHapiServer()` uses `app.setAuthenticator()`'s authenticator when not given `authenticate`.
   - `dispatch()` now validates `api.schema`, and maps a handler's `NexoValidationError` the way HTTP does.
   - Every answer, including 401/403/400, emits `api.called` with its status. `api.error` is emitted only for unexpected errors (`dispatch()` used to emit it for auth and validation failures).
+- **`create-nexo-app` templates start their server with `serve()`.** The entry files of `backend-api` and `fullstack-react` shrink from about 30 lines of start, shutdown and signal handling to one call. `agent-service` uses `serve({ handleSignals: false })` so its job queue stops first. `minimal` is now one file that declares a Task model and serves it at `/api/tasks`, and it builds again: its `tsconfig.json` was missing `skipLibCheck`, so `@hapi/hapi`'s types failed on `joi`, which isn't installed.
 - **`create-nexo-app` templates install only the Nexo packages their code imports.** `backend-api` and `fullstack-react` no longer install agent, behavior, decision, scheduler, tools and web.
 
 ### Added
 
+- **`serve()` in `@nexo-alpha/hapi`: a running app from its models.** `await serve({ resources: [Task] })` opens a SQLite store at `data/app.db`, serves `/api/tasks`, listens on `$PORT` or 3000 and stops cleanly on Ctrl+C. `auth: true` and `files: true` add sign-in and uploads. It only wires the existing primitives, and `store`, `app`, `modules`, `(store) => resource(…)` and every `createHapiServer` option replace its defaults. See [serve](./docs/primitives.md#serve-server).
 - `createRequestPipeline(app, { authenticate?, project?, instrument? })` and `app.getAuthenticator()` in `@nexo-alpha/core`, for HTTP adapters.
 - `DecisionEngine.getRules()` in `@nexo-alpha/decision`.
 
