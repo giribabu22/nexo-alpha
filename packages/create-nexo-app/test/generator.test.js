@@ -65,6 +65,15 @@ test("creates fullstack-react project files with customized project name and pro
     assert.match(backendIndex, /new URL\("\.\.\/\.\.\/frontend\/dist\/", import\.meta\.url\)/);
     assert.match(backendIndex, /frontend: built \? frontend : undefined/);
     assert.match(dockerfile, /COPY --from=builder \/app\/frontend\/dist \.\/frontend\/dist/);
+
+    // Migrations run on the app's own store, and nexo migrate finds both.
+    assert.match(backendIndex, /await serve\(\{ app, store, migrations,/);
+    assert.match(await fs.readFile(path.join(appDir, "backend", "src", "migrations", "index.ts"), "utf8"), /^export default \[\];$/m);
+    assert.deepEqual(JSON.parse(await fs.readFile(path.join(appDir, "backend", "nexo.config.json"), "utf8")), {
+      app: "./dist/app.js",
+      store: "./data/app.json",
+      migrations: "./dist/migrations/index.js"
+    });
     assert.match(todosApi, /from "super-app-shared"/);
     await assert.rejects(fs.access(path.join(appDir, "backend", "src", "modules", "todos")));
     assert.match(dockerfile, /npm install --omit=dev --workspace=backend/);
@@ -125,6 +134,13 @@ test("creates backend-api project files with customized project name", async () 
     const appTs = await fs.readFile(path.join(appDir, "src", "app.ts"), "utf8");
     assert.match(appTs, /name: "order-service"/);
     assert.match(appTs, /registerGreetingModule\(app\)/);
+
+    // Migrations run on the app's own store (data/app.json), and nexo migrate finds both.
+    const indexTs = await fs.readFile(path.join(appDir, "src", "index.ts"), "utf8");
+    assert.match(indexTs, /await serve\(\{ app, store, migrations \}\);/);
+    assert.match(await fs.readFile(path.join(appDir, "src", "migrations", "index.ts"), "utf8"), /^export default \[\];$/m);
+    const config = JSON.parse(await fs.readFile(path.join(appDir, "nexo.config.json"), "utf8"));
+    assert.deepEqual([config.store, config.migrations], ["./data/app.json", "./dist/migrations/index.js"]);
 
     const greetingServiceTs = await fs.readFile(
       path.join(appDir, "src", "modules", "greeting", "service.ts"),

@@ -123,6 +123,19 @@ After a build, the backend serves the frontend too: the app and its API are both
 
 Add a field to \`shared/src/todo.model.ts\` and it is validated by the API, typed on both sides, and shown by generated forms and tables. For a new model, add it to \`shared/src/\`, export it from \`shared/src/index.ts\`, and serve it from the backend with \`resource(Model, { store })\`.
 
+## When a model changes (run these in backend/)
+
+Changing a model doesn't change records already stored. For a renamed field, a changed
+type or a new required field, write a migration:
+
+\`\`\`bash
+npx nexo migrate create rename-note-title   # src/migrations/<id>-rename-note-title.ts
+npx nexo migrate plan                       # what it would change; nothing is written
+\`\`\`
+
+The server applies pending migrations when it starts, after taking a backup when one is
+destructive. \`npx nexo migrate check\` lists stored records that don't match their model.
+
 ## Nexo CLI
 
 Run these from \`backend/\` (or via \`npm --workspace=backend run <script>\` from the root):
@@ -306,7 +319,9 @@ export type Todo = Infer<typeof Todo>;
         path: "backend/nexo.config.json",
         content: JSON.stringify(
           {
-            app: "./dist/app.js"
+            app: "./dist/app.js",
+            store: "./data/app.json",
+            migrations: "./dist/migrations/index.js"
           },
           null,
           2
@@ -480,10 +495,23 @@ export function registerSystemModule(app: NexoApplication, knowledge?: Applicati
 `
       },
       {
+        path: "backend/src/migrations/index.ts",
+        content: `/**
+ * Changes to stored records when a model changes: renaming a field, changing its
+ * type, or making it required. Create one with: npx nexo migrate create <name>
+ * The server applies pending ones when it starts, in id order, each all-or-nothing,
+ * once. Never edit or remove one that has been applied; write a new one instead.
+ */
+export default [];
+`
+      },
+      {
         path: "backend/src/index.ts",
         content: `import { existsSync } from "node:fs";
 import { serve } from "@nexo-alpha/hapi";
 import { app, todos } from "./app.js";
+import migrations from "./migrations/index.js";
+import { store } from "./store.js";
 import { seedTodos } from "./todos/todos.api.js";
 
 await seedTodos(todos);
@@ -493,8 +521,9 @@ await seedTodos(todos);
 const frontend = new URL("../../frontend/dist/", import.meta.url);
 const built = existsSync(new URL("index.html", frontend));
 
-// Serves every module registered in app.ts. Port $PORT or 4000; Ctrl+C stops cleanly.
-await serve({ app, port: Number(process.env.PORT) || 4000, cors: true, frontend: built ? frontend : undefined });
+// Applies pending migrations to the app's store, then serves every module registered
+// in app.ts. Port $PORT or 4000; Ctrl+C stops cleanly.
+await serve({ app, store, migrations, port: Number(process.env.PORT) || 4000, cors: true, frontend: built ? frontend : undefined });
 `
       },
       // Frontend files

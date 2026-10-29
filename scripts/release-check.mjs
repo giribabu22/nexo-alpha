@@ -16,6 +16,9 @@
  *    where the template has tests.
  * 6. Starts each app and checks its answers over HTTP; fullstack-react must
  *    serve the built frontend and the API from one port.
+ * 7. backend-api: writes a migration with `nexo migrate create`, builds, checks
+ *    `plan`, restarts the app (serve() applies it), and checks `status`,
+ *    `check` and the migrated record over HTTP.
  *
  * Needs network access for the registry. Exits 1 on the first failure.
  */
@@ -56,7 +59,29 @@ const CHECKS = {
       ["POST", "/api/notes", { body: { title: "Hi" }, status: 201 }],
       ["GET", "/api/notes?search=hi", { status: 200, has: '"total":1' }],
       ["GET", "/health", { status: 200 }]
-    ]
+    ],
+    // After the first run: a migration, written and applied the way a user would.
+    async migrate(dir, port) {
+      run("npx nexo migrate create mark-notes", dir);
+      const migrations = join(dir, "src", "migrations");
+      const created = (await readdir(migrations)).find((name) => name.endsWith("-mark-notes.ts"));
+      const source = await readFile(join(migrations, created), "utf8");
+      await writeFile(
+        join(migrations, created),
+        source
+          .replace("// e.g. await m.renameField(\"users\", \"name\", \"fullName\");", "await m.update(\"notes\", (note) => ({ ...note, title: `[migrated] ${String(note.title)}` }));")
+          // Drop the template's down(): this change isn't reversed.
+          .replace(/\n {2}\/\/ Reverses up\(\)[\s\S]*?\n {2}}\n/, "\n")
+      );
+      step(`nexo migrate create (${created})`);
+      run("npm run build", dir);
+      assert.match(run("npx nexo migrate plan", dir), /1 pending migration[\s\S]*notes: 1 updated/);
+      step("nexo migrate plan");
+      await exercise(dir, { ready: /ready at/, requests: [["GET", "/api/notes", { status: 200, has: "[migrated] Hi" }]] }, port);
+      assert.match(run("npx nexo migrate status", dir), /1 applied, 0 pending/);
+      assert.match(run("npx nexo migrate check", dir), /Every record matches its model\./);
+      step("serve() applied it; nexo migrate status and check");
+    }
   },
   "agent-service": {
     ready: /app ready/,
@@ -175,6 +200,7 @@ try {
     }
     const check = CHECKS[template];
     await exercise(join(dir, check.dir ?? "."), check, port++);
+    if (check.migrate !== undefined) await check.migrate(join(dir, check.dir ?? "."), port++);
   }
   console.log(`\nRelease check passed: ${templates.join(", ")}`);
 } catch (error) {

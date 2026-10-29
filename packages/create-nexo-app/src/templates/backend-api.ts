@@ -105,6 +105,19 @@ Add another resource, then register it in \`src/app.ts\`:
 npx nexo generate resource invoice --no-page
 \`\`\`
 
+## When a model changes
+
+Changing a model doesn't change records already stored. For a renamed field, a changed
+type or a new required field, write a migration:
+
+\`\`\`bash
+npx nexo migrate create rename-note-title   # src/migrations/<id>-rename-note-title.ts
+npx nexo migrate plan                       # what it would change; nothing is written
+\`\`\`
+
+The server applies pending migrations when it starts, after taking a backup when one is
+destructive. \`npx nexo migrate check\` lists stored records that don't match their model.
+
 ## Nexo CLI
 
 Inspect your application architecture:
@@ -181,7 +194,9 @@ npx nexo freshness --source-root src
         path: "nexo.config.json",
         content: JSON.stringify(
           {
-            app: "./dist/app.js"
+            app: "./dist/app.js",
+            store: "./data/app.json",
+            migrations: "./dist/migrations/index.js"
           },
           null,
           2
@@ -413,12 +428,26 @@ export function registerHealthModule(app: NexoApplication, knowledge?: Applicati
 `
       },
       {
+        path: "src/migrations/index.ts",
+        content: `/**
+ * Changes to stored records when a model changes: renaming a field, changing its
+ * type, or making it required. Create one with: npx nexo migrate create <name>
+ * The server applies pending ones when it starts, in id order, each all-or-nothing,
+ * once. Never edit or remove one that has been applied; write a new one instead.
+ */
+export default [];
+`
+      },
+      {
         path: "src/index.ts",
         content: `import { serve } from "@nexo-alpha/hapi";
 import { app } from "./app.js";
+import migrations from "./migrations/index.js";
+import { store } from "./store.js";
 
-// Serves every module registered in app.ts. Port $PORT or 3000; Ctrl+C stops cleanly.
-await serve({ app });
+// Applies pending migrations to the app's store, then serves every module registered
+// in app.ts. Port $PORT or 3000; Ctrl+C stops cleanly.
+await serve({ app, store, migrations });
 `
       }
     ];
