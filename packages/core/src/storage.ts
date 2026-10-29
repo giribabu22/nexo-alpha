@@ -520,8 +520,25 @@ export async function createSqliteDocumentStore(
   if (!inMemory) await fs.mkdir(path.dirname(filePath), { recursive: true });
 
   const db = new sqlite.DatabaseSync(filePath);
-  if (!inMemory) db.exec("PRAGMA journal_mode = WAL; PRAGMA busy_timeout = 5000;");
-  db.exec(
+  /**
+   * Another process opening the same new database at the same moment can make
+   * these fail with SQLITE_BUSY: switching to WAL needs an exclusive lock, and
+   * SQLite skips the busy timeout when waiting could deadlock. Retry briefly.
+   */
+  const whenFree = async (sql: string): Promise<void> => {
+    for (let attempt = 0; ; attempt++) {
+      try {
+        db.exec(sql);
+        return;
+      } catch (error) {
+        const busy = (error as { errcode?: number }).errcode === 5 || (error as { errcode?: number }).errcode === 6;
+        if (!busy || attempt >= 50) throw error;
+        await new Promise((resolve) => setTimeout(resolve, Math.min(200, 10 * (attempt + 1))));
+      }
+    }
+  };
+  if (!inMemory) await whenFree("PRAGMA busy_timeout = 5000; PRAGMA journal_mode = WAL;");
+  await whenFree(
     `CREATE TABLE IF NOT EXISTS ${table} (
        collection TEXT NOT NULL,
        id TEXT NOT NULL,
