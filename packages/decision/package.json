@@ -1,6 +1,6 @@
 {
   "name": "@nexo-alpha/decision",
-  "version": "0.8.0",
+  "version": "0.9.0",
   "description": "Deterministic AI decision layer for the Nexo Alpha framework",
   "keywords": [
     "nexo",
