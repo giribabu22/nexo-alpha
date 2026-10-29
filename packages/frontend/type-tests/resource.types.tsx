@@ -32,6 +32,16 @@ async function client(): Promise<void> {
   await tasks.create({ done: true });
   // @ts-expect-error unknown field
   await tasks.update(created.id, { titel: "typo" });
+
+  const api = createNexoClient().resources({ tasks: Task });
+  const listed = await api.tasks.list();
+  expectType<Equal<typeof listed.items, Task[]>>();
+  // @ts-expect-error title is required
+  await api.tasks.create({ done: true });
+  // @ts-expect-error only the models passed in
+  void api.users;
+  // @ts-expect-error models, not resource definitions
+  createNexoClient().resources({ tasks: { path: "/tasks" } });
 }
 
 function TasksPage(_props: NexoPageRouteProps): React.JSX.Element {

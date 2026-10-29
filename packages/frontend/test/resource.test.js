@@ -70,6 +70,18 @@ test("client.resource(): typed CRUD over HTTP against resource()", async (t) => 
   await assert.rejects(() => api.get(hammer.id), (error) => error instanceof NexoApiError && error.status === 404);
 });
 
+test("client.resources(): several models at once, each the same client as resource()", async (t) => {
+  const { server, client } = await startServer();
+  t.after(() => server.stop());
+  const api = client.resources({ products: Product });
+  assert.equal(api.products, client.resource(Product));
+  assert.equal(api.products.path, "/api/products");
+
+  await api.products.create({ name: "Kite", price: 30, category: "toys" });
+  await api.products.create({ name: "Hammer", price: 12 });
+  assert.deepEqual((await api.products.list({ where: { category: "toys" } })).items.map((p) => p.name), ["Kite"]);
+});
+
 test("client-side validation fails fast with the same error the server would send", async (t) => {
   const { server, client } = await startServer();
   t.after(() => server.stop());
