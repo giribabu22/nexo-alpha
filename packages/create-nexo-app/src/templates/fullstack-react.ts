@@ -110,6 +110,7 @@ npm start
 docker build -t ${projectName} .
 docker run -p 4000:4000 ${projectName}
 \`\`\`
+After a build, the backend serves the frontend too: the app and its API are both at http://localhost:4000, one process to deploy.
 
 ## Architecture
 
@@ -479,15 +480,20 @@ export function registerSystemModule(app: NexoApplication, knowledge?: Applicati
       },
       {
         path: "backend/src/index.ts",
-        content: `import { serve } from "@nexo-alpha/hapi";
+        content: `import { existsSync } from "node:fs";
+import { serve } from "@nexo-alpha/hapi";
 import { app, todos } from "./app.js";
 import { seedTodos } from "./todos/todos.api.js";
 
 await seedTodos(todos);
 
-// Serves every module registered in app.ts; cors lets the Vite dev server call it.
-// Port $PORT or 4000; Ctrl+C stops cleanly.
-await serve({ app, port: Number(process.env.PORT) || 4000, cors: true });
+// Once the frontend is built (npm run build), this server serves it too: one process, one port.
+// During npm run dev, Vite serves it on 5173 and proxies /api here.
+const frontend = new URL("../../frontend/dist/", import.meta.url);
+const built = existsSync(new URL("index.html", frontend));
+
+// Serves every module registered in app.ts. Port $PORT or 4000; Ctrl+C stops cleanly.
+await serve({ app, port: Number(process.env.PORT) || 4000, cors: true, frontend: built ? frontend : undefined });
 `
       },
       // Frontend files

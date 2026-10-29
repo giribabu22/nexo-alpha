@@ -1,5 +1,7 @@
 import Hapi from "@hapi/hapi";
+import Inert from "@hapi/inert";
 import {
+  NexoConfigurationError,
   NexoEvent,
   createRateLimiter,
   createRequestPipeline,
@@ -11,6 +13,9 @@ import {
   DSC_INTERCEPTOR
 } from "@nexo-alpha/core";
 import { randomUUID } from "node:crypto";
+import { access } from "node:fs/promises";
+import { join, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 
 /** Header carrying the per-request correlation ID (also visible to handlers via `context.headers`). */
 export const REQUEST_ID_HEADER = "x-request-id";
@@ -86,6 +91,44 @@ export interface CreateHapiServerOptions {
    * Default: false (opt-in for backwards compatibility).
    */
   readonly securityHeaders?: boolean | SecurityHeadersOptions;
+  /**
+   * A built browser app to serve from this server (e.g. Vite's `dist`), so
+   * the app and its API share one origin and one deployment. Files are served
+   * at their paths; a page load (Accept: text/html) of any other URL gets
+   * `index.html`, so client-side routes survive a reload. API routes always
+   * take precedence. The directory must contain `index.html`.
+   */
+  readonly frontend?: string | URL | undefined;
+}
+
+/** The route that serves `frontend` files. */
+const FRONTEND_ROUTE = "/{path*}";
+
+async function serveFrontend(server: Hapi.Server, location: string | URL): Promise<void> {
+  const directory = resolve(location instanceof URL ? fileURLToPath(location) : location);
+  const index = join(directory, "index.html");
+  try {
+    await access(index);
+  } catch {
+    throw new NexoConfigurationError(`frontend: "${directory}" has no index.html. Build the frontend first (e.g. npm run build).`);
+  }
+
+  await server.register(Inert);
+  // Inert confines requests to the directory and hides dotfiles.
+  server.route({
+    method: "GET",
+    path: FRONTEND_ROUTE,
+    handler: { directory: { path: directory, index: ["index.html"], redirectToSlash: false } }
+  });
+  // A page load of a client-side route (/todos/42) has no file: answer with the app.
+  server.ext("onPreResponse", (request, h) => {
+    const response = request.response as { isBoom?: boolean; output?: { statusCode: number } } | null;
+    const pageLoad = String(request.headers.accept ?? "").includes("text/html");
+    if (request.route.path !== FRONTEND_ROUTE || response?.isBoom !== true || response.output?.statusCode !== 404 || !pageLoad) {
+      return h.continue;
+    }
+    return h.file(index, { confine: directory });
+  });
 }
 
 export function toHapiPath(path: string): string {
@@ -149,6 +192,9 @@ export async function createHapiServer(
       return h.continue;
     });
   }
+
+  // Before the header extension below, so `index.html` answers get the same headers.
+  if (options.frontend !== undefined) await serveFrontend(server, options.frontend);
 
   server.ext("onPreResponse", (request, h) => {
     const requestId = (request.app as { requestId?: string }).requestId;

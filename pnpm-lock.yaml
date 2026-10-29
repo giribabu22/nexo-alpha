@@ -427,6 +427,9 @@ importers:
       '@hapi/hapi':
         specifier: ^21.0.0
         version: 21.4.10
+      '@hapi/inert':
+        specifier: ^7.1.2
+        version: 7.1.2
       '@nexo-alpha/core':
         specifier: workspace:*
         version: link:../core
@@ -1015,6 +1018,9 @@ packages:
 
   '@hapi/hoek@11.0.7':
     resolution: {integrity: sha512-HV5undWkKzcB4RZUusqOpcgxOaq6VOAH7zhhIr2g3G8NF/MlFO75SjOr2NfuSx0Mh40+1FqCkagKLJRykUWoFQ==}
+
+  '@hapi/inert@7.1.2':
+    resolution: {integrity: sha512-fr0XmsYTUhahIbioBemFlc+o4ro4bj1HPMKN3dG9m6XC+UkF9fdVYfb7uNoDj0vO+HdXendbKk6YEfZG9ToeTQ==}
 
   '@hapi/iron@7.0.1':
     resolution: {integrity: sha512-tEZnrOujKpS6jLKliyWBl3A9PaE+ppuL/+gkbyPPDb/l2KSKQyH4lhMkVb+sBhwN+qaxxlig01JRqB8dk/mPxQ==}
@@ -1766,6 +1772,10 @@ packages:
   lru-cache@5.1.1:
     resolution: {integrity: sha512-KpNARQA3Iwv+jTA0utUVVbrh+Jlrr1Fv0e56GGzAFOXN7dk/FviaDW8LHmK52DlcH4WP2n6gI8vN1aesBFgo9w==}
 
+  lru-cache@7.18.3:
+    resolution: {integrity: sha512-jumlc0BIUrS3qJGgIkWZsyfAM7NCWiBcCDhnd+3NNM5KbBmLTgHVfWBcg6W+rLUsIpzpERPsvwUP7CckAQSOoA==}
+    engines: {node: '>=12'}
+
   math-intrinsics@1.1.0:
     resolution: {integrity: sha512-/IXtbwEk5HTPyEwyKX6hGkYXxM9nbj64B+ilVJnC/R6B0pH5G4V3b0pVbL7DBj4tkhBAppbQUlf6F6Xl9LHu1g==}
     engines: {node: '>= 0.4'}
@@ -2486,6 +2496,15 @@ snapshots:
       '@hapi/validate': 2.0.1
 
   '@hapi/hoek@11.0.7': {}
+
+  '@hapi/inert@7.1.2':
+    dependencies:
+      '@hapi/ammo': 6.0.1
+      '@hapi/boom': 10.0.1
+      '@hapi/bounce': 3.0.2
+      '@hapi/hoek': 11.0.7
+      '@hapi/validate': 2.0.1
+      lru-cache: 7.18.3
 
   '@hapi/iron@7.0.1':
     dependencies:
@@ -3296,6 +3315,8 @@ snapshots:
   lru-cache@5.1.1:
     dependencies:
       yallist: 3.1.1
+
+  lru-cache@7.18.3: {}
 
   math-intrinsics@1.1.0: {}
 

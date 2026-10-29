@@ -26,6 +26,7 @@ Fixes from the package architecture audit (P0): the AI layer no longer reports a
 ### Added
 
 - **`serve()` in `@nexo-alpha/hapi`: a running app from its models.** `await serve({ resources: [Task] })` opens a SQLite store at `data/app.db`, serves `/api/tasks`, listens on `$PORT` or 3000 and stops cleanly on Ctrl+C. `auth: true` and `files: true` add sign-in and uploads. It only wires the existing primitives, and `store`, `app`, `modules`, `(store) => resource(…)` and every `createHapiServer` option replace its defaults. See [serve](./docs/primitives.md#serve-server).
+- **`frontend` option in `createHapiServer()` and `serve()`: the built browser app and its API from one server.** Files are served at their paths, and a page load of any other URL gets `index.html`, so client-side routes survive a reload. API routes take precedence, requests can't leave the directory, and dotfiles are hidden. It uses `@hapi/inert`, now a dependency of `@nexo-alpha/hapi`. The `fullstack-react` template uses it once the frontend is built, so `npm start` and its Docker image serve the app and the API at one address. The image already contained `frontend/dist`, but nothing served it.
 - `createRequestPipeline(app, { authenticate?, project?, instrument? })` and `app.getAuthenticator()` in `@nexo-alpha/core`, for HTTP adapters.
 - `DecisionEngine.getRules()` in `@nexo-alpha/decision`.
 

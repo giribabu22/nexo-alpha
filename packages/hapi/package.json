@@ -33,12 +33,13 @@
     "clean": "rm -rf dist"
   },
   "dependencies": {
-    "@nexo-alpha/core": "workspace:*",
-    "@hapi/hapi": "^21.0.0"
+    "@hapi/hapi": "^21.0.0",
+    "@hapi/inert": "^7.1.2",
+    "@nexo-alpha/core": "workspace:*"
   },
   "devDependencies": {
-    "typescript": "^5.0.0",
-    "@types/node": "^20.0.0"
+    "@types/node": "^20.0.0",
+    "typescript": "^5.0.0"
   },
   "repository": {
     "type": "git",

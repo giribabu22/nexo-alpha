@@ -56,6 +56,12 @@ test("creates fullstack-react project files with customized project name and pro
 
     const todosApi = await fs.readFile(path.join(appDir, "backend", "src", "todos", "todos.api.ts"), "utf8");
     assert.match(todosApi, /resource\(Todo, \{ store/);
+
+    // After a build, the backend serves the frontend: one deployable process.
+    const backendIndex = await fs.readFile(path.join(appDir, "backend", "src", "index.ts"), "utf8");
+    assert.match(backendIndex, /new URL\("\.\.\/\.\.\/frontend\/dist\/", import\.meta\.url\)/);
+    assert.match(backendIndex, /frontend: built \? frontend : undefined/);
+    assert.match(dockerfile, /COPY --from=builder \/app\/frontend\/dist \.\/frontend\/dist/);
     assert.match(todosApi, /from "super-app-shared"/);
     await assert.rejects(fs.access(path.join(appDir, "backend", "src", "modules", "todos")));
     assert.match(dockerfile, /npm install --omit=dev --workspace=backend/);

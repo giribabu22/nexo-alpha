@@ -47,7 +47,7 @@ const app = await serve({ resources: [Task] });
 // port $PORT or 3000; Ctrl+C stops cleanly.
 ```
 
-Add `auth: true` (secret from `AUTH_SECRET`) for accounts at `/api/auth`, and `files: true` for uploads at `/api/files`. Each default can be replaced: pass `store`, your own `app`, extra `modules`, or `(store) => resource(Model, { … })` for a resource with options. Every `createHapiServer` option below also works. `serve()` only wires these primitives, so the sections below show how to do the same by hand.
+Add `auth: true` (secret from `AUTH_SECRET`) for accounts at `/api/auth`, and `files: true` for uploads at `/api/files`. Add `frontend: "frontend/dist"` to serve the built browser app from the same port. Page loads of client-side routes get `index.html`, and API routes always win. Each default can be replaced: pass `store`, your own `app`, extra `modules`, or `(store) => resource(Model, { … })` for a resource with options. Every `createHapiServer` option below also works. `serve()` only wires these primitives, so the sections below show how to do the same by hand.
 
 ### 1. Basic Server Setup
 

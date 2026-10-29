@@ -244,11 +244,20 @@ await app.resource(Task).create({ title: "Seed data" });               // typed,
 | `files` | off | `true` or `createFiles` options plus `directory` (default `data/files`) or `blobs` |
 | `modules` | `[]` | any other modules: `api.*` endpoints, jobs, integrations |
 | `app` | a new one named `name` | an application you built yourself (plugins, middleware); not started yet |
+| `frontend` | none | a built browser app (`"frontend/dist"` or a `URL`), served from the same port; see below |
 | `port` | `$PORT`, else 3000 | every `createHapiServer` option works: `cors`, `rateLimit`, `logger`, … |
 | `handleSignals` | `true` | stop cleanly and exit on SIGINT/SIGTERM |
 
 **Returns** `{ app, server, store, auth, files, url, resource(model), stop() }`.
 `stop()` closes the store only if `serve()` opened it.
+
+**One deployment for app and API.** With `frontend`, the server also serves
+the built pages, so the browser app needs no `baseUrl` other than its own
+origin and no CORS. Files are served at their paths. A page load
+(`Accept: text/html`) of any other URL gets `index.html`, so client-side routes
+survive a reload. API routes always win, requests can't leave the
+directory, and dotfiles are hidden. The directory must contain `index.html`,
+so build first; during development, keep Vite's dev server and its `/api` proxy.
 
 **By hand.** The same thing without `serve()`, when you need control over the order:
 
