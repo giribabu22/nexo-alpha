@@ -296,7 +296,7 @@ gets `m.update(…)` with a `TODO: convert`.
 
 Each step is its own change with its own tests, merged only when its §13 tests pass.
 
-Progress: step 1 is done (`migrations.ts`, `migration-lock.ts`, `nexo migrate status`); its §13 rows pass on all three stores.
+Progress: steps 1 and 2 are done. Step 1: `migrations.ts`, `migration-lock.ts`, `nexo migrate status`. Step 2: `writeBatch`/`entries` in `storage.ts`, `migration-plan.ts`, `migration-runner.ts`, `serve({ migrations })` and the other `nexo migrate` commands. Their §13 rows pass on all three stores.
 
 1. **Tracking and locking:** `migration()`, validation, the `nexo_migrations` record, ordering and
    checksums, the lease lock, `status`. Applying uses the store's existing single-document writes

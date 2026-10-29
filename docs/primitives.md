@@ -94,6 +94,7 @@ Scaffold the three feature files with `nexo generate resource user`.
 | Sign-in, who gets which scopes | `createAuth({ … })` options; `auth.setScopes(userId, scopes)` |
 | Signed-in-only page | `page("/path", Component, { protect: true })` |
 | Accept uploads | `field.file({ accept })` in the model, `createFiles({ … })` on the server |
+| Rename a field, change its type, or make it required, with existing records | a migration (`nexo migrate create <name>`), then `serve({ migrations })` |
 
 ---
 
@@ -532,6 +533,68 @@ visitors are sent to `loginPath?next=<path>` (default `/login`), and
 checked with the server once. Pass `isAuthenticated` only to replace the check
 with your own.
 Navigate with `useNexoNavigate()` or `<NexoLink to="/users">`.
+
+---
+
+## migration (server)
+
+**Purpose.** Changes stored records when a model changes. Changing a model
+alone doesn't touch existing records: a renamed field stays under its old
+name, a changed type keeps old values, a new required field is missing.
+Only fields added with `.default()` need no migration.
+
+```ts
+// src/migrations/20261029T0730-rename-user-name.ts  (nexo migrate create rename-user-name)
+import { migration } from "@nexo-alpha/core";
+
+export default migration({
+  id: "20261029T0730-rename-user-name",
+  up: (m) => m.renameField("users", "name", "fullName"),
+  down: (m) => m.renameField("users", "fullName", "name")
+});
+```
+
+```ts
+// src/server.ts
+import migrations from "./migrations/index.js";   // export default [m1, m2, …]
+await serve({ resources: [User], migrations });    // pending ones run before the app listens
+```
+
+| In `up(m)` / `down(m)` | Does |
+|---|---|
+| `m.renameField(c, from, to)`, `m.removeField(c, f)`, `m.setField(c, f, valueOrFn)` | the common changes; each skips documents that don't need it |
+| `m.update(c, doc => …)` | anything else: return a changed copy, the same document, or `m.remove` |
+| `m.insert`, `m.get`, `m.list` | add and read documents, seeing this migration's changes |
+| `m.index(c, field)` | index a field (SQLite) after the migration commits |
+
+**Guarantees.**
+- Each migration is all-or-nothing, with its record: one SQLite transaction, or one
+  file write for the JSON file store. If `up` throws, nothing changes and `serve()` doesn't start.
+- Migrations run in id order, once. A lock in the store keeps two instances from
+  migrating at the same time.
+- In production (`NODE_ENV=production`), a migration that deletes documents,
+  removes values or changes their types runs only if its id is in
+  `migrations: { list, allowDestructive: [id] }`. Nexo detects this from what the
+  migration would do; a rename isn't destructive.
+- Nothing runs if any pending migration would be refused, or changes more than
+  `maxChanges` documents (default 100,000).
+
+**CLI.** `nexo migrate status | plan | up | down <id> | create <name> | check`, with
+`--store` and `--migrations` (or `"store"` and `"migrations"` in `nexo.config.json`).
+`plan` is a dry run that marks destructive changes. `check` compares every stored
+record with its model and exits 1 on a mismatch.
+
+**Common mistakes**
+- Editing a migration after it was applied: it won't run again (status warns). Write a new one.
+- Importing models into a migration: a migration must keep working after the model
+  changes again, so it works on plain documents.
+- Running `nexo migrate up` on a JSON file store while the app runs on it: that store is
+  single-process. Let `serve({ migrations })` do it, or stop the app first.
+- A custom store without `writeBatch()` and `entries()`: migrations refuse it rather than
+  apply changes one by one.
+
+Not yet: backups before migrating, and releasing uploaded files of deleted records
+(see the [design](./architecture/migrations-design.md), steps 3 and 4).
 
 ---
 

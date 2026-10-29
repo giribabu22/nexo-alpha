@@ -1,14 +1,25 @@
 import { existsSync } from "node:fs";
-import { resolve } from "node:path";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import {
   createFileDocumentStore,
   createInMemoryDocumentStore,
   createSqliteDocumentStore,
+  describeDestructive,
+  isResource,
   migrationStatus,
+  planMigrations,
+  revertMigration,
+  runMigrations,
+  type AppliedMigration,
+  type MigrationRunOptions,
   type MigrationStatus,
+  type NexoApplication,
   type NexoDocumentStore,
-  type NexoMigration
+  type NexoMigration,
+  type PlannedMigrations,
+  type RunMigrationsResult
 } from "@nexo-alpha/core";
 import { resolveConfiguredMigrations } from "./config.js";
 
@@ -29,21 +40,34 @@ export async function loadMigrations(modulePath: string): Promise<NexoMigration[
   return list as NexoMigration[];
 }
 
-async function resolvePaths(options: MigrateOptions): Promise<{ store: string; migrations: string }> {
+async function resolvePaths(options: MigrateOptions, need: { store: boolean; migrations: boolean }) {
   const configured = await resolveConfiguredMigrations(options.cwd);
   const store = options.store !== undefined ? resolve(options.cwd, options.store) : configured.store;
   const migrations = options.migrations !== undefined ? resolve(options.cwd, options.migrations) : configured.migrations;
-  const missing = [store === undefined ? "--store <path>" : "", migrations === undefined ? "--migrations <module>" : ""].filter(Boolean);
-  if (store === undefined || migrations === undefined) {
+  const missing = [
+    need.store && store === undefined ? "--store <path>" : "",
+    need.migrations && migrations === undefined ? "--migrations <module>" : ""
+  ].filter(Boolean);
+  if (missing.length > 0) {
     throw new Error(
       `Pass ${missing.join(" and ")}, or set them in nexo.config.json: { "store": "./data/app.db", "migrations": "./dist/migrations/index.js" }.`
     );
   }
-  return { store, migrations };
+  return { store: store ?? "", migrations: migrations ?? "" };
 }
 
 async function openStore(location: string): Promise<NexoDocumentStore> {
   return location.endsWith(".json") ? createFileDocumentStore(location) : createSqliteDocumentStore(location);
+}
+
+/** Runs `fn` on the store at `location`; an absent store is read as empty and not created unless `create`. */
+async function withStore<T>(location: string, create: boolean, fn: (store: NexoDocumentStore) => Promise<T>): Promise<T> {
+  const store = existsSync(location) || create ? await openStore(location) : createInMemoryDocumentStore();
+  try {
+    return await fn(store);
+  } finally {
+    await store.close();
+  }
 }
 
 export interface MigrateStatusResult extends MigrationStatus {
@@ -54,18 +78,10 @@ export interface MigrateStatusResult extends MigrationStatus {
 
 /** `nexo migrate status`: reads only, and never creates the database. */
 export async function migrateStatus(options: MigrateOptions): Promise<MigrateStatusResult> {
-  const paths = await resolvePaths(options);
+  const paths = await resolvePaths(options, { store: true, migrations: true });
   const list = await loadMigrations(paths.migrations);
-  if (!existsSync(paths.store)) {
-    // Nothing applied yet: compare with an empty store rather than create the database.
-    return { ...(await migrationStatus(createInMemoryDocumentStore(), list)), store: paths.store, storeExists: false };
-  }
-  const store = await openStore(paths.store);
-  try {
-    return { ...(await migrationStatus(store, list)), store: paths.store, storeExists: true };
-  } finally {
-    await store.close();
-  }
+  const status = await withStore(paths.store, false, (store) => migrationStatus(store, list));
+  return { ...status, store: paths.store, storeExists: existsSync(paths.store) };
 }
 
 export function renderMigrateStatus(result: MigrateStatusResult): string {
@@ -83,5 +99,215 @@ export function renderMigrateStatus(result: MigrateStatusResult): string {
   ];
   if (problems.length > 0) lines.push("", "Problems:", ...problems.map((problem) => `  ${problem}`));
   lines.push("", `${result.applied.length} applied, ${result.pending.length} pending`);
+  return lines.join("\n");
+}
+
+export interface MigrateRunFlags extends MigrateOptions {
+  readonly production?: boolean;
+  readonly allowDestructive?: readonly string[];
+  readonly allowOutOfOrder?: boolean;
+  readonly maxChanges?: number | undefined;
+}
+
+function runOptions(flags: MigrateRunFlags, warnings: string[]): MigrationRunOptions {
+  return {
+    ...(flags.production === true ? { production: true } : {}),
+    allowDestructive: flags.allowDestructive ?? [],
+    allowOutOfOrder: flags.allowOutOfOrder === true,
+    ...(flags.maxChanges !== undefined ? { maxChanges: flags.maxChanges } : {}),
+    onWarning: (message) => warnings.push(message)
+  };
+}
+
+export interface MigratePlanResult extends PlannedMigrations {
+  readonly store: string;
+  readonly warnings: readonly string[];
+}
+
+/** `nexo migrate plan`: what `up` would do now. Writes nothing, and doesn't create the database. */
+export async function migratePlan(flags: MigrateRunFlags): Promise<MigratePlanResult> {
+  const paths = await resolvePaths(flags, { store: true, migrations: true });
+  const list = await loadMigrations(paths.migrations);
+  const warnings: string[] = [];
+  const planned = await withStore(paths.store, false, (store) => planMigrations(store, list, runOptions(flags, warnings)));
+  return { ...planned, store: paths.store, warnings };
+}
+
+export function renderMigratePlan(result: MigratePlanResult): string {
+  const lines = [`Plan for ${result.store}: ${result.plans.length} pending migration${result.plans.length === 1 ? "" : "s"}`];
+  for (const plan of result.plans) {
+    const counts = Object.entries(plan.collections)
+      .map(([collection, c]) => `${collection}: ${[c.inserted && `${c.inserted} inserted`, c.updated && `${c.updated} updated`, c.deleted && `${c.deleted} deleted`].filter(Boolean).join(", ")}`)
+      .join("; ");
+    lines.push("", `  ${plan.id}${plan.description !== undefined ? `  ${plan.description}` : ""}`);
+    lines.push(`    ${counts === "" ? "changes no documents" : counts}`);
+    if (plan.destructive.length > 0) lines.push(`    DESTRUCTIVE: ${describeDestructive(plan.destructive)}`);
+    if (plan.indexes.length > 0) lines.push(`    indexes: ${plan.indexes.map((i) => `${i.collection}.${i.field}`).join(", ")}`);
+  }
+  for (const warning of result.warnings) lines.push("", `Warning: ${warning}`);
+  if (result.refusals.length > 0) lines.push("", "nexo migrate up would stop without applying anything:", ...result.refusals.map((r) => `  ${r}`));
+  else if (result.plans.length > 0) lines.push("", "nexo migrate up would apply all of these.");
+  return lines.join("\n");
+}
+
+export interface MigrateUpResult extends RunMigrationsResult {
+  readonly store: string;
+  readonly warnings: readonly string[];
+}
+
+/** `nexo migrate up`: applies pending migrations, as `serve({ migrations })` does at start. */
+export async function migrateUp(flags: MigrateRunFlags): Promise<MigrateUpResult> {
+  const paths = await resolvePaths(flags, { store: true, migrations: true });
+  const list = await loadMigrations(paths.migrations);
+  const warnings: string[] = [];
+  if (paths.store.endsWith(".json")) {
+    warnings.push("JSON file stores are single-process: make sure the app isn't running on this file, or migrate through serve() instead.");
+  }
+  const result = await withStore(paths.store, true, (store) => runMigrations(store, list, runOptions(flags, warnings)));
+  return { ...result, store: paths.store, warnings };
+}
+
+const describeApplied = (a: AppliedMigration) =>
+  `${a.id}: ${a.documentsChanged} document${a.documentsChanged === 1 ? "" : "s"} changed${a.destructive ? " (destructive)" : ""}`;
+
+export function renderMigrateUp(result: MigrateUpResult): string {
+  const lines = result.warnings.map((warning) => `Warning: ${warning}`);
+  if (result.applied.length === 0 && result.skipped.length === 0) lines.push(`Nothing to apply to ${result.store}.`);
+  for (const applied of result.applied) lines.push(`applied  ${describeApplied(applied)}`);
+  for (const id of result.skipped) lines.push(`skipped  ${id} (applied meanwhile by another process)`);
+  return lines.join("\n");
+}
+
+/** `nexo migrate down <id>`: reverts the newest applied migration. */
+export async function migrateDown(flags: MigrateRunFlags & { readonly id: string }): Promise<AppliedMigration & { readonly store: string }> {
+  const paths = await resolvePaths(flags, { store: true, migrations: true });
+  const list = await loadMigrations(paths.migrations);
+  if (!existsSync(paths.store)) throw new Error(`No database at ${paths.store}; nothing is applied.`);
+  const reverted = await withStore(paths.store, false, (store) => revertMigration(store, list, flags.id, runOptions(flags, [])));
+  return { ...reverted, store: paths.store };
+}
+
+export function renderMigrateDown(result: AppliedMigration): string {
+  return `reverted ${describeApplied(result)}`;
+}
+
+/** "Rename user name" → "rename-user-name" */
+function kebab(name: string): string {
+  return name.trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+}
+
+export interface MigrateCreateResult {
+  readonly id: string;
+  readonly file: string;
+  readonly index: string;
+  /** False if index.ts exists but has no `export default [...]` to add to. */
+  readonly registered: boolean;
+}
+
+/**
+ * `nexo migrate create <name>`: writes `<dir>/<id>.ts` with a timestamped id,
+ * and adds it to `<dir>/index.ts` (creating it if needed).
+ */
+export async function migrateCreate(options: { readonly name: string; readonly dir: string; readonly cwd: string; readonly now?: Date }): Promise<MigrateCreateResult> {
+  const name = kebab(options.name);
+  if (name === "") throw new Error("Give the migration a name, e.g. nexo migrate create rename-user-name");
+  const stamp = (options.now ?? new Date()).toISOString().replace(/[-:]/g, "").slice(0, 13); // yyyymmddThhmm
+  const id = `${stamp}-${name}`;
+  const dir = resolve(options.cwd, options.dir);
+  const file = join(dir, `${id}.ts`);
+  if (existsSync(file)) throw new Error(`${file} already exists.`);
+  await mkdir(dir, { recursive: true });
+  await writeFile(
+    file,
+    `import { migration } from "@nexo-alpha/core";
+
+export default migration({
+  id: "${id}",
+  description: "TODO: what this changes",
+  async up(m) {
+    // e.g. await m.renameField("users", "name", "fullName");
+  },
+  // Reverses up() for nexo migrate down. Delete it if the change can't be undone.
+  async down(m) {
+    // e.g. await m.renameField("users", "fullName", "name");
+  }
+});
+`
+  );
+
+  const index = join(dir, "index.ts");
+  const ident = `m${id.replace(/[^A-Za-z0-9]/g, "_")}`;
+  const importLine = `import ${ident} from "./${id}.js";`;
+  if (!existsSync(index)) {
+    await writeFile(index, `${importLine}\n\n/** Applied in id order; never edit or remove one that has been applied. */\nexport default [${ident}];\n`);
+    return { id, file, index, registered: true };
+  }
+  const source = await readFile(index, "utf8");
+  const list = /export default \[([\s\S]*?)\];/.exec(source);
+  if (list === null) return { id, file, index, registered: false };
+  const items = list[1]!.trim().replace(/,\s*$/, "");
+  let updated =
+    source.slice(0, list.index) +
+    `export default [${items === "" ? ident : `${items}, ${ident}`}];` +
+    source.slice(list.index + list[0].length);
+  // The import goes after the last import, or first if there are none.
+  const lastImport = [...updated.matchAll(/^import .*$/gm)].at(-1);
+  updated =
+    lastImport === undefined
+      ? `${importLine}\n${updated}`
+      : `${updated.slice(0, lastImport.index + lastImport[0].length)}\n${importLine}${updated.slice(lastImport.index + lastImport[0].length)}`;
+  await writeFile(index, updated);
+  return { id, file, index, registered: true };
+}
+
+export interface MigrateCheckProblem {
+  readonly collection: string;
+  readonly id: string;
+  readonly errors: readonly string[];
+}
+
+export interface MigrateCheckResult {
+  readonly store: string;
+  /** Collections checked, with how many documents each has. */
+  readonly checked: Readonly<Record<string, number>>;
+  readonly problems: readonly MigrateCheckProblem[];
+}
+
+/**
+ * `nexo migrate check`: compares every stored record of each resource in the
+ * app with its model: unknown fields, missing required ones, wrong types.
+ */
+export async function migrateCheck(options: MigrateOptions & { readonly app: NexoApplication }): Promise<MigrateCheckResult> {
+  const paths = await resolvePaths(options, { store: true, migrations: false });
+  return withStore(paths.store, false, async (store) => {
+    if (store.entries === undefined) throw new Error("This store can't list its documents (no entries()).");
+    const checked: Record<string, number> = {};
+    const problems: MigrateCheckProblem[] = [];
+    for (const module of options.app.getModules()) {
+      if (!isResource(module)) continue;
+      const model = module.model;
+      const documents = await store.entries<Record<string, unknown>>(model.name);
+      checked[model.name] = documents.length;
+      for (const [id, document] of documents) {
+        const outcome = model.validate(model.hydrate(document));
+        if (!outcome.valid) problems.push({ collection: model.name, id, errors: outcome.errors ?? [] });
+      }
+    }
+    return { store: paths.store, checked, problems };
+  });
+}
+
+export function renderMigrateCheck(result: MigrateCheckResult): string {
+  const lines = [`Checked ${result.store}: ${Object.entries(result.checked).map(([c, n]) => `${c} (${n})`).join(", ") || "no resources"}`];
+  if (result.problems.length === 0) {
+    lines.push("Every record matches its model.");
+    return lines.join("\n");
+  }
+  lines.push("", `${result.problems.length} record${result.problems.length === 1 ? " doesn't" : "s don't"} match the model:`);
+  for (const problem of result.problems.slice(0, 50)) {
+    lines.push(`  ${problem.collection}/${problem.id}: ${problem.errors.join("; ")}`);
+  }
+  if (result.problems.length > 50) lines.push(`  … and ${result.problems.length - 50} more`);
+  lines.push("", "Write a migration that brings them in line: nexo migrate create <name>");
   return lines.join("\n");
 }

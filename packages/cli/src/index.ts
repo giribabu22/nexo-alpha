@@ -12,8 +12,29 @@ export {
   resolveConfiguredMigrations
 } from "./config.js";
 
-export { migrateStatus, renderMigrateStatus, loadMigrations } from "./migrate.js";
-export type { MigrateOptions, MigrateStatusResult } from "./migrate.js";
+export {
+  loadMigrations,
+  migrateCheck,
+  migrateCreate,
+  migrateDown,
+  migratePlan,
+  migrateStatus,
+  migrateUp,
+  renderMigrateCheck,
+  renderMigrateDown,
+  renderMigratePlan,
+  renderMigrateStatus,
+  renderMigrateUp
+} from "./migrate.js";
+export type {
+  MigrateCheckResult,
+  MigrateCreateResult,
+  MigrateOptions,
+  MigratePlanResult,
+  MigrateRunFlags,
+  MigrateStatusResult,
+  MigrateUpResult
+} from "./migrate.js";
 
 export type {
   NexoConfig

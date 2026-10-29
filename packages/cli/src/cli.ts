@@ -22,7 +22,29 @@ import {
   validate
 } from "./commands.js";
 import { doctor, renderDoctorReport } from "./doctor.js";
-import { migrateStatus, renderMigrateStatus } from "./migrate.js";
+import {
+  migrateCheck,
+  migrateCreate,
+  migrateDown,
+  migratePlan,
+  migrateStatus,
+  migrateUp,
+  renderMigrateCheck,
+  renderMigrateDown,
+  renderMigratePlan,
+  renderMigrateStatus,
+  renderMigrateUp
+} from "./migrate.js";
+
+const MIGRATE_USAGE = `Usage:
+  nexo migrate status [--json]
+  nexo migrate plan [--production] [--allow-destructive <id>]... [--max-changes <n>] [--json]
+  nexo migrate up [--production] [--allow-destructive <id>]... [--allow-out-of-order] [--max-changes <n>] [--json]
+  nexo migrate down <id>
+  nexo migrate create <name> [--dir src/migrations]
+  nexo migrate check [--app <module>] [--json]
+Each takes --store <path> and --migrations <module> (default: "store" and
+"migrations" in nexo.config.json).`;
 import { GENERATOR_KINDS, generateFiles, writeGeneratedFiles, type GeneratorKind } from "./generate.js";
 
 const USAGE = `Usage:
@@ -44,7 +66,7 @@ const USAGE = `Usage:
   nexo impact <nodeId> [app-module-path] [--source-root <path>] [--dependencies] [--max-depth <n>] [--edge-kinds <kind,...>]
   nexo validate [app-module-path]
   nexo health [app-module-path]
-  nexo migrate status [--store <path>] [--migrations <module>] [--json]
+  nexo migrate <status|plan|up|down|create|check> [--store <path>] [--migrations <module>] (see below)
 
 If app-module-path is omitted, Nexo looks for a "nexo.config.json" in the
 current directory or a parent directory, with the shape:
@@ -81,12 +103,18 @@ app-module-path argument; --source-root is required (there's nothing to
 diff against without it), and it errors if no graph has been saved at
 --out yet.
 
-"nexo migrate status" lists which migrations are applied to a store and
-which are pending, and reports problems: pending migrations that sort
-before applied ones, applied ones edited since, and applied ones missing
-from the list. It only reads, and doesn't create a database that doesn't
-exist yet. --store and --migrations default to the "store" and
-"migrations" paths in nexo.config.json.
+"nexo migrate" changes stored records when models change
+(docs/architecture/migrations-design.md). "status" lists applied and
+pending migrations and problems (out of order, edited, unknown). "plan"
+shows what "up" would change, marks destructive changes, and exits 1 if
+"up" would refuse. "up" applies pending migrations, each all-or-nothing;
+with --production (or NODE_ENV=production) a destructive one runs only if
+named with --allow-destructive. "down <id>" reverts the newest applied
+migration. "create <name>" writes a timestamped migration file and adds
+it to the list. "check" compares every stored record with its resource's
+model and exits 1 on any mismatch. status, plan and check only read and
+don't create a database. --store and --migrations default to the "store"
+and "migrations" paths in nexo.config.json.
 
 "nexo intents" renders recorded intents ("why does this entity exist" —
 NexoIntent in @nexo-alpha/context) as JSON: every recorded intent by
@@ -155,19 +183,63 @@ async function main(): Promise<void> {
   }
 
   if (command === "migrate") {
-    if (rest[0] !== "status") {
-      console.error(`Usage: nexo migrate status [--store <path>] [--migrations <module>] [--json]
+    const [sub, ...args] = rest;
+    const flags = {
+      store: extractFlagValue(args, "--store"),
+      migrations: extractFlagValue(args, "--migrations"),
+      cwd: process.cwd(),
+      production: args.includes("--production"),
+      allowDestructive: args.flatMap((arg, i) => (arg === "--allow-destructive" && args[i + 1] !== undefined ? [args[i + 1]!] : [])),
+      allowOutOfOrder: args.includes("--allow-out-of-order"),
+      maxChanges: extractFlagValue(args, "--max-changes") === undefined ? undefined : Number(extractFlagValue(args, "--max-changes"))
+    };
+    const json = args.includes("--json");
+    const print = <T>(result: T, render: (r: T) => string) => console.log(json ? JSON.stringify(result, null, 2) : render(result));
+    switch (sub) {
+      case "status":
+        print(await migrateStatus(flags), renderMigrateStatus);
+        return;
+      case "plan": {
+        const plan = await migratePlan(flags);
+        print(plan, renderMigratePlan);
+        if (plan.refusals.length > 0) process.exitCode = 1;
+        return;
+      }
+      case "up":
+        print(await migrateUp(flags), renderMigrateUp);
+        return;
+      case "down": {
+        const id = args[0];
+        if (id === undefined || id.startsWith("--")) break;
+        print(await migrateDown({ ...flags, id }), renderMigrateDown);
+        return;
+      }
+      case "create": {
+        const name = args[0];
+        if (name === undefined || name.startsWith("--")) break;
+        const created = await migrateCreate({ name, dir: extractFlagValue(args, "--dir") ?? "src/migrations", cwd: process.cwd() });
+        console.log(`Created ${created.file}`);
+        console.log(created.registered ? `Added it to ${created.index}` : `Add it to the list in ${created.index} yourself (no "export default [...]" found).`);
+        return;
+      }
+      case "check": {
+        const appPath = await resolveAppPathFrom(extractFlagValue(args, "--app"));
+        if (appPath === undefined) {
+          console.error(`nexo migrate check needs the app: pass --app <module> or set "app" in nexo.config.json.`);
+          process.exitCode = 1;
+          return;
+        }
+        const { app } = await loadApplication(appPath);
+        const result = await migrateCheck({ ...flags, app });
+        print(result, renderMigrateCheck);
+        if (result.problems.length > 0) process.exitCode = 1;
+        return;
+      }
+    }
+    console.error(`${MIGRATE_USAGE}
 
 ${USAGE}`);
-      process.exitCode = 1;
-      return;
-    }
-    const result = await migrateStatus({
-      store: extractFlagValue(rest, "--store"),
-      migrations: extractFlagValue(rest, "--migrations"),
-      cwd: process.cwd()
-    });
-    console.log(rest.includes("--json") ? JSON.stringify(result, null, 2) : renderMigrateStatus(result));
+    process.exitCode = 1;
     return;
   }
 

@@ -2,10 +2,13 @@
 
 ## Unreleased
 
-Migrations, in progress ([design](./docs/architecture/migrations-design.md)). Applying migrations isn't available yet.
+Migrations, in progress ([design](./docs/architecture/migrations-design.md)). Applying works; backups before migrating and releasing uploaded files of deleted records come next.
 
 ### Added
 
+- **Applying migrations** (design step 2). `runMigrations(store, list)` applies pending migrations in order, each all-or-nothing together with its record, through a new optional store method, `writeBatch()` (SQLite: one transaction; JSON file: one file write; memory: one step), and recomputes a migration if the app changed a document meanwhile. A migration's `up(m)` works on plain documents: `m.renameField`, `m.removeField`, `m.setField`, `m.update`, `m.insert`, `m.index`, and `perProject` for `scopeByProject` data. Destructive changes (deleted documents, removed values, changed types) are detected from what a migration would do, and in production run only with `allowDestructive`. If any pending migration would be refused, or exceeds `maxChanges` (default 100,000), nothing runs. `planMigrations` is the dry run, and `revertMigration` runs the newest one's `down()`. Stores without `writeBatch()` and `entries()` are refused.
+- **`serve({ migrations })`** applies pending migrations before the app starts; if one fails or is refused, nothing listens. `migrations: { list, auto: false }` only checks, and refuses to start while any are pending.
+- **`nexo migrate plan | up | down <id> | create <name> | check`**, next to `status`. `check` compares every stored record with its resource's model and exits 1 on a mismatch.
 - **Migration tracking and locking** (design step 1). `migration({ id, up, down? })` defines a migration, and `migrationStatus(store, list)` reports which are applied and pending, plus pending ones that sort before applied ones, applied ones edited since, and applied ones missing from the list. Applied migrations are recorded in the store's `nexo_migrations` collection. A lease lock in the same collection keeps two processes from migrating at once, and a crashed holder's lease expires. `nexo migrate status` prints the report without creating a database; `--store` and `--migrations` default to new `store` and `migrations` keys in `nexo.config.json`.
 
 ## 0.8.0
