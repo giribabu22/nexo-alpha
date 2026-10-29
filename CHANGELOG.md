@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased
+
+Migrations, in progress ([design](./docs/architecture/migrations-design.md)). Applying migrations isn't available yet.
+
+### Added
+
+- **Migration tracking and locking** (design step 1). `migration({ id, up, down? })` defines a migration, and `migrationStatus(store, list)` reports which are applied and pending, plus pending ones that sort before applied ones, applied ones edited since, and applied ones missing from the list. Applied migrations are recorded in the store's `nexo_migrations` collection. A lease lock in the same collection keeps two processes from migrating at once, and a crashed holder's lease expires. `nexo migrate status` prints the report without creating a database; `--store` and `--migrations` default to new `store` and `migrations` keys in `nexo.config.json`.
+
 ## 0.8.0
 
 Two themes. `serve()` takes an app from its models to a running server in one call, and can serve the built frontend from the same port, so a full-stack app is one deployment; every `create-nexo-app` template starts with it. The package architecture audit's P0 fixes: the AI layer no longer reports answers it doesn't have, agents need a policy before they act, and every request goes through one pipeline. Several of these change behavior; read **Changed** before upgrading.

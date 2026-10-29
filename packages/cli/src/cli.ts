@@ -22,6 +22,7 @@ import {
   validate
 } from "./commands.js";
 import { doctor, renderDoctorReport } from "./doctor.js";
+import { migrateStatus, renderMigrateStatus } from "./migrate.js";
 import { GENERATOR_KINDS, generateFiles, writeGeneratedFiles, type GeneratorKind } from "./generate.js";
 
 const USAGE = `Usage:
@@ -43,6 +44,7 @@ const USAGE = `Usage:
   nexo impact <nodeId> [app-module-path] [--source-root <path>] [--dependencies] [--max-depth <n>] [--edge-kinds <kind,...>]
   nexo validate [app-module-path]
   nexo health [app-module-path]
+  nexo migrate status [--store <path>] [--migrations <module>] [--json]
 
 If app-module-path is omitted, Nexo looks for a "nexo.config.json" in the
 current directory or a parent directory, with the shape:
@@ -78,6 +80,13 @@ every other command, it doesn't load an application at all, so there's no
 app-module-path argument; --source-root is required (there's nothing to
 diff against without it), and it errors if no graph has been saved at
 --out yet.
+
+"nexo migrate status" lists which migrations are applied to a store and
+which are pending, and reports problems: pending migrations that sort
+before applied ones, applied ones edited since, and applied ones missing
+from the list. It only reads, and doesn't create a database that doesn't
+exist yet. --store and --migrations default to the "store" and
+"migrations" paths in nexo.config.json.
 
 "nexo intents" renders recorded intents ("why does this entity exist" —
 NexoIntent in @nexo-alpha/context) as JSON: every recorded intent by
@@ -142,6 +151,23 @@ async function main(): Promise<void> {
       force: rest.includes("--force")
     });
     console.log(written.map((path) => `created ${path}`).join("\n"));
+    return;
+  }
+
+  if (command === "migrate") {
+    if (rest[0] !== "status") {
+      console.error(`Usage: nexo migrate status [--store <path>] [--migrations <module>] [--json]
+
+${USAGE}`);
+      process.exitCode = 1;
+      return;
+    }
+    const result = await migrateStatus({
+      store: extractFlagValue(rest, "--store"),
+      migrations: extractFlagValue(rest, "--migrations"),
+      cwd: process.cwd()
+    });
+    console.log(rest.includes("--json") ? JSON.stringify(result, null, 2) : renderMigrateStatus(result));
     return;
   }
 

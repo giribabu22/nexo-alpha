@@ -47,6 +47,14 @@ export class NexoValidationError extends NexoError {
   }
 }
 
+/** A migration list that is invalid, out of order, locked, or failed to apply. Nothing of the failing migration was written. */
+export class NexoMigrationError extends NexoError {
+  constructor(message: string) {
+    super("NEXO_MIGRATION_ERROR", message);
+    this.name = "NexoMigrationError";
+  }
+}
+
 export class NexoAuthenticationError extends NexoError {
   constructor(message: string) {
     super("NEXO_AUTHENTICATION_ERROR", message);

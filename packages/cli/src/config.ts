@@ -6,6 +6,10 @@ const CONFIG_FILE_NAME = "nexo.config.json";
 
 export interface NexoConfig {
   readonly app: string;
+  /** Where records are stored, for `nexo migrate`: a ".json" file or a SQLite database. */
+  readonly store?: string;
+  /** Module whose default (or `migrations`) export is the migration list, e.g. "./dist/migrations/index.js". */
+  readonly migrations?: string;
 }
 
 export async function findNexoConfig(startDir: string): Promise<string | undefined> {
@@ -51,4 +55,21 @@ export async function resolveConfiguredAppPath(
   }
 
   return resolve(dirname(configPath), (parsed as NexoConfig).app);
+}
+
+/** The "store" and "migrations" paths of the nearest nexo.config.json, resolved against its folder. */
+export async function resolveConfiguredMigrations(
+  startDir: string
+): Promise<{ readonly store?: string; readonly migrations?: string }> {
+  const configPath = await findNexoConfig(startDir);
+  if (configPath === undefined) return {};
+  const parsed = JSON.parse(await readFile(configPath, "utf8")) as Partial<Record<"store" | "migrations", unknown>>;
+  const at = (value: unknown, key: string): string | undefined => {
+    if (value === undefined) return undefined;
+    if (typeof value !== "string") throw new Error(`"${configPath}": "${key}" must be a path string.`);
+    return resolve(dirname(configPath), value);
+  };
+  const store = at(parsed.store, "store");
+  const migrations = at(parsed.migrations, "migrations");
+  return { ...(store !== undefined ? { store } : {}), ...(migrations !== undefined ? { migrations } : {}) };
 }

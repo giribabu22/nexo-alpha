@@ -107,6 +107,18 @@ export type { NexoFiles, NexoBlobStore, CreateFilesOptions, FilesCleanupOptions,
 export { FILES_PATH, mimeMatches } from "./files-contract.js";
 export type { NexoFile } from "./files-contract.js";
 
+export { migration, migrationStatus, MIGRATION_ID } from "./migrations.js";
+export type {
+  NexoMigration,
+  MigrationDefinition,
+  MigrationContext,
+  MigrationDocument,
+  MigrationRemove,
+  MigrationRecord,
+  MigrationStatus
+} from "./migrations.js";
+export { MIGRATIONS_COLLECTION } from "./migration-lock.js";
+
 export { createAuth } from "./accounts.js";
 export type {
   NexoAuth,
@@ -209,7 +221,8 @@ export {
   NexoPluginError,
   NexoValidationError,
   NexoAuthenticationError,
-  NexoHttpError
+  NexoHttpError,
+  NexoMigrationError
 } from "./errors.js";
 
 export {

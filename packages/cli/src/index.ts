@@ -8,8 +8,12 @@ export {
 
 export {
   findNexoConfig,
-  resolveConfiguredAppPath
+  resolveConfiguredAppPath,
+  resolveConfiguredMigrations
 } from "./config.js";
+
+export { migrateStatus, renderMigrateStatus, loadMigrations } from "./migrate.js";
+export type { MigrateOptions, MigrateStatusResult } from "./migrate.js";
 
 export type {
   NexoConfig
